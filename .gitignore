@@ -6,3 +6,5 @@ logs/
 config/settings.json
 config/settings.json.tmp
 saves/
+# big binary assets (models, skybox PNGs ~167 MB): kept on disk, not in git. Worktrees symlink to the main checkout copy.
+assets/

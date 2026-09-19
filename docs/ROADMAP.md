@@ -23,7 +23,7 @@ These stop the old game's problems (globals, hand-wired init, static flags) from
 - [x] **1.0a Service interfaces**: `core::IInput` done (modules depend on the interface, not `InputHandler`). Every new service (audio, save, data, physics, camera) is created as an interface + implementation.
 - [x] **1.0b logging**: `engine/log.h` - `LOG_I/W/E/D(tag, fmt, ...)` to the console and `logs/game.log` (level and file via `engine.log_level` / `engine.log_file`); all modules converted.
 - [x] **1.0c Fixed-step interpolation** (`eng.alpha()`; flight blends prev/current state for the camera): render between physics steps so motion is smooth on 144 Hz displays (moved up from Phase 7).
-- [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.
+- [x] **1.0d Assets**: V2 is self-contained. The old game's `assets/` (167 MB: models + skybox) was copied to `assets/` and is git-ignored (too big for git, same as the old repo). Worktrees symlink to the main checkout's copy (see docs/WORKFLOW.md).
 
 - [x] **1.1 JSON writer** in `engine/json.h`: `Json::object().set(...)`, `array().push(...)`, `dump()`; floats save as `0.3` not `0.30000001`.
 - [x] **1.2 `core/settings`** (`core::ISettings`): player prefs saved to `config/settings.json` (debounced, atomic write); owners apply changes via `SettingChanged`. FOV, fullscreen and mouse sensitivity are wired; pause menu Settings writes through it. Volumes come with audio (1.4).
