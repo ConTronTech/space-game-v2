@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Agents must not commit on their own. Inside an agent worktree (~/orca/workspaces/...) a commit is refused unless the
+# coordinator/user approved it explicitly:   SG_COMMIT_APPROVED=1 git commit ...
+# The main checkout is not restricted. Installed by package/tools/install_hooks.sh.
+top=$(git rev-parse --show-toplevel 2>/dev/null)
+case "$top" in
+  */orca/workspaces/*)
+    if [ "$SG_COMMIT_APPROVED" != "1" ]; then
+      cat >&2 <<MSG
+
+  COMMIT BLOCKED: this is an agent worktree, and agents do not commit on their own.
+  Leave your changes uncommitted in the working tree and finish with your report (worker_done).
+  The coordinator reviews the diff and commits it after approval. Do not try to bypass this hook.
+
+MSG
+      exit 1
+    fi ;;
+esac
+exit 0
