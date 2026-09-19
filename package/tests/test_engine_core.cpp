@@ -65,3 +65,12 @@ TEST(eventbus_handler_may_emit_another_event) {
     bus.emit(Ping{1});
     CHECK_EQ(pongs, 1);
 }
+
+#include "engine/math.h"
+TEST(math_lerp_and_rotate) {
+    engine::Vec3 a{0, 0, 0}, b{10, 20, 30};
+    auto m = engine::lerp(a, b, 0.25f);
+    CHECK_EQ(m.x, 2.5f); CHECK_EQ(m.y, 5.0f); CHECK_EQ(m.z, 7.5f);
+    auto r = engine::rotate({1, 0, 0}, {0, 0, 1}, 3.14159265f / 2);   // +x rotated 90deg about z -> +y
+    CHECK(std::abs(r.x) < 1e-5f && std::abs(r.y - 1.0f) < 1e-5f);
+}

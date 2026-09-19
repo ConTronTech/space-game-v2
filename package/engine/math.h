@@ -23,6 +23,7 @@ inline Vec3 normalize(const Vec3& v) {
     float l = length(v);
     return l > 1e-6f ? v * (1.0f / l) : Vec3{};
 }
+inline Vec3 lerp(const Vec3& a, const Vec3& b, float t) { return a + (b - a) * t; }
 // Rotate v around a unit axis (Rodrigues).
 inline Vec3 rotate(const Vec3& v, const Vec3& axis, float angle) {
     float c = std::cos(angle), s = std::sin(angle);

@@ -90,3 +90,35 @@ TEST(required_module_failing_aborts_with_error_code) {
     g_order.clear();
     CHECK_EQ(runEngine({"--fail-required"}), 1);
 }
+
+// ---- alpha (fixed-step interpolation factor) ----
+static std::vector<float> g_alphas;
+static std::vector<bool> g_pausedFlags;
+class TAlpha : public engine::Module {
+public:
+    const char* name() const override { return "t/alpha"; }
+    void onUpdate(engine::Engine& eng, float) override {
+        if (!eng.hasFlag("test-alpha")) return;
+        if (eng.frame() == 3) eng.setPaused(true);
+        g_alphas.push_back(eng.alpha());
+        g_pausedFlags.push_back(eng.paused());
+    }
+};
+REGISTER_MODULE(TAlpha);
+
+TEST(alpha_is_a_fraction_and_exactly_one_when_paused) {
+    g_alphas.clear(); g_pausedFlags.clear();
+    std::vector<std::string> args = {"test", "--frames=6", "--test-alpha", "--disable=core/input_handler"};
+    std::vector<char*> argv;
+    for (auto& a : args) argv.push_back(a.data());
+    engine::Engine e;
+    CHECK_EQ(e.run((int)argv.size(), argv.data()), 0);
+    CHECK_EQ(g_alphas.size(), (size_t)6);
+    for (size_t i = 0; i < g_alphas.size(); i++) {
+        CHECK(g_alphas[i] >= 0.0f && g_alphas[i] <= 1.0f);
+        // the frame that triggers the pause was computed just before it; every frame after must be exactly 1
+        if (i > 0 && g_pausedFlags[i - 1]) CHECK_EQ(g_alphas[i], 1.0f);
+    }
+    CHECK(g_pausedFlags.back());     // the pause actually happened...
+    CHECK(g_pausedFlags[g_pausedFlags.size() - 2]); // ...early enough that the exactly-1 check ran
+}

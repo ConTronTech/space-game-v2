@@ -143,6 +143,7 @@ int Engine::run(int argc, char** argv) {
             for (auto& m : modules_) m->onFixedUpdate(*this, step);
             acc -= step;
         }
+        alpha_ = paused_ ? 1.0f : std::clamp(acc / step, 0.0f, 1.0f); // paused: show the frozen state exactly
         for (auto& m : modules_) m->onUpdate(*this, dt);
         for (auto& m : modules_) m->onRender(*this);
         for (auto& m : modules_) m->onRenderUI(*this);

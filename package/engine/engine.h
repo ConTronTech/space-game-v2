@@ -35,6 +35,9 @@ public:
     std::string flagValue(const std::string& key, const std::string& fallback = "") const;
 
     double time() const { return time_; }       // seconds since start
+    // 0..1: how far this frame is between the last and the next fixed step. Render code blends its
+    // previous and current physics state by this so motion is smooth at any display rate.
+    float alpha() const { return alpha_; }
     unsigned long frame() const { return frame_; }
     Module* findModule(const std::string& name) const;
 
@@ -46,6 +49,7 @@ private:
     bool running_ = false;
     bool paused_ = false;
     double time_ = 0;
+    float alpha_ = 1.0f;
     unsigned long frame_ = 0;
 };
 

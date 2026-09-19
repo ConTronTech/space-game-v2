@@ -75,6 +75,7 @@ public:
     void onFixedUpdate(engine::Engine&, float dt) override {
         // Controls don't snap: each axis eases toward what the player is asking for, so engines
         // spool up/down and the ship keeps turning for a moment after you let go.
+        prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; // for render interpolation
         const float thrust = thrust_, turn = turnRate_, turnTau = turnTau_, engineTau = engineTau_;
 
         pitchRate_  = ease(pitchRate_,  input_->value("pitch"),  turnTau, dt);
@@ -106,10 +107,16 @@ public:
         pos_ += vel_ * dt;
     }
 
-    void onUpdate(engine::Engine&, float) override {
+    void onUpdate(engine::Engine& eng, float) override {
         // publish the camera for the render engine
         float* m = render_->camera.view;
-        Vec3 r = right_, u = up_, f = fwd_, p = pos_;
+        // blend previous -> current physics state so 144 Hz displays don't show 60 Hz steps
+        float a = eng.alpha();
+        Vec3 p = engine::lerp(prevPos_, pos_, a);
+        Vec3 f = engine::normalize(engine::lerp(prevFwd_, fwd_, a));
+        Vec3 u = engine::normalize(engine::lerp(prevUp_, up_, a));
+        Vec3 r = engine::normalize(engine::cross(f, u));
+        u = engine::cross(r, f);
         m[0] = r.x; m[4] = r.y; m[8]  = r.z; m[12] = -engine::dot(r, p);
         m[1] = u.x; m[5] = u.y; m[9]  = u.z; m[13] = -engine::dot(u, p);
         m[2] = -f.x; m[6] = -f.y; m[10] = -f.z; m[14] = engine::dot(f, p);
@@ -169,6 +176,7 @@ private:
     float thrustOut_ = 0, strafeOut_ = 0, liftOut_ = 0;      // smoothed engine output
     Vec3 pos_{0, 0, 0}, vel_{0, 0, 0};
     Vec3 fwd_{0, 0, -1}, up_{0, 1, 0}, right_{1, 0, 0};
+    Vec3 prevPos_{0, 0, 0}, prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
     std::vector<Vec3> stars_;
     std::vector<Rock> rocks_;
 };
