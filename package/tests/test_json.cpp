@@ -69,3 +69,52 @@ TEST(json_deep_nesting_is_rejected_not_crashed) {
     CHECK(j.isNull());
     CHECK(!err.empty());
 }
+
+// ---- writer ----
+TEST(json_dump_builds_and_roundtrips) {
+    Json o = Json::object();
+    o.set("name", "ship \"one\"\n").set("hp", 80).set("ratio", 0.3f).set("alive", true)
+     .set("pos", Json::array().push(1.5).push(-2).push(3.25))
+     .set("nested", Json::object().set("a", Json::array().push(Json::object().set("k", 1)).push(Json::object())));
+    std::string text = o.dump();
+    std::string err;
+    Json back = Json::parse(text, &err);
+    CHECK(err.empty());
+    CHECK_EQ(back["name"].str(), std::string("ship \"one\"\n"));
+    CHECK_EQ(back["hp"].num(), 80.0);
+    CHECK_EQ(back["ratio"].num(), 0.3);              // float 0.3f is saved as 0.3, not 0.300000011920929
+    CHECK(back["alive"].boolean());
+    CHECK_EQ(back["pos"].at(1).num(), -2.0);
+    CHECK_EQ(back["nested"]["a"].at(0)["k"].num(), 1.0);
+    CHECK(back["nested"]["a"].at(1).isObject());
+    CHECK_EQ(back.dump(), text);                     // stable: dump(parse(dump(x))) == dump(x)
+}
+
+TEST(json_dump_number_formats) {
+    CHECK_EQ(Json(3).dump(), std::string("3\n"));
+    CHECK_EQ(Json(-7).dump(), std::string("-7\n"));
+    CHECK_EQ(Json(0.5).dump(), std::string("0.5\n"));
+    CHECK_EQ(Json(0.1f).dump(), std::string("0.1\n"));
+    CHECK_EQ(Json(1e20).dump().substr(0, 5), std::string("1e+20"));
+    CHECK_EQ(Json(std::nan("")).dump(), std::string("null\n"));   // NaN/inf are not valid JSON
+    double big = 123456789.123456789;
+    CHECK_EQ(Json::parse(Json(big).dump()).num(), big);            // doubles round-trip exactly
+}
+
+TEST(json_dump_set_replaces_and_control_chars_escape) {
+    Json o = Json::object();
+    o.set("a", 1).set("a", 2).set("s", std::string("tab\there\x01"));
+    CHECK_EQ(o.keys().size(), (size_t)1 + 1);
+    Json back = Json::parse(o.dump());
+    CHECK_EQ(back["a"].num(), 2.0);
+    CHECK_EQ(back["s"].str(), std::string("tab\there\x01"));
+}
+
+TEST(json_dump_empty_containers) {
+    Json o = Json::object();
+    o.set("o", Json::object()).set("a", Json::array());
+    Json back = Json::parse(o.dump());
+    CHECK(back["o"].isObject());
+    CHECK(back["a"].isArray());
+    CHECK_EQ(back["a"].size(), (size_t)0);
+}

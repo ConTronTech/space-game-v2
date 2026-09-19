@@ -2,9 +2,12 @@
 // Minimal JSON reader (no deps). Supports objects, arrays, strings, numbers, bool, null,
 // plus // line comments so config files can be annotated. Lookups never throw:
 // a missing key/index yields a null Json whose str()/num()/boolean() return the default.
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace engine {
@@ -14,6 +17,31 @@ public:
     enum class Type { Null, Bool, Number, String, Array, Object };
 
     static Json parse(std::string_view text, std::string* error = nullptr);
+
+    // ---- building (for saving) ----
+    //   Json o = Json::object();  o.set("hp", 80).set("name", "ship").set("pos", Json::array().push(1).push(2));
+    //   std::string text = o.dump();
+    Json() = default;
+    Json(bool b) : t_(Type::Bool), b_(b) {}
+    Json(const char* s) : t_(Type::String), s_(s ? s : "") {}
+    Json(std::string s) : t_(Type::String), s_(std::move(s)) {}
+    template <class T, class = std::enable_if_t<std::is_arithmetic_v<T> && !std::is_same_v<T, bool>>>
+    Json(T v) : t_(Type::Number), n_(shortest(v)) {}
+    static Json object() { Json j; j.t_ = Type::Object; return j; }
+    static Json array() { Json j; j.t_ = Type::Array; return j; }
+    Json& set(const std::string& key, Json v) {          // object member (replaces an existing key)
+        if (t_ != Type::Object) { *this = object(); }
+        for (size_t i = 0; i < keys_.size(); i++) if (keys_[i] == key) { items_[i] = std::move(v); return *this; }
+        keys_.push_back(key);
+        items_.push_back(std::move(v));
+        return *this;
+    }
+    Json& push(Json v) {                                  // array element
+        if (t_ != Type::Array) { *this = array(); }
+        items_.push_back(std::move(v));
+        return *this;
+    }
+    std::string dump(int indent = 2) const { std::string out; write(out, indent, 0); out += "\n"; return out; }
 
     Type type() const { return t_; }
     bool isNull() const { return t_ == Type::Null; }
@@ -32,6 +60,87 @@ public:
 
 private:
     friend struct JsonParser;
+
+    // A float such as 0.3f must be saved as 0.3, not 0.30000001192...: use the shortest text that round-trips.
+    template <class T> static double shortest(T v) {
+        if constexpr (std::is_same_v<T, float>) {
+            char b[40];
+            for (int p = 1; p <= 9; p++) {
+                std::snprintf(b, sizeof b, "%.*g", p, (double)v);
+                if ((float)std::strtod(b, nullptr) == v) return std::strtod(b, nullptr);
+            }
+        }
+        return (double)v;
+    }
+    static void quote(std::string& out, const std::string& s) {
+        out += '"';
+        for (unsigned char c : s) {
+            switch (c) {
+                case '"': out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default:
+                    if (c < 0x20) { char b[8]; std::snprintf(b, sizeof b, "\\u%04x", c); out += b; }
+                    else out += (char)c;
+            }
+        }
+        out += '"';
+    }
+    static std::string number(double d) {
+        if (!std::isfinite(d)) return "null";
+        char b[40];
+        if (d == std::floor(d) && std::fabs(d) < 1e15) { std::snprintf(b, sizeof b, "%lld", (long long)d); return b; }
+        for (int p = 6; p <= 17; p++) {                    // shortest text that reads back exactly
+            std::snprintf(b, sizeof b, "%.*g", p, d);
+            if (std::strtod(b, nullptr) == d) break;
+        }
+        return b;
+    }
+    bool scalar() const { return t_ != Type::Array && t_ != Type::Object; }
+    void write(std::string& out, int indent, int depth) const {
+        switch (t_) {
+            case Type::Null: out += "null"; return;
+            case Type::Bool: out += b_ ? "true" : "false"; return;
+            case Type::Number: out += number(n_); return;
+            case Type::String: quote(out, s_); return;
+            case Type::Array: {
+                if (items_.empty()) { out += "[]"; return; }
+                bool inlineArr = items_.size() <= 16;
+                for (auto& it : items_) if (!it.scalar()) inlineArr = false;
+                if (inlineArr) {                          // short lists of numbers/strings stay on one line
+                    out += '[';
+                    for (size_t i = 0; i < items_.size(); i++) { if (i) out += ", "; items_[i].write(out, indent, depth + 1); }
+                    out += ']';
+                    return;
+                }
+                out += "[\n";
+                for (size_t i = 0; i < items_.size(); i++) {
+                    out.append((size_t)(depth + 1) * indent, ' ');
+                    items_[i].write(out, indent, depth + 1);
+                    out += i + 1 < items_.size() ? ",\n" : "\n";
+                }
+                out.append((size_t)depth * indent, ' ');
+                out += ']';
+                return;
+            }
+            case Type::Object: {
+                if (items_.empty()) { out += "{}"; return; }
+                out += "{\n";
+                for (size_t i = 0; i < items_.size(); i++) {
+                    out.append((size_t)(depth + 1) * indent, ' ');
+                    quote(out, keys_[i]);
+                    out += ": ";
+                    items_[i].write(out, indent, depth + 1);
+                    out += i + 1 < items_.size() ? ",\n" : "\n";
+                }
+                out.append((size_t)depth * indent, ' ');
+                out += '}';
+                return;
+            }
+        }
+    }
     static const Json& null() { static const Json n; return n; }
     const Json* find(std::string_view key) const {
         if (t_ != Type::Object) return nullptr;

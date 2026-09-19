@@ -25,7 +25,7 @@ These stop the old game's problems (globals, hand-wired init, static flags) from
 - [x] **1.0c Fixed-step interpolation** (`eng.alpha()`; flight blends prev/current state for the camera): render between physics steps so motion is smooth on 144 Hz displays (moved up from Phase 7).
 - [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.
 
-- [ ] **1.1 JSON writer** in `engine/json.h` (reader exists). Needed by save + data.
+- [x] **1.1 JSON writer** in `engine/json.h`: `Json::object().set(...)`, `array().push(...)`, `dump()`; floats save as `0.3` not `0.30000001`.
 - [ ] **1.2 `core/settings`** service: FOV, fullscreen, volumes, sensitivity saved to `config/settings.json`; pause menu Settings uses it.
 - [ ] **1.3 `core/save_system`**: modules register a *saveable* (`id`, `toJson`, `fromJson`); save/load slots in `saves/`; pause menu gets Save / Load. Worlds regenerate from a seed. *savegame.h*
 - [ ] **1.4 `core/audio`** (SDL_mixer): `play("name")`, looping sounds with volume, master/sfx/engine buses. Sounds are files in `assets/sounds/`, no code per sound. *systems/sound.h*
