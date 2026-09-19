@@ -1,6 +1,7 @@
 // gameplay/flight - Newtonian flight + starfield + speed readout.
 // Doubles as the reference for how a game module uses the core services.
 #include <GL/gl.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -23,6 +24,17 @@ public:
         input_ = &eng.services.require<core::InputHandler>();
         render_ = &eng.services.require<core::RenderEngine>();
         auto& ui = eng.services.require<core::UIHandler>();
+
+        // tunables: base values live here, config/game.json can override them (see docs/CONFIG.md)
+        auto& c = eng.config;
+        thrust_      = c.get("flight.thrust", 40.0f, "forward acceleration at full throttle, m/s^2");
+        turnRate_    = c.get("flight.turn_rate", 1.4f, "max turn rate, rad/s");
+        turnTau_     = c.get("flight.turn_tau", 0.25f, "seconds to reach ~63% of a new turn rate (higher = heavier ship)");
+        engineTau_   = c.get("flight.engine_tau", 0.30f, "seconds for thrust to spool up/down (higher = laggier engines)");
+        drift_       = std::clamp(c.get("flight.drift", 1.0f, "1.0 = pure Newtonian, nothing slows you. 0.0 = strong flight assist"), 0.0f, 1.0f);
+        assist_      = c.get("flight.assist_strength", 4.0f, "damping per second when drift is 0 (scales with 1 - drift)");
+        brake_       = c.get("flight.brake", 2.0f, "speed decay per second while braking");
+        maxSpeed_    = c.get("flight.max_speed", 0.0f, "speed cap in m/s, 0 = unlimited");
 
         // 1. input: nothing to bind here. Actions (thrust, strafe, lift, pitch, yaw, roll, brake)
         //    are mapped to devices in config/input/<profile>.json
@@ -62,10 +74,7 @@ public:
     void onFixedUpdate(engine::Engine&, float dt) override {
         // Controls don't snap: each axis eases toward what the player is asking for, so engines
         // spool up/down and the ship keeps turning for a moment after you let go.
-        // Time constants: bigger = heavier ship, longer delay before it responds/stops.
-        const float thrust = 40.0f, turn = 1.4f;
-        const float turnTau = 0.25f;    // seconds to reach ~63% of a new turn rate
-        const float engineTau = 0.30f;  // seconds for thrust to spool toward a new setting
+        const float thrust = thrust_, turn = turnRate_, turnTau = turnTau_, engineTau = engineTau_;
 
         pitchRate_  = ease(pitchRate_,  input_->value("pitch"),  turnTau, dt);
         yawRate_    = ease(yawRate_,    input_->value("yaw"),    turnTau, dt);
@@ -87,7 +96,12 @@ public:
 
         Vec3 acc = fwd_ * thrustOut_ + right_ * strafeOut_ + up_ * liftOut_;
         vel_ += acc * (thrust * dt);
-        if (input_->down("brake")) vel_ *= std::max(0.0f, 1.0f - 2.0f * dt); // no drag otherwise: Newtonian
+        if (input_->down("brake")) vel_ *= std::exp(-brake_ * dt);
+        if (drift_ < 1.0f) vel_ *= std::exp(-(1.0f - drift_) * assist_ * dt); // flight assist; drift 1.0 = none
+        if (maxSpeed_ > 0.0f) {
+            float sp = engine::length(vel_);
+            if (sp > maxSpeed_) vel_ *= maxSpeed_ / sp;
+        }
         pos_ += vel_ * dt;
     }
 
@@ -146,6 +160,9 @@ private:
     static float ease(float cur, float target, float tau, float dt) {
         return cur + (target - cur) * (1.0f - std::exp(-dt / tau));
     }
+
+    float thrust_ = 40, turnRate_ = 1.4f, turnTau_ = 0.25f, engineTau_ = 0.3f;
+    float drift_ = 1, assist_ = 4, brake_ = 2, maxSpeed_ = 0;
 
     float pitchRate_ = 0, yawRate_ = 0, rollRate_ = 0;       // smoothed turn inputs
     float thrustOut_ = 0, strafeOut_ = 0, liftOut_ = 0;      // smoothed engine output

@@ -110,6 +110,7 @@ bool Engine::loadModules() {
 int Engine::run(int argc, char** argv) {
     for (int i = 1; i < argc; i++) args_.push_back(argv[i]);
 
+    config.load();
     events.subscribe<QuitRequested>([this](const QuitRequested&) { quit(); });
 
     if (!loadModules()) {
@@ -123,7 +124,7 @@ int Engine::run(int argc, char** argv) {
         return 0;
     }
 
-    const float step = 1.0f / 60.0f;
+    const float step = 1.0f / std::max(1.0f, config.get("engine.fixed_hz", 60.0f, "physics steps per second"));
     const long maxFrames = std::atol(flagValue("frames", "0").c_str()); // 0 = unlimited (smoke tests use >0)
     using clock = std::chrono::steady_clock;
     auto last = clock::now();
@@ -156,6 +157,7 @@ int Engine::run(int argc, char** argv) {
 
     for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) (*it)->shutdown(*this);
     modules_.clear();
+    config.save();
     return 0;
 }
 

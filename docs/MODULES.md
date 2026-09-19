@@ -53,6 +53,8 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 `package/modules/gameplay/flight/flight.cpp` is the reference: binds input, registers passes and a HUD panel,
 publishes the camera. Copy its shape.
 
+- **Config** (`engine.config`): base value in code + optional override in `config/game.json` - see docs/CONFIG.md.
+
 ## Rules of thumb
 - Register things in `init`, undo them in `shutdown`.
 - Talk to other modules through services/events, never by including their `.cpp` internals.

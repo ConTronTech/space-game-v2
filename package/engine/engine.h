@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "engine/config.h"
 #include "engine/event_bus.h"
 #include "engine/module.h"
 #include "engine/services.h"
@@ -18,6 +19,7 @@ class Engine {
 public:
     EventBus events;
     Services services;
+    Config config;   // tunables: config.get("module.key", default, "what it does")
 
     // Runs the game until quit. Returns process exit code.
     int run(int argc, char** argv);
