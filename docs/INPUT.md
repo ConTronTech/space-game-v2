@@ -19,6 +19,10 @@ in.down("brake"); in.pressed("quit"); in.released("fire");   // "down" = |value|
 An action's value is the **sum of all its bindings**, clamped to -1..1. So "W", a stick axis and a
 mouse axis can all drive `thrust` at once. Actions not in the profile just read 0.
 
+**Rule:** use `pressed()` / `released()` in `onUpdate` (once per frame), never in `onFixedUpdate`, where several
+physics steps can run in one frame and the same press would count more than once. `value()` and `down()` are
+safe in both.
+
 ## Profile format
 ```json
 {

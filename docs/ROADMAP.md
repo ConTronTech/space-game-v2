@@ -12,11 +12,18 @@ Legend: `[x]` done, `[ ]` todo. Old-game source to port from is in *italics*.
 - [x] Engine kernel, drop-in modules, event bus, services, pause
 - [x] Core modules: window, input (JSON profiles, keyboard + mouse), render engine, glass UI, import
 - [x] Pause menu, flight demo (6-axis, eased controls)
-- [ ] **0.1** First commit on `v2-modular`, tag `v2-base`
-- [ ] **0.2** `package/tools/smoke.sh`: clean build with warnings as errors, `--list-modules`, run 60 frames, save a screenshot. Run before every commit.
+- [x] **0.1** First commit on `v2-modular`, tag `v2-base`
+- [x] **0.2** `package/tools/smoke.sh`: clean `-Werror` build, module count, run 60 frames, screenshot. Run before every commit.
+- [x] **0.3** Engine hardening: a module whose `init` throws is skipped instead of crashing; Makefile relinks when modules are added/removed; UI text is cached instead of rebuilt every frame; rule documented that `pressed()` belongs in `onUpdate`.
+- [ ] **0.4** Unit tests (`package/tests/`, `make test`): JSON parser, event bus, dependency sort, input edge detection. Add to `smoke.sh`.
 
 ## Phase 1 - Foundations (do these before any gameplay)
 These stop the old game's problems (globals, hand-wired init, static flags) from coming back.
+
+- [ ] **1.0a Service interfaces**: services are currently keyed by the concrete class (`core::InputHandler`), so a replacement module has to be that exact class. Add small interfaces (`IInput`, `IAudio`, `ISaveSystem`, ...) that other modules depend on, so an alternative implementation can be dropped in for real.
+- [ ] **1.0b `core/log`**: levelled logging (error/warn/info/debug) to console and `logs/`, replacing raw `fprintf` in modules.
+- [ ] **1.0c Fixed-step interpolation**: render between physics steps so motion is smooth on 144 Hz displays (moved up from Phase 7).
+- [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.
 
 - [ ] **1.1 JSON writer** in `engine/json.h` (reader exists). Needed by save + data.
 - [ ] **1.2 `core/settings`** service: FOV, fullscreen, volumes, sensitivity saved to `config/settings.json`; pause menu Settings uses it.
@@ -89,7 +96,7 @@ Survival pressure (fuel decay, hull wear, O2, heat) slots in at step 2.1 as smal
 - [ ] `core/input_methods/wheel` (PXN-V10 auto-calibration from the old game)
 - [ ] `core/vr` (OpenVR loader, VR render target, VR menu panel) - *include/core/vr, ui/vr*
 - [ ] Debug tools module: F-key cheats, god mode, free-cam, stats overlay (kept out of normal modules)
-- [ ] Performance pass: fixed-step interpolation, batched draws, shader path if 2.1 fixed-function becomes the limit
+- [ ] Performance pass: batched draws, shader path if 2.1 fixed-function becomes the limit
 
 ---
 
