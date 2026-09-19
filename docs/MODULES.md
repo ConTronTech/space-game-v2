@@ -52,6 +52,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::IAudio` | `play("name")`, `playLoop` / `setLoopVolume` - see docs/AUDIO.md |
 | `core::IData` | game content by id: `get("ores", "iron")`, `ids("recipes")` - see docs/DATA.md |
 | `core::ICamera` / `ITransformSource` | the view: publish a pose with `ITransformSource::transform(alpha)`; camera modes (V) |
+| `core::IPhysics` | sphere bodies + `Collided` events: `addBody`, `setBody`, `teleport` - see docs/PHYSICS.md |
 | `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |

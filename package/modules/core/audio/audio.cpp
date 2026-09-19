@@ -27,6 +27,7 @@ bool Audio::init(engine::Engine& eng) {
     // built-in sounds, so the game has audio with zero asset files (a file with the same name in assets/sounds/ is NOT used: rename it)
     addSound("ui_click", synth::blip(880.0f, 0.06f));
     addSound("ui_confirm", synth::blip(1320.0f, 0.10f));
+    addSound("impact", synth::thud());
     addSound("engine_loop", synth::hum(2.0f));
 
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0 || Mix_OpenAudio(synth::kRate, AUDIO_S16SYS, 2, 1024) != 0) {

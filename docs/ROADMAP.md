@@ -31,9 +31,9 @@ These stop the old game's problems (globals, hand-wired init, static flags) from
 - [x] **1.4 `core/audio`** (`core::IAudio`, SDL_mixer): `play`, `playLoop`, master/effects/engine volumes from settings, sounds by name (files in `assets/sounds/` or built-in synthesized), no-op when there is no audio device. Engine hum + menu clicks + volume sliders wired. See docs/AUDIO.md. *systems/sound.h*  (NOTE: verified with SDL's dummy driver, not by ear)
 - [x] **1.5 `core/data_registry`** (`core::IData`): content as JSON in `data/`; later files override earlier ones (mod-friendly); ores, items and recipes ported from the old tables; a test lints the shipped data. See docs/DATA.md. *ui/data/inventory.h, recipes.h*
 - [x] **1.6 `core/camera`** (`ICamera`, `ITransformSource`): owns the view; the ship publishes a pose (`transform(alpha)`), flight no longer touches the camera. Cockpit and Chase modes (V, saved in settings; chase distance/height are tunables). Debug free-cam moves to the Phase 7 debug tools.
-- [ ] **1.7 `core/physics_world`**: simple spatial grid + collision events (`Collided{a, b, speed}`). Fixes the old "everything vs everything" checks. *physics.cpp*
+- [x] **1.7 `core/physics_world`** (`core::IPhysics`): spatial grid, swept-sphere tests (no tunnelling at warp speed), `Collided` events with normal/speed/contact positions, big-body list for planets. Flight demo: ship bounces off rocks with a thud and an IMPACT flash. See docs/PHYSICS.md. *physics.cpp*
 
-Done when: settings persist across launches, a dummy module's state survives save/load, a test sound plays.
+Done when: settings persist across launches, a dummy module's state survives save/load, a test sound plays.  **Phase 1 complete.**
 
 ## Phase 2 - Ship
 - [ ] **2.1 `ship/ship_core`**: turn the flight demo into the real ship. Transform, velocity, orientation, HP, shield, fuel. Publishes `ShipState` service; emits `DamageTaken`, `Died`, `Respawned`. Registers as saveable. *ship.h*

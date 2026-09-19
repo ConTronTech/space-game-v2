@@ -37,3 +37,16 @@ TEST(audio_hum_loops_seamlessly_and_never_clips) {
     CHECK(peak > 5000);
     CHECK(peak < 32000);
 }
+
+TEST(audio_thud_is_short_loud_and_decays) {
+    auto t = thud(0.35f);
+    CHECK_EQ(t.size(), (size_t)(0.35f * kRate));
+    int peak = 0, tailPeak = 0;
+    for (size_t i = 0; i < t.size(); i++) {
+        peak = std::max(peak, std::abs((int)t[i]));
+        if (i > t.size() * 9 / 10) tailPeak = std::max(tailPeak, std::abs((int)t[i]));
+    }
+    CHECK(peak > 8000 && peak < 32700);   // punchy, no clipping
+    CHECK(tailPeak < peak / 10);          // dies away
+    CHECK(thud(0.35f) == t);              // deterministic
+}

@@ -8,10 +8,12 @@
 #include "core/audio/audio_api.h"
 #include "core/camera/camera_api.h"
 #include "core/input_handler/input_api.h"
+#include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
+#include "engine/log.h"
 #include "engine/math.h"
 
 using engine::Vec3;
@@ -19,6 +21,10 @@ using engine::Vec3;
 class Flight : public engine::Module, public core::ISaveable, public core::ITransformSource {
 public:
     const char* name() const override { return "gameplay/flight"; }
+    // use these if they are loaded, and initialise after them (none are required)
+    std::vector<std::string> optionalDependencies() const override {
+        return {"core/settings", "core/save_system", "core/audio", "core/physics_world", "core/camera"};
+    }
     std::vector<std::string> dependencies() const override {
         return {"core/input_handler", "core/render_engine", "core/ui_handler"};
     }
@@ -60,6 +66,13 @@ public:
             ui.text(32, 22, "SPEED", 12, ui.theme.textDim);
             ui.text(32, 38, buf, 22, ui.theme.accent);
 
+            if (eng_->time() - lastImpact_ < 0.7) {           // brief warning flash after a hit
+                float a = (float)(1.0 - (eng_->time() - lastImpact_) / 0.7);
+                ui.glass(ui.width() / 2.0f - 110, 24, 220, 44, a, false, 10);
+                char ib[48];
+                std::snprintf(ib, sizeof ib, "IMPACT  %.0f m/s", lastImpactSpeed_);
+                ui.textCentered(ui.width() / 2.0f, 34, ib, 18, core::Color{1.0f, 0.5f, 0.4f, a});
+            }
             const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
             float w = (float)ui.textWidth(hint, 13) + 40;
             ui.glass((ui.width() - w) / 2, ui.height() - 52.0f, w, 34, 0.9f, false, 10);
@@ -72,6 +85,17 @@ public:
         for (int i = 0; i < 150; i++) {
             rocks_.push_back({randomDir() * (60.0f + rnd() * 800.0f), 2.0f + rnd() * 14.0f});
         }
+
+        // collisions: the ship is a moving sphere, rocks are fixed spheres (a bit smaller than their octahedron corners)
+        if ((physics_ = eng.services.get<core::IPhysics>())) {
+            hullRadius_ = c.get("flight.hull_radius", 2.5f, "ship collision radius, m");
+            bounce_ = c.get("flight.bounce", 0.35f, "speed kept when bouncing off a rock: 0 = dead stop, 1 = perfectly elastic");
+            shipBody_ = physics_->addBody("ship", pos_, hullRadius_, true);
+            for (auto& r : rocks_) rockBodies_.push_back(physics_->addBody("asteroid", r.pos, r.size * 0.8f, false));
+            eng.events.subscribe<core::Collided>([this](const core::Collided& e) { onCollided(e); });
+            LOG_D("flight", "%zu rocks registered with physics; first at (%.1f, %.1f, %.1f) radius %.1f", rocks_.size(),
+                  rocks_[0].pos.x, rocks_[0].pos.y, rocks_[0].pos.z, rocks_[0].size * 0.8f);
+        }
         return true;
     }
 
@@ -82,6 +106,10 @@ public:
         eng.services.withdraw<core::ITransformSource>();
         if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
         if (saves_) saves_->unregisterSaveable(this);
+        if (physics_) {
+            physics_->removeBody(shipBody_);
+            for (auto id : rockBodies_) physics_->removeBody(id);
+        }
         if (audio_ && hum_) audio_->stopLoop(hum_);
     }
 
@@ -118,6 +146,7 @@ public:
             if (sp > maxSpeed_) vel_ *= maxSpeed_ / sp;
         }
         pos_ += vel_ * dt;
+        if (physics_) physics_->setBody(shipBody_, pos_, vel_);   // the physics world sweeps this move for hits right after us
     }
 
     void onUpdate(engine::Engine& eng, float) override {
@@ -154,9 +183,26 @@ public:
         up_ = engine::cross(right_, fwd_);
         pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
         prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_;   // no interpolation smear across the jump
+        if (physics_ && shipBody_ != core::kNoBody) physics_->teleport(shipBody_, pos_);
     }
 
 private:
+    // Bounce off whatever we hit: put the hull just outside it and reflect the velocity component going into it.
+    void onCollided(const core::Collided& c) {
+        bool shipIsA = c.a == shipBody_;
+        if (!shipIsA && c.b != shipBody_) return;
+        Vec3 n = shipIsA ? c.normal : c.normal * -1.0f;             // pointing from the ship to the other body
+        Vec3 otherPos = shipIsA ? c.posB : c.posA;
+        float otherR = shipIsA ? c.radiusB : c.radiusA;
+        pos_ = otherPos - n * (hullRadius_ + otherR + 0.02f);
+        float into = engine::dot(vel_, n);
+        if (into > 0) vel_ -= n * ((1.0f + bounce_) * into);
+        physics_->teleport(shipBody_, pos_);
+        if (audio_ && c.speed > 1.0f) audio_->play("impact", std::clamp(c.speed / 40.0f, 0.25f, 1.0f));
+        lastImpact_ = eng_->time();
+        lastImpactSpeed_ = c.speed;
+    }
+
     static engine::Json vec(const Vec3& v) { return engine::Json::array().push(v.x).push(v.y).push(v.z); }
     static Vec3 readVec(const engine::Json& j, Vec3 def) {
         if (j.size() < 3) return def;
@@ -224,6 +270,12 @@ private:
     core::RenderEngine* render_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
     core::IAudio* audio_ = nullptr;
+    core::IPhysics* physics_ = nullptr;
+    core::BodyId shipBody_ = core::kNoBody;
+    std::vector<core::BodyId> rockBodies_;
+    float hullRadius_ = 2.5f, bounce_ = 0.35f;
+    double lastImpact_ = -100;
+    float lastImpactSpeed_ = 0;
     int hum_ = 0;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {
