@@ -1,0 +1,43 @@
+// Keyboard to move, mouse to look. Copy this file to make another profile and load it with
+//   ./space_game_v2 --input-profile=<name>
+// Every action is a list of bindings; values from all bindings are summed and clamped to -1..1.
+{
+  "name": "Keyboard + Mouse",
+
+  "devices": {
+    "mouse": { "capture": true, "sensitivity": 1.0 }
+  },
+
+  "bindings": {
+    "thrust": [ { "device": "keyboard", "key": "W", "scale":  1 },
+                { "device": "keyboard", "key": "S", "scale": -1 } ],
+    "strafe": [ { "device": "keyboard", "key": "D", "scale":  1 },
+                { "device": "keyboard", "key": "A", "scale": -1 } ],
+    "lift":   [ { "device": "keyboard", "key": "Space", "scale":  1 },   // up
+                { "device": "keyboard", "key": "C",     "scale": -1 },   // down
+                { "device": "keyboard", "key": "R",     "scale":  1 },   // (alt) up
+                { "device": "keyboard", "key": "F",     "scale": -1 } ], // (alt) down
+    "roll":   [ { "device": "keyboard", "key": "E", "scale":  1 },
+                { "device": "keyboard", "key": "Q", "scale": -1 } ],
+
+    // mouse: pixels/sec * scale. Negative = moving right turns right / moving down pitches down.
+    "yaw":    [ { "device": "mouse",    "axis": "x", "scale": -0.0006 },
+                { "device": "keyboard", "key": "Left",  "scale":  1 },
+                { "device": "keyboard", "key": "Right", "scale": -1 } ],
+    "pitch":  [ { "device": "mouse",    "axis": "y", "scale": -0.0006 },
+                { "device": "keyboard", "key": "Down", "scale":  1 },
+                { "device": "keyboard", "key": "Up",   "scale": -1 } ],
+
+    "brake":  [ { "device": "keyboard", "key": "X" },
+                { "device": "mouse",    "button": "right" } ],
+    "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
+    "pause":  [ { "device": "keyboard", "key": "Escape" } ],
+
+    // menu navigation (also used by any future UI module)
+    "ui_up":      [ { "device": "keyboard", "key": "Up" },    { "device": "keyboard", "key": "W" } ],
+    "ui_down":    [ { "device": "keyboard", "key": "Down" },  { "device": "keyboard", "key": "S" } ],
+    "ui_left":    [ { "device": "keyboard", "key": "Left" },  { "device": "keyboard", "key": "A" } ],
+    "ui_right":   [ { "device": "keyboard", "key": "Right" }, { "device": "keyboard", "key": "D" } ],
+    "ui_confirm": [ { "device": "keyboard", "key": "Return" }, { "device": "keyboard", "key": "Space" } ]
+  }
+}

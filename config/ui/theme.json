@@ -1,0 +1,13 @@
+// Glass theme. Colors are [r, g, b, a] in 0..1. Every key is optional; delete this file for defaults.
+{
+  "glass_top":    [0.16, 0.22, 0.34, 0.55],   // panel fill, top edge   (lower alpha = more see-through)
+  "glass_bottom": [0.06, 0.09, 0.16, 0.42],   // panel fill, bottom edge
+  "sheen":        [1.00, 1.00, 1.00, 0.07],   // light wash across the top half
+  "border":       [0.75, 0.88, 1.00, 0.28],
+  "glint":        [1.00, 1.00, 1.00, 0.35],   // bright line along the top edge
+  "shadow":       [0.00, 0.00, 0.00, 0.30],
+  "text":         [0.93, 0.96, 1.00, 1.00],
+  "text_dim":     [0.62, 0.70, 0.80, 1.00],
+  "accent":       [0.35, 0.85, 1.00, 1.00],   // focus, sliders, toggles
+  "radius": 12
+}
