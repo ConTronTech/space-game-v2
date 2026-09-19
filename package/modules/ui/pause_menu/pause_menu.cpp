@@ -1,11 +1,12 @@
 // ui/pause_menu - Esc pauses the simulation and opens a glass menu.
 //   Main:     Resume / Save Game / Load Game / Settings / Exit Game   (Save/Load only if core/save_system is loaded)
 //   Load:     your saves, newest first
-//   Settings: Field of View, Mouse Sensitivity, Fullscreen, Back
+//   Settings: Field of View, Mouse Sensitivity, Master/Effects/Engine Volume (if core/audio is loaded), Fullscreen, Back
 // Mouse or keyboard/controller (actions: pause, ui_up, ui_down, ui_left, ui_right, ui_confirm).
 // Settings go through core::ISettings; saving/loading goes through core::ISaveSystem.
 #include <algorithm>
 #include <ctime>
+#include "core/audio/audio_api.h"
 #include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
@@ -29,6 +30,12 @@ public:
         ui_ = &eng.services.require<core::UIHandler>();
         settings_ = eng.services.get<core::ISettings>();     // optional: without it the settings page is read-only
         saves_ = eng.services.get<core::ISaveSystem>();      // optional: without it Save/Load are hidden
+        audio_ = eng.services.get<core::IAudio>();           // optional: without it no click sounds / volume sliders
+
+        rows_ = {Row::Fov, Row::Sens};
+        if (audio_) { rows_.push_back(Row::Master); rows_.push_back(Row::Sfx); rows_.push_back(Row::EngineVol); }
+        rows_.push_back(Row::Fullscreen);
+        rows_.push_back(Row::Back);
 
         main_ = {Main::Resume};
         if (saves_) { main_.push_back(Main::Save); main_.push_back(Main::Load); }
@@ -55,8 +62,10 @@ public:
         if (!eng.paused()) return;
 
         int n = itemCount();
+        int before = focus_;
         if (input_->pressed("ui_down")) focus_ = (focus_ + 1) % n;
         if (input_->pressed("ui_up"))   focus_ = (focus_ + n - 1) % n;
+        if (focus_ != before) sound("ui_click", 0.5f);
         if (input_->pressed("ui_confirm")) activate(focus_);
         if (input_->pressed("ui_left"))  adjust(focus_, -1);
         if (input_->pressed("ui_right")) adjust(focus_, +1);
@@ -65,7 +74,7 @@ public:
 private:
     enum class Page { Main, Load, Settings };
     enum class Main { Resume, Save, Load, Settings, Exit };
-    enum { kFov = 0, kSens = 1, kFullscreen = 2, kBack = 3 };   // settings rows
+    enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Back };   // settings rows (built in init)
     static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 3.0f;
     static constexpr size_t kMaxSlotsShown = 6;
 
@@ -73,7 +82,7 @@ private:
         switch (page_) {
             case Page::Main: return (int)main_.size();
             case Page::Load: return (int)slots_.size() + 1;      // slots..., Back
-            default: return 4;
+            default: return (int)rows_.size();
         }
     }
     int mainIndexOf(Main m) const { for (size_t i = 0; i < main_.size(); i++) if (main_[i] == m) return (int)i; return 0; }
@@ -82,6 +91,8 @@ private:
     void setFov(float v) { if (settings_) settings_->set("video.fov", std::clamp(v, kFovMin, kFovMax)); }
     void setSens(float v) { if (settings_) settings_->set("input.mouse_sensitivity", std::clamp(v, kSensMin, kSensMax)); }
     void setFullscreen(bool on) { if (settings_) settings_->set("video.fullscreen", on); }
+    void setVolume(const char* key, float v) { if (settings_) settings_->set(key, std::clamp(v, 0.0f, 100.0f)); }
+    void sound(const char* name, float vol) { if (audio_) audio_->play(name, vol); }
 
     void backToMain() {
         Page from = page_;
@@ -99,6 +110,7 @@ private:
     void setStatus(const std::string& s, bool ok) { status_ = s; statusOk_ = ok; }
 
     void activate(int i) {
+        sound("ui_confirm", 0.8f);
         if (page_ == Page::Main) {
             switch (main_[(size_t)i]) {
                 case Main::Resume:   eng_->setPaused(false); break;
@@ -117,14 +129,21 @@ private:
             else if (saves_->loadSlot(slots_[(size_t)i].name)) eng_->setPaused(false);
             else setStatus("Could not load that save - see logs/game.log", false);
         } else {
-            if (i == kFullscreen) setFullscreen(!window_->fullscreen());
-            else if (i == kBack) backToMain();
+            Row r = rows_[(size_t)i];
+            if (r == Row::Fullscreen) setFullscreen(!window_->fullscreen());
+            else if (r == Row::Back) backToMain();
         }
     }
     void adjust(int i, int dir) {
         if (page_ != Page::Settings) return;
-        if (i == kFov) setFov(render_->camera.fovDeg + 5.0f * dir);
-        else if (i == kSens) setSens(mouseSens() + 0.1f * dir);
+        switch (rows_[(size_t)i]) {
+            case Row::Fov:       setFov(render_->camera.fovDeg + 5.0f * dir); break;
+            case Row::Sens:      setSens(mouseSens() + 0.1f * dir); break;
+            case Row::Master:    setVolume("audio.master", audio_->masterVolume() + 5.0f * dir); break;
+            case Row::Sfx:       setVolume("audio.sfx", audio_->busVolume(core::Bus::Sfx) + 5.0f * dir); break;
+            case Row::EngineVol: setVolume("audio.engine", audio_->busVolume(core::Bus::Engine) + 5.0f * dir); break;
+            default: break;
+        }
     }
 
     static std::string when(long long t) {
@@ -160,7 +179,7 @@ private:
 
         for (int i = 0; i < n; i++) {
             float iy = rowY(i + (emptyLoad ? 1 : 0));
-            if (moved && ui.hovered(ix, iy, iw, itemH)) focus_ = i;
+            if (moved && ui.hovered(ix, iy, iw, itemH) && focus_ != i) { focus_ = i; sound("ui_click", 0.5f); }
             bool f = focus_ == i;
 
             if (page_ == Page::Main) {
@@ -169,19 +188,49 @@ private:
             } else if (page_ == Page::Load) {
                 if (i == (int)slots_.size()) { if (ui.button("Back", ix, iy, iw, itemH, f)) activate(i); }
                 else if (ui.button(when(slots_[(size_t)i].time), ix, iy, iw, itemH, f)) activate(i);
-            } else if (i == kFov) {
-                float cur = render_->camera.fovDeg;
-                float v = ui.slider("Field of View", ix, iy, iw, itemH, cur, kFovMin, kFovMax, f);
-                if (v != cur) setFov(v);
-            } else if (i == kSens) {
-                float cur = mouseSens();
-                float v = ui.slider("Mouse Sensitivity", ix, iy, iw, itemH, cur, kSensMin, kSensMax, f, "%.2f");
-                if (v != cur) setSens(v);
-            } else if (i == kFullscreen) {
-                bool cur = window_->fullscreen();
-                bool now = ui.toggle("Fullscreen", ix, iy, iw, itemH, cur, f);
-                if (now != cur) setFullscreen(now);
-            } else if (ui.button("Back", ix, iy, iw, itemH, f)) activate(i);
+            } else {
+                switch (rows_[(size_t)i]) {
+                    case Row::Fov: {
+                        float cur = render_->camera.fovDeg;
+                        float v = ui.slider("Field of View", ix, iy, iw, itemH, cur, kFovMin, kFovMax, f);
+                        if (v != cur) setFov(v);
+                        break;
+                    }
+                    case Row::Sens: {
+                        float cur = mouseSens();
+                        float v = ui.slider("Mouse Sensitivity", ix, iy, iw, itemH, cur, kSensMin, kSensMax, f, "%.2f");
+                        if (v != cur) setSens(v);
+                        break;
+                    }
+                    case Row::Master: {
+                        float cur = audio_->masterVolume();
+                        float v = ui.slider("Master Volume", ix, iy, iw, itemH, cur, 0, 100, f);
+                        if (v != cur) setVolume("audio.master", v);
+                        break;
+                    }
+                    case Row::Sfx: {
+                        float cur = audio_->busVolume(core::Bus::Sfx);
+                        float v = ui.slider("Effects Volume", ix, iy, iw, itemH, cur, 0, 100, f);
+                        if (v != cur) setVolume("audio.sfx", v);
+                        break;
+                    }
+                    case Row::EngineVol: {
+                        float cur = audio_->busVolume(core::Bus::Engine);
+                        float v = ui.slider("Engine Volume", ix, iy, iw, itemH, cur, 0, 100, f);
+                        if (v != cur) setVolume("audio.engine", v);
+                        break;
+                    }
+                    case Row::Fullscreen: {
+                        bool cur = window_->fullscreen();
+                        bool now = ui.toggle("Fullscreen", ix, iy, iw, itemH, cur, f);
+                        if (now != cur) setFullscreen(now);
+                        break;
+                    }
+                    case Row::Back:
+                        if (ui.button("Back", ix, iy, iw, itemH, f)) activate(i);
+                        break;
+                }
+            }
         }
 
         if (!status_.empty())
@@ -195,7 +244,9 @@ private:
     core::UIHandler* ui_ = nullptr;
     core::ISettings* settings_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
+    core::IAudio* audio_ = nullptr;
     std::vector<Main> main_;
+    std::vector<Row> rows_;
     std::vector<core::SlotInfo> slots_;
     Page page_ = Page::Main;
     std::string status_;

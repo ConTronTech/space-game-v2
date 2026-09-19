@@ -1,6 +1,6 @@
 CXX      = g++
 CXXFLAGS = -std=c++23 -O2 -Wall -Wno-unused-result -I package -I package/modules
-LDFLAGS  = -lSDL2 -lSDL2_ttf -lSDL2_image -lGL -lGLU -lm
+LDFLAGS  = -lSDL2 -lSDL2_ttf -lSDL2_image -lSDL2_mixer -lGL -lGLU -lm
 
 TARGET = space_game_v2
 BUILD  = build

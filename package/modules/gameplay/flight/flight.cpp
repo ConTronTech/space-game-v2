@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include "core/audio/audio_api.h"
 #include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
@@ -38,6 +39,7 @@ public:
         maxSpeed_    = c.get("flight.max_speed", 0.0f, "speed cap in m/s, 0 = unlimited");
 
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
+        if ((audio_ = eng.services.get<core::IAudio>())) hum_ = audio_->playLoop("engine_loop", 0.0f, core::Bus::Engine);
 
         // 1. input: nothing to bind here. Actions (thrust, strafe, lift, pitch, yaw, roll, brake)
         //    are mapped to devices in config/input/<profile>.json
@@ -74,6 +76,7 @@ public:
         render_->removePass("flight/rocks");
         if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
         if (saves_) saves_->unregisterSaveable(this);
+        if (audio_ && hum_) audio_->stopLoop(hum_);
     }
 
     void onFixedUpdate(engine::Engine&, float dt) override {
@@ -114,6 +117,10 @@ public:
     void onUpdate(engine::Engine& eng, float) override {
         // publish the camera for the render engine
         float* m = render_->camera.view;
+        if (audio_ && hum_) {   // idle rumble, louder with throttle; silent while the menu is open
+            float throttle = std::min(1.0f, std::abs(thrustOut_) + 0.6f * std::abs(strafeOut_) + 0.6f * std::abs(liftOut_));
+            audio_->setLoopVolume(hum_, eng.paused() ? 0.0f : 0.25f + 0.75f * throttle);
+        }
         // blend previous -> current physics state so 144 Hz displays don't show 60 Hz steps
         float a = eng.alpha();
         Vec3 p = engine::lerp(prevPos_, pos_, a);
@@ -192,6 +199,8 @@ private:
     core::IInput* input_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
+    core::IAudio* audio_ = nullptr;
+    int hum_ = 0;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {
         return cur + (target - cur) * (1.0f - std::exp(-dt / tau));
