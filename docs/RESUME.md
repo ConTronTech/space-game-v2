@@ -17,7 +17,7 @@
 ## Agents and quota
 - Claude: weekly limit was at 96% (resets Mon 6:00 AM). Check first: `orca-ide account list --json` (see `rateLimits`).
 - Codex: signed in (Free plan), quota unreadable when checked. Cursor and OpenCode are installed, untested.
-- Qwen3.8 27B via Spark gateway (`omp --model spark-gateway/qwen3.8-27b`): free, slow, good reviewer. Read the report before delegating.
+- Qwen3.8 27B via Spark gateway (`omp --model spark-gateway/qwen3.8-27b`): free inference, **max 2 concurrent agents**, slow, good reviewer. Read the report before delegating.
 
 ## To resume Phase 2
 1. Check quota (above). Optionally remove the two leftover worktrees.

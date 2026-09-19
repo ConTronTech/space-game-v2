@@ -45,7 +45,7 @@ Not every task needs the strongest model. Orchestrated work is split by weight:
 |---|---|---|
 | Coordinator | Claude Code (this session) | contracts, merging, bug review, FIX LISTs, anything cross-module |
 | Heavy workers | Claude / Codex (`worker-start --agent claude\|codex`) | whole modules (ship core, world, weapons), refactors touching several files |
-| **Light workers** | **OMP + Qwen3.8 27B (Spark gateway)** | docs, single-file fixes, adding unit tests for existing code, data/JSON content (items, recipes), renames, small well-specified changes |
+| **Light workers** (free, max 2 at once) | **OMP + Qwen3.8 27B (Spark gateway)** | docs, single-file fixes, adding unit tests for existing code, data/JSON content (items, recipes), renames, small well-specified changes |
 
 Check quota before launching heavy workers: `orca-ide account list --json` shows Claude/Codex usage (`rateLimits`).
 
@@ -64,7 +64,7 @@ orca-ide orchestration worker-start --run <run> --spec "<task>" --terminal <hand
 ```
 - Give Light workers small, self-contained specs with exact file names and an acceptance check. Review their output like any other.
 - **Read `docs/QWEN_REPORT.md` first:** what Qwen is good and bad at (great reviewer, weak unguided debugger, overclaims verification), timings,
-  and a task-brief checklist. Run one at a time, and always verify its results yourself.
+  and a task-brief checklist. Run at most 2 at a time (gateway limit), and always verify its results yourself.
 
 ## Commit policy (who may commit what)
 - **Agents: never.** Enforced by `package/tools/hooks/pre-commit` (install with `package/tools/install_hooks.sh`, shared by every worktree):

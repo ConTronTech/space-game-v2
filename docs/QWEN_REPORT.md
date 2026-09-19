@@ -1,6 +1,7 @@
 # Qwen3.8 27B (Spark gateway) - light-worker report
 
-Tested 2026-09-19 through OMP (`omp --model spark-gateway/qwen3.8-27b`), 262K context, no Claude quota used.
+Tested 2026-09-19 through OMP (`omp --model spark-gateway/qwen3.8-27b`), 262K context. It is **free inference** and the gateway allows **at most 2
+concurrent agents**; it uses no Claude quota, which is why it is the right home for light tasks.
 Every result below was **verified independently by the coordinator** (re-running builds/tests, diffing files), never taken from Qwen's own report.
 
 ## Verdict
@@ -23,7 +24,7 @@ refactors, architecture decisions, physics/math-heavy debugging without pointers
 | 6 | Find + fix a planted bug in the physics solver | **fail, then pass** | 2 timeouts; 261 s with hints | see below |
 | 7 | Review a module with 7 planted defects | **pass 7/7, 0 false positives** | 325 s | cited the project's own rules with line numbers |
 
-\* run while 3 other trials ran concurrently on the same machine/gateway.
+\* started together with 3 other trials, so it was competing with them for the 2 gateway slots and for CPU.
 
 ## Strengths (evidence)
 - **Code review is its best skill.** Found all 7 planted defects (dangling reference, uninitialised member, `pressed()` in `onFixedUpdate`,
@@ -38,7 +39,8 @@ refactors, architecture decisions, physics/math-heavy debugging without pointers
 
 ## Weaknesses (evidence)
 1. **Slow and variable.** 13-30 s for trivial work, 3-7 minutes for anything with a build. Claude finishes the same tasks in seconds.
-2. **Concurrency hurts badly.** Four at once: 3 of 4 hit the 7-minute cap. Run them **one at a time**.
+2. **Hard limit of 2 concurrent agents** (gateway). I started four at once, so two were queued behind the others and 3 of 4 hit my 7-minute cap:
+   that was the queue, not the model. Run **at most 2 at a time**; a third simply waits. (Two at once also compete for CPU during `make test`.)
 3. **Overconfident self-report.** Trial 3 reported "no uncertainties, all facts verified" but had 5 inaccuracies (smoke.sh described as a
    "sanitizer build", `game.json` mislabelled, `data/` incomplete, module folders incomplete, "sounds" in assets). Always verify.
 4. **Test-writing pitfalls.** Trial 5 asserted `angleBetween(parallel) == 0.0f` exactly; float `acos` near 1 gives ~3e-4, so its own two
@@ -60,7 +62,7 @@ wrong answer is expensive to spot.
 - Name the failing test/command, the folder to look in, and say `make -j8 test`.
 - For float tests: "compare with a tolerance (e.g. 1e-4), never exact equality".
 - Ask for the report in 2 sentences, then **verify yourself**: `git diff --stat`, re-run tests (`make -j8 test-san`).
-- One worker at a time, 7-minute cap, `< /dev/null` when scripting, never let it commit (the pre-commit hook enforces this in worktrees).
+- At most 2 workers at once (gateway limit), 7-minute cap, `< /dev/null` when scripting, never let it commit (the pre-commit hook enforces this in worktrees).
 
 ## Suggested split while Claude quota is low (Phase 2)
 | Task | Owner | Why |
@@ -72,5 +74,5 @@ wrong answer is expensive to spot.
 | `ship_core`, warp, respawn, HUD drawing, cockpit rendering, integration | Claude (after reset) or Codex | cross-module, needs judgement |
 
 ## Caveats on this report
-Small sample (7 tasks, one run each, planted bugs). Timings depend on gateway load (a community gateway). Trials 4-7 ran in scratch copies
+Small sample (7 tasks, one run each, planted bugs). Timings depend on gateway load (a shared community gateway, 2 concurrent agents max). Trials 4-7 ran in scratch copies
 of the repo, not in worktrees. Re-test after a model or gateway change.
