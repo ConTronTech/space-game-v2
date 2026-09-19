@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cmath>
 #include "core/audio/audio_api.h"
+#include "core/camera/camera_api.h"
 #include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
@@ -15,7 +16,7 @@
 
 using engine::Vec3;
 
-class Flight : public engine::Module, public core::ISaveable {
+class Flight : public engine::Module, public core::ISaveable, public core::ITransformSource {
 public:
     const char* name() const override { return "gameplay/flight"; }
     std::vector<std::string> dependencies() const override {
@@ -47,6 +48,9 @@ public:
         // 2. register what we draw
         render_->addPass("flight/stars", 0, [this](core::RenderEngine& r) { drawStars(r); });
         render_->addPass("flight/rocks", 100, [this](core::RenderEngine&) { drawRocks(); });
+        render_->addPass("flight/ship", 110, [this](core::RenderEngine&) { drawShip(); });
+        eng_ = &eng;
+        eng.services.provide<core::ITransformSource>(this);
 
         // 3. register our HUD
         ui.addPanel("flight/hud", 10, [this](core::UIHandler& ui) {
@@ -56,7 +60,7 @@ public:
             ui.text(32, 22, "SPEED", 12, ui.theme.textDim);
             ui.text(32, 38, buf, 22, ui.theme.accent);
 
-            const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   Esc pause";
+            const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
             float w = (float)ui.textWidth(hint, 13) + 40;
             ui.glass((ui.width() - w) / 2, ui.height() - 52.0f, w, 34, 0.9f, false, 10);
             ui.textCentered(ui.width() / 2.0f, ui.height() - 44.0f, hint, 13, ui.theme.textDim);
@@ -74,6 +78,8 @@ public:
     void shutdown(engine::Engine& eng) override {
         render_->removePass("flight/stars");
         render_->removePass("flight/rocks");
+        render_->removePass("flight/ship");
+        eng.services.withdraw<core::ITransformSource>();
         if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
         if (saves_) saves_->unregisterSaveable(this);
         if (audio_ && hum_) audio_->stopLoop(hum_);
@@ -115,23 +121,22 @@ public:
     }
 
     void onUpdate(engine::Engine& eng, float) override {
-        // publish the camera for the render engine
-        float* m = render_->camera.view;
         if (audio_ && hum_) {   // idle rumble, louder with throttle; silent while the menu is open
             float throttle = std::min(1.0f, std::abs(thrustOut_) + 0.6f * std::abs(strafeOut_) + 0.6f * std::abs(liftOut_));
             audio_->setLoopVolume(hum_, eng.paused() ? 0.0f : 0.25f + 0.75f * throttle);
         }
-        // blend previous -> current physics state so 144 Hz displays don't show 60 Hz steps
-        float a = eng.alpha();
-        Vec3 p = engine::lerp(prevPos_, pos_, a);
+    }
+
+    // The camera module calls this each frame (blending previous->current physics state by alpha).
+    core::Pose transform(float a) const override {
+        core::Pose p;
+        p.pos = engine::lerp(prevPos_, pos_, a);
         Vec3 f = engine::normalize(engine::lerp(prevFwd_, fwd_, a));
         Vec3 u = engine::normalize(engine::lerp(prevUp_, up_, a));
         Vec3 r = engine::normalize(engine::cross(f, u));
-        u = engine::cross(r, f);
-        m[0] = r.x; m[4] = r.y; m[8]  = r.z; m[12] = -engine::dot(r, p);
-        m[1] = u.x; m[5] = u.y; m[9]  = u.z; m[13] = -engine::dot(u, p);
-        m[2] = -f.x; m[6] = -f.y; m[10] = -f.z; m[14] = engine::dot(f, p);
-        m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
+        p.fwd = f;
+        p.up = engine::cross(r, f);
+        return p;
     }
 
     // ---- saving: position, velocity and orientation. Control easing is not saved (it settles in a fraction of a second).
@@ -167,6 +172,24 @@ private:
         return engine::normalize(v);
     }
 
+    // Wireframe fighter, drawn only when the camera is outside the ship (chase view).
+    void drawShip() {
+        auto* cam = eng_->services.get<core::ICamera>();
+        if (!cam || !cam->showsShip()) return;
+        core::Pose p = transform(eng_->alpha());
+        Vec3 r = engine::normalize(engine::cross(p.fwd, p.up));
+        float m[16] = {r.x, r.y, r.z, 0,   p.up.x, p.up.y, p.up.z, 0,   -p.fwd.x, -p.fwd.y, -p.fwd.z, 0,   p.pos.x, p.pos.y, p.pos.z, 1};
+        glMultMatrixf(m);                                    // local space: +x right, +y up, -z forward
+        const float v[5][3] = {{0, 0, -3.0f}, {-1.6f, 0, 1.5f}, {1.6f, 0, 1.5f}, {0, 0.8f, 1.2f}, {0, -0.4f, 1.2f}};
+        const int e[9][2] = {{0, 1}, {0, 2}, {0, 3}, {0, 4}, {1, 2}, {1, 3}, {2, 3}, {1, 4}, {2, 4}};
+        glLineWidth(1.5f);
+        glColor3f(0.4f, 0.9f, 1.0f);
+        glBegin(GL_LINES);
+        for (auto& ed : e) { glVertex3fv(v[ed[0]]); glVertex3fv(v[ed[1]]); }
+        glEnd();
+        glLineWidth(1.0f);
+    }
+
     void drawStars(core::RenderEngine& r) {
         float m[16];
         for (int i = 0; i < 16; i++) m[i] = r.camera.view[i];
@@ -197,6 +220,7 @@ private:
     }
 
     core::IInput* input_ = nullptr;
+    engine::Engine* eng_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
     core::IAudio* audio_ = nullptr;
