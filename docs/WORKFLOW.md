@@ -34,3 +34,29 @@ Each roadmap phase is built by **parallel agents**, then reviewed, then played:
 When the coordinator sends a numbered FIX LIST: address **each item**, one commit per item (`fix(N): ...`), add or extend a test when the
 bug is testable, run `package/tools/smoke.sh`, and reply per item as `N: fixed | cannot reproduce (why) | needs decision (what)`.
 Do not "improve" unrelated things while fixing.
+
+## Agent tiers (who does what)
+Not every task needs the strongest model. Orchestrated work is split by weight:
+
+| Tier | Agent | Use for |
+|---|---|---|
+| Coordinator | Claude Code (this session) | contracts, merging, bug review, FIX LISTs, anything cross-module |
+| Heavy workers | Claude / Codex (`worker-start --agent claude\|codex`) | whole modules (ship core, world, weapons), refactors touching several files |
+| **Light workers** | **OMP + Qwen3.8 27B (Spark gateway)** | docs, single-file fixes, adding unit tests for existing code, data/JSON content (items, recipes), renames, small well-specified changes |
+
+Check quota before launching heavy workers: `orca-ide account list --json` shows Claude/Codex usage (`rateLimits`).
+
+### Running a Light worker (OMP + Spark)
+The model is configured in `~/.omp/agent/models.yaml` as provider `spark-gateway`, model `qwen3.8-27b` (262,144-token context, reasoning on).
+`omp --model spark-gateway/qwen3.8-27b` uses it. Facts checked on this machine:
+- Non-interactive: `omp -p "<task>" --no-session --model spark-gateway/qwen3.8-27b < /dev/null` (**always redirect stdin**: without a
+  terminal, omp waits forever at `readPipedInput`).
+- It can edit files and run commands (fixed a small failing C++ test unaided in ~30 s).
+- Supervised under Orca (a built-in `--agent` id does not exist for it, so use the low-level route, which still gives full supervision):
+```text
+orca-ide worktree create --name <name> --repo id:<repo-id> --base-branch main --no-parent --setup skip --json
+orca-ide terminal create --worktree id:<worktree-id> --title spark-qwen --command "omp --model spark-gateway/qwen3.8-27b" --json
+orca-ide terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json     # must report satisfied: true
+orca-ide orchestration worker-start --run <run> --spec "<task>" --terminal <handle> --worktree id:<worktree-id> --json
+```
+- Give Light workers small, self-contained specs with exact file names and an acceptance check. Review their output like any other.
