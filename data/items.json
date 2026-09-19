@@ -1,0 +1,11 @@
+{
+  "_comment": "Craftable items. effect = what using it does (interpreted by the module that owns that stat); permanent items are 'permanent': true.",
+  "warp_fuel_cell":   { "name": "Warp Fuel Cell",   "description": "+25 Warp Fuel",       "color": [0.2, 0.5, 1.0], "effect": { "warp_fuel": 25 } },
+  "fuel_canister":    { "name": "Fuel Canister",    "description": "+50 Warp Fuel",       "color": [0.3, 0.6, 1.0], "effect": { "warp_fuel": 50 } },
+  "repair_kit":       { "name": "Repair Kit",       "description": "+30 HP",              "color": [0.2, 0.9, 0.4], "effect": { "hp": 30 } },
+  "emergency_beacon": { "name": "Emergency Beacon", "description": "Full HP Heal",        "color": [1.0, 0.9, 0.2], "effect": { "hp_full": true } },
+  "missile_pack":     { "name": "Missile Pack",     "description": "+3 Missiles",         "color": [1.0, 0.5, 0.2], "effect": { "missiles": 3 } },
+  "hull_plating":     { "name": "Hull Plating",     "description": "+10 Max HP (perm)",   "color": [0.6, 0.6, 0.7], "permanent": true, "effect": { "max_hp": 10, "max_hp_cap": 200 } },
+  "shield_generator": { "name": "Shield Generator", "description": "Enables Shields",     "color": [0.4, 0.7, 1.0], "permanent": true, "effect": { "shield_enabled": true } },
+  "ore_scanner":      { "name": "Ore Scanner",      "description": "Ore on HUD (perm)",   "color": [0.3, 0.8, 0.6], "permanent": true, "effect": { "hud_ore_labels": true } }
+}

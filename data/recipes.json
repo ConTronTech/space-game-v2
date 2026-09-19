@@ -1,0 +1,11 @@
+{
+  "_comment": "Crafting recipes. result = an id from items.json; ingredients = { ore id: amount } (ids from ores.json).",
+  "warp_fuel_cell":   { "name": "Warp Fuel Cell",   "result": "warp_fuel_cell",   "ingredients": { "iron": 5, "uranium": 3 } },
+  "fuel_canister":    { "name": "Fuel Canister",    "result": "fuel_canister",    "ingredients": { "iron": 8, "uranium": 5, "platinum": 2 } },
+  "repair_kit":       { "name": "Repair Kit",       "result": "repair_kit",       "ingredients": { "iron": 5, "copper": 3, "titanium": 2 } },
+  "emergency_beacon": { "name": "Emergency Beacon", "result": "emergency_beacon", "ingredients": { "gold": 5, "platinum": 5, "crystal": 3 } },
+  "missile_pack":     { "name": "Missile Pack",     "result": "missile_pack",     "ingredients": { "iron": 3, "gold": 2, "cobalt": 1 } },
+  "hull_plating":     { "name": "Hull Plating",     "result": "hull_plating",     "ingredients": { "titanium": 8, "iron": 4 } },
+  "shield_generator": { "name": "Shield Generator", "result": "shield_generator", "ingredients": { "titanium": 10, "crystal": 8, "platinum": 5, "gold": 5 } },
+  "ore_scanner":      { "name": "Ore Scanner",      "result": "ore_scanner",      "ingredients": { "cobalt": 6, "crystal": 4, "gold": 2 } }
+}

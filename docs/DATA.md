@@ -1,0 +1,35 @@
+# Data (game content as JSON)
+
+Content lives in `data/`, not in code. `core/data_registry` provides `core::IData`.
+
+```cpp
+auto& data = eng.services.require<core::IData>();
+for (auto& id : data.ids("ores")) {                    // definition order
+    const engine::Json& ore = data.get("ores", id);    // null Json if missing: chaining is always safe
+    float rarity = (float)ore["rarity"].num(1.0);
+}
+data.has("items", "repair_kit");
+```
+
+## Layout
+- Each **folder** (`data/ores/*.json`) or **file** (`data/ores.json`) is a *category*.
+- A file is an object of `"id": { ...definition... }`. Keys starting with `_` are comments.
+- Files load alphabetically and a **later file replaces** an earlier definition with the same id
+  (replaced whole, not merged). So `data/ores/zz_mymod.json` can add ores or change existing ones without touching the base files.
+- Bad files/entries are skipped with a log message; a missing `data/` just gives empty categories.
+- `--data=<dir>` uses another folder. `IData::reload()` re-scans and emits `core::DataReloaded`.
+
+## What exists
+| File | Contents |
+|---|---|
+| `data/ores.json` | 8 ores: name, `color` [r,g,b], `rarity` (spawn weight) |
+| `data/items.json` | 8 items: name, description, color, `effect` (e.g. `{"warp_fuel": 25}`), optional `permanent` |
+| `data/recipes.json` | 8 recipes: name, `result` (item id), `ingredients` `{ore id: amount}` |
+
+Ported from the old game's `ORE_TABLE`, `ITEM_TABLE` and `RECIPES`.
+
+## Adding content
+1. Add an entry to the JSON (or a new file in the category folder).
+2. `make test` - `shipped_data_is_consistent` checks every recipe result is a real item, every ingredient a real ore,
+   colors are 0..1, rarity > 0, names/descriptions non-empty. A typo fails the build.
+3. Modules read what they need by id; an item's `effect` keys are interpreted by the module that owns that stat.

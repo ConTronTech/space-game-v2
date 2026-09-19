@@ -49,6 +49,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::RenderEngine` | `addPass(name, order, fn)`, `camera` (view matrix, fov) |
 | `core::ISaveSystem` | `registerSaveable(this)` (implement `ISaveable`), `saveSlot/loadSlot` - see docs/SAVES.md |
 | `core::IAudio` | `play("name")`, `playLoop` / `setLoopVolume` - see docs/AUDIO.md |
+| `core::IData` | game content by id: `get("ores", "iron")`, `ids("recipes")` - see docs/DATA.md |
 | `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
