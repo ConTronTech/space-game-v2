@@ -5,3 +5,4 @@ build_san/
 logs/
 config/settings.json
 config/settings.json.tmp
+saves/

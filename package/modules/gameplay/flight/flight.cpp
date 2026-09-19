@@ -7,13 +7,14 @@
 #include <cmath>
 #include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
+#include "core/save_system/save_api.h"
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
 #include "engine/math.h"
 
 using engine::Vec3;
 
-class Flight : public engine::Module {
+class Flight : public engine::Module, public core::ISaveable {
 public:
     const char* name() const override { return "gameplay/flight"; }
     std::vector<std::string> dependencies() const override {
@@ -35,6 +36,8 @@ public:
         assist_      = c.get("flight.assist_strength", 4.0f, "damping per second when drift is 0 (scales with 1 - drift)");
         brake_       = c.get("flight.brake", 2.0f, "speed decay per second while braking");
         maxSpeed_    = c.get("flight.max_speed", 0.0f, "speed cap in m/s, 0 = unlimited");
+
+        if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
 
         // 1. input: nothing to bind here. Actions (thrust, strafe, lift, pitch, yaw, roll, brake)
         //    are mapped to devices in config/input/<profile>.json
@@ -70,6 +73,7 @@ public:
         render_->removePass("flight/stars");
         render_->removePass("flight/rocks");
         if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
+        if (saves_) saves_->unregisterSaveable(this);
     }
 
     void onFixedUpdate(engine::Engine&, float dt) override {
@@ -123,7 +127,30 @@ public:
         m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
     }
 
+    // ---- saving: position, velocity and orientation. Control easing is not saved (it settles in a fraction of a second).
+    const char* saveId() const override { return "gameplay/flight"; }
+    engine::Json save() const override {
+        return engine::Json::object().set("pos", vec(pos_)).set("vel", vec(vel_)).set("fwd", vec(fwd_)).set("up", vec(up_));
+    }
+    void load(const engine::Json& j) override {
+        pos_ = readVec(j["pos"], pos_);
+        vel_ = readVec(j["vel"], vel_);
+        Vec3 f = engine::normalize(readVec(j["fwd"], fwd_)), u = engine::normalize(readVec(j["up"], up_));
+        if (engine::length(f) < 0.5f || engine::length(u) < 0.5f || std::abs(engine::dot(f, u)) > 0.99f) { f = {0, 0, -1}; u = {0, 1, 0}; } // bad data
+        fwd_ = f;
+        right_ = engine::normalize(engine::cross(fwd_, u));
+        up_ = engine::cross(right_, fwd_);
+        pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
+        prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_;   // no interpolation smear across the jump
+    }
+
 private:
+    static engine::Json vec(const Vec3& v) { return engine::Json::array().push(v.x).push(v.y).push(v.z); }
+    static Vec3 readVec(const engine::Json& j, Vec3 def) {
+        if (j.size() < 3) return def;
+        return {(float)j.at(0).num(def.x), (float)j.at(1).num(def.y), (float)j.at(2).num(def.z)};
+    }
+
     struct Rock { Vec3 pos; float size; };
 
     static float rnd() { return std::rand() / (float)RAND_MAX; }
@@ -164,6 +191,7 @@ private:
 
     core::IInput* input_ = nullptr;
     core::RenderEngine* render_ = nullptr;
+    core::ISaveSystem* saves_ = nullptr;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {
         return cur + (target - cur) * (1.0f - std::exp(-dt / tau));

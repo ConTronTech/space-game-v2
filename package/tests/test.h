@@ -2,6 +2,8 @@
 // Tiny test framework, no dependencies.
 //   TEST(name) { CHECK(cond); CHECK_EQ(a, b); }
 // Every tests/*.cpp file is compiled into `make test`. Add a file, add tests, done.
+// IMPORTANT: helper structs/classes in a test file go inside `namespace { ... }`. Two files that each define a
+// different `struct Rig` violate the one-definition rule and the linker silently mixes them up (ASan catches it).
 #include <cstdio>
 #include <functional>
 #include <sstream>

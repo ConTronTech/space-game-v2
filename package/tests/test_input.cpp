@@ -3,6 +3,7 @@
 #include "engine/engine.h"
 #include "tests/test.h"
 
+namespace {
 struct FakeDevice : core::InputMethod {
     float level = 0;
     const char* device() const override { return "fake"; }
@@ -21,6 +22,7 @@ struct Rig {
     }
     void frame() { in.onFrameBegin(eng); }
 };
+} // namespace
 
 TEST(input_held_at_startup_is_not_a_fresh_press) {
     Rig r;
