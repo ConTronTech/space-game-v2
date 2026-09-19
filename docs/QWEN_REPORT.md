@@ -42,7 +42,7 @@ refactors, architecture decisions, physics/math-heavy debugging without pointers
 3. **Overconfident self-report.** Trial 3 reported "no uncertainties, all facts verified" but had 5 inaccuracies (smoke.sh described as a
    "sanitizer build", `game.json` mislabelled, `data/` incomplete, module folders incomplete, "sounds" in assets). Always verify.
 4. **Test-writing pitfalls.** Trial 5 asserted `angleBetween(parallel) == 0.0f` exactly; float `acos` near 1 gives ~3e-4, so its own two
-   assertions fail. It spent its budget on a 400-million-iteration brute-force search to find a float case instead of choosing a tolerance.
+   assertions fail. It wrote a brute-force random-search program (loop capped at 400 million iterations) to find a float case instead of simply choosing a tolerance, and never reported.
 5. **Breaks "only edit these files".** Left a stray `find_cos.cpp` scratch file in the repo root.
 6. **Unguided debugging stalls.** Trial 6 timed out twice with just "tests fail, find the bug". It succeeded once told where the code lives
    and to build with `make -j8 test`. Most of its time goes to slow single-threaded builds and reading.
