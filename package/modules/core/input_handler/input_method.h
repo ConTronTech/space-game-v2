@@ -2,14 +2,14 @@
 // An InputMethod is one kind of device (keyboard, mouse, joystick, ...).
 // The handler routes each JSON binding to the method whose device() matches its "device" field.
 // To support a new device: write a module that implements this and calls
-//     eng.services.require<core::InputHandler>().registerMethod(this);
+//     eng.services.require<core::IInput>().registerMethod(this);
 // No other file needs to change.
 #include <string>
 #include "engine/json.h"
 
 namespace core {
 
-class InputHandler;
+class IInput;
 
 class InputMethod {
 public:
@@ -20,7 +20,7 @@ public:
     virtual void clearBindings() = 0;                    // profile is being replaced
     virtual void configure(const engine::Json&) {}       // profile "devices": { "<device>": {...} }
     // Once per frame: read the device and call in.contribute(action, value) for each active binding.
-    virtual void poll(InputHandler& in) = 0;
+    virtual void poll(IInput& in) = 0;
 };
 
 } // namespace core

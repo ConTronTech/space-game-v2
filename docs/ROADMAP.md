@@ -20,7 +20,7 @@ Legend: `[x]` done, `[ ]` todo. Old-game source to port from is in *italics*.
 ## Phase 1 - Foundations (do these before any gameplay)
 These stop the old game's problems (globals, hand-wired init, static flags) from coming back.
 
-- [ ] **1.0a Service interfaces**: services are currently keyed by the concrete class (`core::InputHandler`), so a replacement module has to be that exact class. Add small interfaces (`IInput`, `IAudio`, `ISaveSystem`, ...) that other modules depend on, so an alternative implementation can be dropped in for real.
+- [x] **1.0a Service interfaces**: `core::IInput` done (modules depend on the interface, not `InputHandler`). Every new service (audio, save, data, physics, camera) is created as an interface + implementation.
 - [x] **1.0b logging**: `engine/log.h` - `LOG_I/W/E/D(tag, fmt, ...)` to the console and `logs/game.log` (level and file via `engine.log_level` / `engine.log_file`); all modules converted.
 - [ ] **1.0c Fixed-step interpolation**: render between physics steps so motion is smooth on 144 Hz displays (moved up from Phase 7).
 - [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.

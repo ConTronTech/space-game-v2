@@ -8,7 +8,7 @@ struct FakeDevice : core::InputMethod {
     const char* device() const override { return "fake"; }
     bool addBinding(const std::string&, const engine::Json&, std::string&) override { return true; }
     void clearBindings() override {}
-    void poll(core::InputHandler& in) override { if (level != 0) in.contribute("act", level); }
+    void poll(core::IInput& in) override { if (level != 0) in.contribute("act", level); }
 };
 
 struct Rig {

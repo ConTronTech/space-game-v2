@@ -7,7 +7,8 @@
 // Bind an action called "mouse_capture_toggle" to release/recapture the cursor.
 #include <SDL2/SDL.h>
 #include <algorithm>
-#include "core/input_handler/input_handler.h"
+#include "core/input_handler/input_api.h"
+#include "core/input_handler/input_method.h"
 #include "core/window/window.h"
 #include "engine/engine.h"
 
@@ -17,7 +18,7 @@ public:
     std::vector<std::string> dependencies() const override { return {"core/input_handler"}; }
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
-        in_ = &eng.services.require<core::InputHandler>();
+        in_ = &eng.services.require<core::IInput>();
         in_->registerMethod(this);
         eng.events.subscribe<core::SdlEvent>([this](const core::SdlEvent& ev) {
             if (ev.e.type == SDL_MOUSEWHEEL) wheel_ += (float)ev.e.wheel.y;
@@ -62,7 +63,7 @@ public:
         return true;
     }
 
-    void poll(core::InputHandler& in) override {
+    void poll(core::IInput& in) override {
         double now = eng_->time();
         float dt = std::max((float)(now - lastTime_), 1.0f / 240.0f);
         lastTime_ = now;
@@ -98,7 +99,7 @@ private:
     struct Binding { std::string action; Kind kind; int code; float scale; };
     std::vector<Binding> bindings_;
     engine::Engine* eng_ = nullptr;
-    core::InputHandler* in_ = nullptr;
+    core::IInput* in_ = nullptr;
     bool wantCapture_ = false, applyCapture_ = false, skipNext_ = false, capturedBeforePause_ = false;
     float sensitivity_ = 1.0f, wheel_ = 0.0f;
     double lastTime_ = 0;

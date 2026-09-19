@@ -4,7 +4,7 @@
 // Mouse or keyboard/controller (actions: pause, ui_up, ui_down, ui_left, ui_right, ui_confirm).
 // Other modules can add pages/items later by copying this shape - it only uses public services.
 #include <algorithm>
-#include "core/input_handler/input_handler.h"
+#include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/ui_handler/ui_handler.h"
 #include "core/window/window.h"
@@ -19,7 +19,7 @@ public:
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
-        input_ = &eng.services.require<core::InputHandler>();
+        input_ = &eng.services.require<core::IInput>();
         render_ = &eng.services.require<core::RenderEngine>();
         window_ = &eng.services.require<core::Window>();
         ui_ = &eng.services.require<core::UIHandler>();
@@ -102,7 +102,7 @@ private:
     }
 
     engine::Engine* eng_ = nullptr;
-    core::InputHandler* input_ = nullptr;
+    core::IInput* input_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     core::Window* window_ = nullptr;
     core::UIHandler* ui_ = nullptr;

@@ -2,7 +2,7 @@
 // core/input_handler - device-independent actions driven by JSON profiles.
 //
 // Game modules only ask about actions:
-//     auto& in = eng.services.require<core::InputHandler>();
+//     auto& in = eng.services.require<core::IInput>();
 //     float thrust = in.value("thrust");     // -1..1, from keys, mouse, stick... whatever the profile says
 //     if (in.pressed("fire")) ...             // went past 0.5 this frame - call from onUpdate, NOT onFixedUpdate
 // Which physical inputs drive an action lives in config/input/<profile>.json, not in code.
@@ -11,12 +11,13 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "core/input_handler/input_api.h"
 #include "core/input_handler/input_method.h"
 #include "engine/module.h"
 
 namespace core {
 
-class InputHandler : public engine::Module {
+class InputHandler : public engine::Module, public IInput {
 public:
     const char* name() const override { return "core/input_handler"; }
     std::vector<std::string> dependencies() const override { return {"core/window"}; }
@@ -26,19 +27,19 @@ public:
     void onFrameBegin(engine::Engine&) override;
 
     // ---- for game modules ----
-    float value(const std::string& action) const;          // summed over sources, clamped to [-1, 1]
-    bool down(const std::string& action) const { return std::abs(value(action)) > kThreshold; }
-    bool pressed(const std::string& action) const;         // crossed the threshold this frame
-    bool released(const std::string& action) const;
+    float value(const std::string& action) const override;
+    bool down(const std::string& action) const override { return std::abs(value(action)) > kThreshold; }
+    bool pressed(const std::string& action) const override;
+    bool released(const std::string& action) const override;
 
     // ---- for input methods ----
-    void registerMethod(InputMethod* m) { methods_[m->device()] = m; needLoad_ = true; }
-    void unregisterMethod(InputMethod* m) { methods_.erase(m->device()); }
-    void contribute(const std::string& action, float v) { cur_[action] += v; }
+    void registerMethod(InputMethod* m) override { methods_[m->device()] = m; needLoad_ = true; }
+    void unregisterMethod(InputMethod* m) override { methods_.erase(m->device()); }
+    void contribute(const std::string& action, float v) override { cur_[action] += v; }
 
     // Load config/input/<name>.json now (replaces the current profile). Returns false on error.
-    bool loadProfile(const std::string& name);
-    const std::string& profile() const { return profile_; }
+    bool loadProfile(const std::string& name) override;
+    const std::string& profile() const override { return profile_; }
 
 private:
     static constexpr float kThreshold = 0.5f;

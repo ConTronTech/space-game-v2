@@ -45,7 +45,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 ## Core services
 | Service | Use |
 |---|---|
-| `core::InputHandler` | actions from JSON profiles: `value("thrust")`, `down/pressed/released("fire")` - see docs/INPUT.md |
+| `core::IInput` | actions from JSON profiles: `value("thrust")`, `down/pressed/released("fire")` - see docs/INPUT.md |
 | `core::RenderEngine` | `addPass(name, order, fn)`, `camera` (view matrix, fov) |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
@@ -68,6 +68,10 @@ TEST(my_thing_does_x) { CHECK_EQ(1 + 1, 2); }
 `make test-san` runs them under AddressSanitizer/UBSan. `package/tools/smoke.sh` runs both, a strict `-Werror` build and a short game run - use it before each commit.
 
 ## Rules of thumb
+- **Depend on interfaces, provide interfaces.** A service is a small pure-virtual class (`core::IInput`) that the
+  implementing module inherits and provides: `provide<IInput>(this)`. Consumers `require<IInput>()`, so the
+  implementation can be swapped by dropping in another module that provides the same interface. New services
+  (audio, save, ...) are born with their interface.
 - Register things in `init`, undo them in `shutdown`.
 - Talk to other modules through services/events, never by including their `.cpp` internals.
 - Put a module's public API in `<name>.h` next to it; include as `"category/name/name.h"`.

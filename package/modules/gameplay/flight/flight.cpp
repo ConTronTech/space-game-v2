@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
-#include "core/input_handler/input_handler.h"
+#include "core/input_handler/input_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
@@ -21,7 +21,7 @@ public:
     }
 
     bool init(engine::Engine& eng) override {
-        input_ = &eng.services.require<core::InputHandler>();
+        input_ = &eng.services.require<core::IInput>();
         render_ = &eng.services.require<core::RenderEngine>();
         auto& ui = eng.services.require<core::UIHandler>();
 
@@ -155,7 +155,7 @@ private:
         }
     }
 
-    core::InputHandler* input_ = nullptr;
+    core::IInput* input_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {

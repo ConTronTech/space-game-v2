@@ -11,11 +11,11 @@ namespace core {
 
 bool InputHandler::init(engine::Engine& eng) {
     profile_ = eng.flagValue("input-profile", "default");
-    eng.services.provide<InputHandler>(this);
+    eng.services.provide<IInput>(this);
     return true;
 }
 
-void InputHandler::shutdown(engine::Engine& eng) { eng.services.withdraw<InputHandler>(); }
+void InputHandler::shutdown(engine::Engine& eng) { eng.services.withdraw<IInput>(); }
 
 void InputHandler::onFrameBegin(engine::Engine&) {
     // Methods register during init(); load the profile on the first frame so all of them exist.

@@ -1,10 +1,10 @@
 #pragma once
 // Service registry: how modules find each other without hard-wiring.
 // A module publishes itself (or an interface) in init():
-//     engine.services.provide<InputHandler>(this);
+//     engine.services.provide<IInput>(this);
 // Another module looks it up:
-//     auto* input = engine.services.get<InputHandler>();   // nullptr if absent
-//     auto& input = engine.services.require<InputHandler>(); // throws if absent
+//     auto* input = engine.services.get<IInput>();   // nullptr if absent
+//     auto& input = engine.services.require<IInput>(); // throws if absent
 #include <stdexcept>
 #include <typeindex>
 #include <unordered_map>
