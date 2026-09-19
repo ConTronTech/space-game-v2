@@ -63,6 +63,8 @@ orca-ide terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --j
 orca-ide orchestration worker-start --run <run> --spec "<task>" --terminal <handle> --worktree id:<worktree-id> --json
 ```
 - Give Light workers small, self-contained specs with exact file names and an acceptance check. Review their output like any other.
+- **Read `docs/QWEN_REPORT.md` first:** what Qwen is good and bad at (great reviewer, weak unguided debugger, overclaims verification), timings,
+  and a task-brief checklist. Run one at a time, and always verify its results yourself.
 
 ## Commit policy (who may commit what)
 - **Agents: never.** Enforced by `package/tools/hooks/pre-commit` (install with `package/tools/install_hooks.sh`, shared by every worktree):
