@@ -73,7 +73,7 @@ public:
     bool button(const std::string& label, float x, float y, float w, float h, bool focused);   // true on click
     bool toggle(const std::string& label, float x, float y, float w, float h, bool value, bool focused); // returns new value
     float slider(const std::string& label, float x, float y, float w, float h,
-                 float value, float lo, float hi, bool focused);                                // returns new value
+                 float value, float lo, float hi, bool focused, const char* fmt = "%.0f");       // returns new value
 
     int width() const { return w_; }
     int height() const { return h_; }

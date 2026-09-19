@@ -47,6 +47,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 |---|---|
 | `core::IInput` | actions from JSON profiles: `value("thrust")`, `down/pressed/released("fire")` - see docs/INPUT.md |
 | `core::RenderEngine` | `addPass(name, order, fn)`, `camera` (view matrix, fov) |
+| `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
 

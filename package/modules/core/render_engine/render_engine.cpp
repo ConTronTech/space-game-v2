@@ -2,6 +2,7 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <algorithm>
+#include "core/settings/settings_api.h"
 #include "core/window/window.h"
 #include "engine/engine.h"
 
@@ -10,6 +11,11 @@ namespace core {
 bool RenderEngine::init(engine::Engine& eng) {
     window_ = eng.services.get<Window>();
     if (!window_) return false;
+    if (auto* s = eng.services.get<ISettings>()) camera.fovDeg = std::clamp(s->get("video.fov", camera.fovDeg), 30.0f, 140.0f);
+    eng.events.subscribe<SettingChanged>([this, &eng](const SettingChanged& e) {
+        if (e.key != "video.fov") return;
+        if (auto* s = eng.services.get<ISettings>()) camera.fovDeg = std::clamp(s->get("video.fov", camera.fovDeg), 30.0f, 140.0f);
+    });
     eng.services.provide<RenderEngine>(this);
     return true;
 }

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "core/input_handler/input_api.h"
 #include "core/input_handler/input_method.h"
+#include "core/settings/settings_api.h"
 #include "core/window/window.h"
 #include "engine/engine.h"
 
@@ -22,6 +23,13 @@ public:
         in_->registerMethod(this);
         eng.events.subscribe<core::SdlEvent>([this](const core::SdlEvent& ev) {
             if (ev.e.type == SDL_MOUSEWHEEL) wheel_ += (float)ev.e.wheel.y;
+        });
+        auto readSens = [this, &eng] {
+            if (auto* s = eng.services.get<core::ISettings>()) userSens_ = s->get("input.mouse_sensitivity", 1.0f);
+        };
+        readSens();
+        eng.events.subscribe<core::SettingChanged>([readSens](const core::SettingChanged& e) {
+            if (e.key == "input.mouse_sensitivity") readSens();
         });
         eng.events.subscribe<engine::PauseChanged>([this](const engine::PauseChanged& e) {
             if (e.paused) { capturedBeforePause_ = wantCapture_; wantCapture_ = false; }
@@ -85,7 +93,7 @@ public:
                 if (buttons & SDL_BUTTON(b.code)) in.contribute(b.action, b.scale);
             } else if (captured) {
                 float v = b.code == 0 ? dx / dt : b.code == 1 ? dy / dt : wheel;
-                in.contribute(b.action, v * b.scale * sensitivity_);
+                in.contribute(b.action, v * b.scale * sensitivity_ * userSens_);
             }
         }
     }
@@ -101,7 +109,7 @@ private:
     engine::Engine* eng_ = nullptr;
     core::IInput* in_ = nullptr;
     bool wantCapture_ = false, applyCapture_ = false, skipNext_ = false, capturedBeforePause_ = false;
-    float sensitivity_ = 1.0f, wheel_ = 0.0f;
+    float sensitivity_ = 1.0f, userSens_ = 1.0f, wheel_ = 0.0f;
     double lastTime_ = 0;
 };
 

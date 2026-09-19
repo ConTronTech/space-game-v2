@@ -30,3 +30,10 @@ Put every number a player might want to tune here instead of hard-coding it.
 - `flight.*` - `thrust`, `turn_rate`, `turn_tau`, `engine_tau`, `drift`, `assist_strength`, `brake`, `max_speed`
 
 Related but separate files: `config/input/*.json` (bindings), `config/ui/theme.json` (glass look).
+
+## Player settings vs tunables
+- **`config/game.json`** = tunables you edit by hand (`engine.config`).
+- **`config/settings.json`** = player preferences the game writes when you change something in the menu (`core::ISettings`):
+  `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`. Only values you changed are stored; delete the file to reset.
+  The module that owns a setting reads it at startup and listens for `SettingChanged`; menus just call `set()`.
+  `--settings=<file>` uses another file.

@@ -3,3 +3,5 @@ space_game_v2
 config/game.json
 build_san/
 logs/
+config/settings.json
+config/settings.json.tmp

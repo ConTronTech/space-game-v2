@@ -26,7 +26,7 @@ These stop the old game's problems (globals, hand-wired init, static flags) from
 - [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.
 
 - [x] **1.1 JSON writer** in `engine/json.h`: `Json::object().set(...)`, `array().push(...)`, `dump()`; floats save as `0.3` not `0.30000001`.
-- [ ] **1.2 `core/settings`** service: FOV, fullscreen, volumes, sensitivity saved to `config/settings.json`; pause menu Settings uses it.
+- [x] **1.2 `core/settings`** (`core::ISettings`): player prefs saved to `config/settings.json` (debounced, atomic write); owners apply changes via `SettingChanged`. FOV, fullscreen and mouse sensitivity are wired; pause menu Settings writes through it. Volumes come with audio (1.4).
 - [ ] **1.3 `core/save_system`**: modules register a *saveable* (`id`, `toJson`, `fromJson`); save/load slots in `saves/`; pause menu gets Save / Load. Worlds regenerate from a seed. *savegame.h*
 - [ ] **1.4 `core/audio`** (SDL_mixer): `play("name")`, looping sounds with volume, master/sfx/engine buses. Sounds are files in `assets/sounds/`, no code per sound. *systems/sound.h*
 - [ ] **1.5 `core/data_registry`**: game content as JSON in `data/` (items, ores, recipes, ship specs) loaded once and looked up by id. Adding an item = adding JSON. *ui/data/inventory.h, recipes.h*

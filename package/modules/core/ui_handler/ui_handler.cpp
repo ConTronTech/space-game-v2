@@ -299,11 +299,11 @@ bool UIHandler::toggle(const std::string& label, float x, float y, float w, floa
 }
 
 float UIHandler::slider(const std::string& label, float x, float y, float w, float h,
-                        float value, float lo, float hi, bool focused) {
+                        float value, float lo, float hi, bool focused, const char* fmt) {
     bool hot = hovered(x, y, w, h);
     glass(x, y, w, h, hot || focused ? 1.0f : 0.8f, focused || hot, 10);
     char buf[32];
-    std::snprintf(buf, sizeof buf, "%.0f", value);
+    std::snprintf(buf, sizeof buf, fmt, value);
     text(x + 18, y + 8, label, kLabelSize, focused || hot ? theme.text : theme.textDim);
     std::string v = buf;
     text(x + w - 18 - textWidth(v, kLabelSize), y + 8, v, kLabelSize, theme.accent);

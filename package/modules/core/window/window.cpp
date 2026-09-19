@@ -1,4 +1,5 @@
 #include "core/window/window.h"
+#include "core/settings/settings_api.h"
 #include <GL/gl.h>
 #include <algorithm>
 #include <cstdio>
@@ -24,6 +25,12 @@ bool Window::init(engine::Engine& eng) {
     SDL_GL_SetSwapInterval(1);
     SDL_GetWindowSize(win_, &w_, &h_);
 
+    auto* settings = eng.services.get<ISettings>();
+    if (settings && settings->get("video.fullscreen", false)) setFullscreen(true);
+    eng.events.subscribe<SettingChanged>([this, &eng](const SettingChanged& e) {
+        if (e.key != "video.fullscreen") return;
+        if (auto* s = eng.services.get<ISettings>()) setFullscreen(s->get("video.fullscreen", false));
+    });
     shot_ = eng.flagValue("screenshot");
     shotFrame_ = std::atol(eng.flagValue("screenshot-frame", "30").c_str());
     eng.services.provide<Window>(this);
