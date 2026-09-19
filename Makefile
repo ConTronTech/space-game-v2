@@ -12,7 +12,7 @@ OBJS = $(SRCS:%.cpp=$(BUILD)/%.o)
 
 LIST = $(BUILD)/sources.list
 
-.PHONY: all clean run modules FORCE
+.PHONY: all clean run modules test FORCE
 all: $(TARGET)
 
 # Rewritten only when a module is added/removed/renamed, so the binary relinks exactly then.
@@ -33,6 +33,16 @@ run: $(TARGET)
 
 modules: $(TARGET)
 	./$(TARGET) --list-modules
+
+# Unit tests: engine + input handler logic + package/tests, no SDL/GL needed.
+TEST_SRCS = $(shell find package/tests -name '*.cpp') $(filter-out package/engine/main.cpp,$(wildcard package/engine/*.cpp)) package/modules/core/input_handler/input_handler.cpp
+TEST_OBJS = $(TEST_SRCS:%.cpp=$(BUILD)/%.o)
+
+$(BUILD)/test_runner: $(TEST_OBJS)
+	$(CXX) -o $@ $(TEST_OBJS)
+
+test: $(BUILD)/test_runner
+	./$(BUILD)/test_runner
 
 clean:
 	rm -rf $(BUILD) $(TARGET)

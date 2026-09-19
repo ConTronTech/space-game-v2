@@ -55,6 +55,14 @@ publishes the camera. Copy its shape.
 
 - **Config** (`engine.config`): base value in code + optional override in `config/game.json` - see docs/CONFIG.md.
 
+## Tests
+`make test` builds and runs `package/tests/` (no window needed). Add a file `package/tests/test_<thing>.cpp`:
+```cpp
+#include "tests/test.h"
+TEST(my_thing_does_x) { CHECK_EQ(1 + 1, 2); }
+```
+`package/tools/smoke.sh` runs the tests, a strict `-Werror` build and a short game run - use it before each commit.
+
 ## Rules of thumb
 - Register things in `init`, undo them in `shutdown`.
 - Talk to other modules through services/events, never by including their `.cpp` internals.

@@ -50,7 +50,10 @@ static std::unordered_set<std::string> splitList(const std::string& s) {
 // Instantiate every registered module, drop disabled/duplicate ones, sort by
 // dependency (ties broken by priority then name), then init in that order.
 bool Engine::loadModules() {
-    auto disabled = splitList(flagValue("disable"));
+    // --disable=a,b  and/or  --disable=a --disable=b
+    std::unordered_set<std::string> disabled;
+    for (auto& a : args_)
+        if (a.rfind("--disable=", 0) == 0) for (auto& n : splitList(a.substr(10))) disabled.insert(n);
     std::map<std::string, std::unique_ptr<Module>> pending;
 
     for (auto& make : ModuleRegistry::factories()) {

@@ -15,7 +15,7 @@ Legend: `[x]` done, `[ ]` todo. Old-game source to port from is in *italics*.
 - [x] **0.1** First commit on `v2-modular`, tag `v2-base`
 - [x] **0.2** `package/tools/smoke.sh`: clean `-Werror` build, module count, run 60 frames, screenshot. Run before every commit.
 - [x] **0.3** Engine hardening: a module whose `init` throws is skipped instead of crashing; Makefile relinks when modules are added/removed; UI text is cached instead of rebuilt every frame; rule documented that `pressed()` belongs in `onUpdate`.
-- [ ] **0.4** Unit tests (`package/tests/`, `make test`): JSON parser, event bus, dependency sort, input edge detection. Add to `smoke.sh`.
+- [x] **0.4** Unit tests (`package/tests/`, `make test`, 28 tests): JSON parser, event bus, services, config, module load order / skipping / `--disable`, input edge detection. Part of `smoke.sh`.
 
 ## Phase 1 - Foundations (do these before any gameplay)
 These stop the old game's problems (globals, hand-wired init, static flags) from coming back.
