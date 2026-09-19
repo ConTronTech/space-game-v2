@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <map>
 
 namespace engine {
@@ -90,7 +91,11 @@ bool Engine::loadModules() {
             if (m->required()) return false;
             continue;
         }
-        if (!m->init(*this)) {
+        bool ok = false;
+        try { ok = m->init(*this); }
+        catch (const std::exception& e) { log("module '%s' threw during init: %s", n.c_str(), e.what()); }
+        catch (...) { log("module '%s' threw during init", n.c_str()); }
+        if (!ok) {
             log("module '%s' failed to init", n.c_str());
             if (m->required()) return false;
             continue;

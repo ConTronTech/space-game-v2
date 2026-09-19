@@ -4,7 +4,7 @@
 // Game modules only ask about actions:
 //     auto& in = eng.services.require<core::InputHandler>();
 //     float thrust = in.value("thrust");     // -1..1, from keys, mouse, stick... whatever the profile says
-//     if (in.pressed("fire")) ...             // went past 0.5 this frame
+//     if (in.pressed("fire")) ...             // went past 0.5 this frame - call from onUpdate, NOT onFixedUpdate
 // Which physical inputs drive an action lives in config/input/<profile>.json, not in code.
 // Devices are pluggable InputMethod modules (see input_method.h). See docs/INPUT.md.
 #include <cmath>

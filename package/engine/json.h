@@ -48,6 +48,7 @@ private:
 };
 
 struct JsonParser {
+    explicit JsonParser(std::string_view text) : s(text) {}
     std::string_view s;
     size_t i = 0;
     std::string err;
@@ -158,7 +159,7 @@ struct JsonParser {
 };
 
 inline Json Json::parse(std::string_view text, std::string* error) {
-    JsonParser p{text};
+    JsonParser p(text);
     Json j;
     bool ok = p.value(j);
     if (ok) { p.ws(); if (p.i < text.size()) { p.fail("trailing characters"); ok = false; } }

@@ -41,6 +41,7 @@ bool UIHandler::init(engine::Engine& eng) {
 
 void UIHandler::shutdown(engine::Engine& eng) {
     eng.services.withdraw<UIHandler>();
+    clearTextCache(); // GL context is still alive: window shuts down after us
     for (auto& [s, f] : fonts_) TTF_CloseFont(f);
     fonts_.clear();
     if (TTF_WasInit()) TTF_Quit();
@@ -213,38 +214,55 @@ void UIHandler::textCentered(float cx, float y, const std::string& s, int size, 
     text(cx - textWidth(s, size) / 2.0f, y, s, size, c);
 }
 
-void UIHandler::text(float x, float y, const std::string& s, int size, float r, float g, float b, float a) {
-    if (s.empty()) return;
-    TTF_Font* f = font(size);
-    if (!f) return;
+void UIHandler::clearTextCache() {
+    for (auto& [k, t] : textCache_) glDeleteTextures(1, &t.id);
+    textCache_.clear();
+}
 
+// Renders a string to a GL texture once; identical strings reuse it on later frames.
+const UIHandler::TextTex* UIHandler::textTexture(const std::string& s, int size) {
+    std::string key = std::to_string(size) + ":" + s;
+    auto it = textCache_.find(key);
+    if (it != textCache_.end()) return &it->second;
+
+    TTF_Font* f = font(size);
+    if (!f) return nullptr;
     SDL_Color white = {255, 255, 255, 255};
     SDL_Surface* raw = TTF_RenderUTF8_Blended(f, s.c_str(), white);
-    if (!raw) return;
+    if (!raw) return nullptr;
     SDL_Surface* surf = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ABGR8888, 0); // RGBA byte order
     SDL_FreeSurface(raw);
-    if (!surf) return;
+    if (!surf) return nullptr;
 
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    if (textCache_.size() >= 512) clearTextCache(); // e.g. a live-changing number; keep memory bounded
+
+    TextTex t{0, surf->w, surf->h};
+    glGenTextures(1, &t.id);
+    glBindTexture(GL_TEXTURE_2D, t.id);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf->w, surf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    SDL_FreeSurface(surf);
+    return &(textCache_[key] = t);
+}
 
+void UIHandler::text(float x, float y, const std::string& s, int size, float r, float g, float b, float a) {
+    if (s.empty()) return;
+    const TextTex* t = textTexture(s, size);
+    if (!t) return;
+
+    glBindTexture(GL_TEXTURE_2D, t->id);
     glEnable(GL_TEXTURE_2D);
     glColor4f(r, g, b, a);
     glBegin(GL_QUADS);
     glTexCoord2f(0, 0); glVertex2f(x, y);
-    glTexCoord2f(1, 0); glVertex2f(x + surf->w, y);
-    glTexCoord2f(1, 1); glVertex2f(x + surf->w, y + surf->h);
-    glTexCoord2f(0, 1); glVertex2f(x, y + surf->h);
+    glTexCoord2f(1, 0); glVertex2f(x + t->w, y);
+    glTexCoord2f(1, 1); glVertex2f(x + t->w, y + t->h);
+    glTexCoord2f(0, 1); glVertex2f(x, y + t->h);
     glEnd();
     glDisable(GL_TEXTURE_2D);
-    glDeleteTextures(1, &tex);
-    SDL_FreeSurface(surf);
 }
 
 // ---------------- pointer + widgets ----------------

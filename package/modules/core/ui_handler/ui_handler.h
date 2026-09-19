@@ -81,6 +81,10 @@ public:
 private:
     struct Entry { std::string name; int order; Panel fn; };
     TTF_Font* font(int size);
+    struct TextTex { unsigned int id; int w, h; };
+    const TextTex* textTexture(const std::string& s, int size);
+    void clearTextCache();
+    std::map<std::string, TextTex> textCache_; // key: "<size>:<string>"; flushed when it grows large
     std::vector<Entry> panels_;
     std::map<int, TTF_Font*> fonts_;
     std::string fontPath_;

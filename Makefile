@@ -10,11 +10,19 @@ BUILD  = build
 SRCS = $(shell find package/engine package/modules -name '*.cpp' -not -path '*/_*')
 OBJS = $(SRCS:%.cpp=$(BUILD)/%.o)
 
-.PHONY: all clean run modules
+LIST = $(BUILD)/sources.list
+
+.PHONY: all clean run modules FORCE
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CXX) -o $@ $^ $(LDFLAGS)
+# Rewritten only when a module is added/removed/renamed, so the binary relinks exactly then.
+$(LIST): FORCE
+	@mkdir -p $(BUILD)
+	@echo "$(SRCS)" | tr ' ' '\n' | sort > $(LIST).tmp
+	@cmp -s $(LIST).tmp $(LIST) && rm $(LIST).tmp || mv $(LIST).tmp $(LIST)
+
+$(TARGET): $(OBJS) $(LIST)
+	$(CXX) -o $@ $(OBJS) $(LDFLAGS)
 
 $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
