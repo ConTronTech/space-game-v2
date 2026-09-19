@@ -12,7 +12,7 @@ OBJS = $(SRCS:%.cpp=$(BUILD)/%.o)
 
 LIST = $(BUILD)/sources.list
 
-.PHONY: all clean run modules test FORCE
+.PHONY: all clean run modules test test-san FORCE
 all: $(TARGET)
 
 # Rewritten only when a module is added/removed/renamed, so the binary relinks exactly then.
@@ -44,7 +44,11 @@ $(BUILD)/test_runner: $(TEST_OBJS)
 test: $(BUILD)/test_runner
 	./$(BUILD)/test_runner
 
+# Same tests under AddressSanitizer + UBSan (catches use-after-free, overflows, UB the plain run can miss).
+test-san:
+	$(MAKE) BUILD=build_san CXX="g++ -fsanitize=address,undefined -fno-omit-frame-pointer -g" CXXFLAGS="-std=c++23 -O1 -I package -I package/modules" test
+
 clean:
-	rm -rf $(BUILD) $(TARGET)
+	rm -rf $(BUILD) build_san $(TARGET)
 
 -include $(OBJS:.o=.d)

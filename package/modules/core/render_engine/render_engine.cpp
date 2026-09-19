@@ -39,7 +39,8 @@ void RenderEngine::onRender(engine::Engine&) {
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixf(camera.view);
 
-    for (auto& p : passes_) {
+    auto passes = passes_; // a pass may add/remove passes while we iterate
+    for (auto& p : passes) {
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
         p.fn(*this);

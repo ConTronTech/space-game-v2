@@ -22,7 +22,8 @@ public:
     void emit(const E& e) const {
         auto it = handlers_.find(typeid(E));
         if (it == handlers_.end()) return;
-        for (auto& h : it->second) h(&e);
+        auto snapshot = it->second; // a handler may subscribe (or emit) mid-emit without invalidating us
+        for (auto& h : snapshot) h(&e);
     }
 
 private:

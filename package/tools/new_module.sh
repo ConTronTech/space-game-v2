@@ -2,7 +2,9 @@
 # Usage: tools/new_module.sh <category> <name>     e.g. tools/new_module.sh gameplay weapons
 set -e
 [ $# -eq 2 ] || { echo "usage: $0 <category> <name>"; exit 1; }
-cd "$(dirname "$0")/.."   # package/
+cd "$(dirname "$0")/.."
+[[ "$2" =~ ^[a-z][a-z0-9_]*$ ]] || { echo "name must be lowercase letters, digits and underscores (e.g. mining_drones)"; exit 1; }
+[[ "$1" =~ ^[a-z][a-z0-9_/]*$ ]] || { echo "category must be lowercase (e.g. gameplay, core/input_methods)"; exit 1; }   # package/
 cat_="$1"; name="$2"
 dir="modules/$cat_/$name"
 [ -e "$dir" ] && { echo "$dir already exists"; exit 1; }

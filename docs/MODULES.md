@@ -61,7 +61,7 @@ publishes the camera. Copy its shape.
 #include "tests/test.h"
 TEST(my_thing_does_x) { CHECK_EQ(1 + 1, 2); }
 ```
-`package/tools/smoke.sh` runs the tests, a strict `-Werror` build and a short game run - use it before each commit.
+`make test-san` runs them under AddressSanitizer/UBSan. `package/tools/smoke.sh` runs both, a strict `-Werror` build and a short game run - use it before each commit.
 
 ## Rules of thumb
 - Register things in `init`, undo them in `shutdown`.

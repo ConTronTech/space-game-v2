@@ -37,8 +37,11 @@ public:
     const char* device() const override { return "mouse"; }
     void clearBindings() override { bindings_.clear(); }
     void configure(const engine::Json& s) override {
-        wantCapture_ = s["capture"].boolean(false);
+        bool capture = s["capture"].boolean(false);
         sensitivity_ = (float)s["sensitivity"].num(1.0);
+        // If the game is paused right now (menu open) keep the cursor free; capture is restored on resume.
+        capturedBeforePause_ = capture;
+        wantCapture_ = capture && !(eng_ && eng_->paused());
         applyCapture_ = true;
     }
     bool addBinding(const std::string& action, const engine::Json& b, std::string& err) override {

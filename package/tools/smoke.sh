@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Quick health check. Run before every commit:  package/tools/smoke.sh
-# Clean build with warnings treated as errors, unit tests, module list, short run, screenshot.
+# Clean build with warnings treated as errors, unit tests (plain + ASan/UBSan), module list, short run, screenshot.
 set -e
 cd "$(dirname "$0")/../.."
 fail() { echo "SMOKE FAIL: $*"; exit 1; }
@@ -10,6 +10,8 @@ make -j"$(nproc)" CXXFLAGS="-std=c++23 -O2 -Wall -Wextra -Wno-unused-result -Wno
     || fail "build (warnings count as errors)"
 
 make test >/dev/null 2>&1 || { make test 2>&1 | grep -E "FAIL|tests,"; fail "unit tests"; }
+
+make test-san >/dev/null 2>&1 || { make test-san 2>&1 | grep -E "ERROR|runtime error|FAIL|tests,"; fail "unit tests under sanitizers"; }
 
 mods=$(./space_game_v2 --list-modules 2>/dev/null | wc -l)
 [ "$mods" -ge 8 ] || fail "expected >= 8 modules, got $mods"

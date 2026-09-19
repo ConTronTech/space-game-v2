@@ -1,6 +1,7 @@
 #pragma once
 // core/window - owns the SDL window + OpenGL context and pumps OS events.
 #include <SDL2/SDL.h>
+#include <string>
 #include "engine/module.h"
 
 namespace core {
@@ -29,6 +30,8 @@ private:
     SDL_Window* win_ = nullptr;
     SDL_GLContext gl_ = nullptr;
     int w_ = 1280, h_ = 720;
+    std::string shot_;   // --screenshot=path
+    long shotFrame_ = 30;
 };
 
 } // namespace core

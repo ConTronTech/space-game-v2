@@ -42,3 +42,26 @@ TEST(services_require_throws_when_missing) {
     try { s.require<Svc>(); } catch (const std::exception&) { threw = true; }
     CHECK(threw);
 }
+
+TEST(eventbus_handler_may_subscribe_during_emit) {
+    engine::EventBus bus;
+    int late = 0, first = 0;
+    bus.subscribe<Ping>([&](const Ping&) {
+        first++;
+        for (int i = 0; i < 50; i++) bus.subscribe<Ping>([&](const Ping&) { late++; }); // forces the handler list to grow
+    });
+    bus.emit(Ping{1});          // must not crash or invalidate the running handler
+    CHECK_EQ(first, 1);
+    CHECK_EQ(late, 0);          // new handlers start with the NEXT emit
+    bus.emit(Ping{1});
+    CHECK_EQ(late, 50);
+}
+
+TEST(eventbus_handler_may_emit_another_event) {
+    engine::EventBus bus;
+    int pongs = 0;
+    bus.subscribe<Pong>([&](const Pong&) { pongs++; });
+    bus.subscribe<Ping>([&](const Ping&) { bus.emit(Pong{1}); });
+    bus.emit(Ping{1});
+    CHECK_EQ(pongs, 1);
+}

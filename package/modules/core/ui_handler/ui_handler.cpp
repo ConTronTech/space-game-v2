@@ -108,7 +108,8 @@ void UIHandler::onRenderUI(engine::Engine&) {
     glPushMatrix();
     glLoadIdentity();
 
-    for (auto& p : panels_) p.fn(*this);
+    auto panels = panels_; // a panel may add/remove panels while we iterate
+    for (auto& p : panels) p.fn(*this);
 
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
@@ -310,8 +311,9 @@ float UIHandler::slider(const std::string& label, float x, float y, float w, flo
     Color track{0.3f, 0.36f, 0.45f, 0.5f};
     roundedRect(tx, ty - 2, tw, 4, 2, track, track);
 
-    if (hot && clicked_ && my_ >= ty - 12) activeSlider_ = label;
-    if (activeSlider_ == label && mouseDown_ && pointerFree()) {
+    std::string id = label + "@" + std::to_string((int)y);
+    if (hot && clicked_ && my_ >= ty - 12) activeSlider_ = id;
+    if (activeSlider_ == id && mouseDown_ && pointerFree()) {
         float t = std::clamp((mx_ - tx) / tw, 0.0f, 1.0f);
         value = lo + t * (hi - lo);
     }

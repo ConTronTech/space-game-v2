@@ -127,7 +127,8 @@ int Engine::run(int argc, char** argv) {
         return 0;
     }
 
-    const float step = 1.0f / std::max(1.0f, config.get("engine.fixed_hz", 60.0f, "physics steps per second"));
+    const float hz = std::clamp(config.get("engine.fixed_hz", 60.0f, "physics steps per second (10 - 480)"), 10.0f, 480.0f);
+    const float step = 1.0f / hz;
     const long maxFrames = std::atol(flagValue("frames", "0").c_str()); // 0 = unlimited (smoke tests use >0)
     using clock = std::chrono::steady_clock;
     auto last = clock::now();

@@ -23,6 +23,8 @@ bool Window::init(engine::Engine& eng) {
     SDL_GL_SetSwapInterval(1);
     SDL_GetWindowSize(win_, &w_, &h_);
 
+    shot_ = eng.flagValue("screenshot");
+    shotFrame_ = std::atol(eng.flagValue("screenshot-frame", "30").c_str());
     eng.services.provide<Window>(this);
     return true;
 }
@@ -50,8 +52,8 @@ void Window::onFrameBegin(engine::Engine& eng) {
 
 // Dev aid: --screenshot=out.bmp [--screenshot-frame=N] saves that frame and continues.
 void Window::onPresent(engine::Engine& eng) {
-    std::string shot = eng.flagValue("screenshot");
-    if (!shot.empty() && (long)eng.frame() == std::atol(eng.flagValue("screenshot-frame", "30").c_str())) {
+    if (!shot_.empty() && (long)eng.frame() == shotFrame_) {
+        const std::string& shot = shot_;
         std::vector<unsigned char> px((size_t)w_ * h_ * 4), flipped(px.size());
         glReadPixels(0, 0, w_, h_, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
         for (int y = 0; y < h_; y++)

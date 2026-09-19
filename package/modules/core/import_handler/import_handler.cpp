@@ -10,7 +10,7 @@
 namespace core {
 
 // ---- built-in loaders ----
-static std::shared_ptr<void> loadObj(const std::string& path) {
+static std::shared_ptr<Mesh> loadObj(const std::string& path) {
     std::ifstream f(path);
     if (!f) return nullptr;
     std::vector<engine::Vec3> v, vn;
@@ -56,7 +56,7 @@ static std::shared_ptr<void> loadObj(const std::string& path) {
     return mesh;
 }
 
-static std::shared_ptr<void> loadImage(const std::string& path) {
+static std::shared_ptr<Texture> loadImage(const std::string& path) {
     SDL_Surface* raw = IMG_Load(path.c_str());
     if (!raw) return nullptr;
     SDL_Surface* s = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ABGR8888, 0);
@@ -78,7 +78,7 @@ static std::shared_ptr<void> loadImage(const std::string& path) {
     return tex;
 }
 
-static std::shared_ptr<void> loadText(const std::string& path) {
+static std::shared_ptr<TextAsset> loadText(const std::string& path) {
     std::ifstream f(path);
     if (!f) return nullptr;
     auto t = std::make_shared<TextAsset>();
@@ -90,9 +90,9 @@ static std::shared_ptr<void> loadText(const std::string& path) {
 
 bool ImportHandler::init(engine::Engine& eng) {
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
-    registerLoader(".obj", loadObj);
-    for (auto e : {".png", ".jpg", ".jpeg", ".bmp"}) registerLoader(e, loadImage);
-    for (auto e : {".txt", ".json", ".cfg"}) registerLoader(e, loadText);
+    registerLoader<Mesh>(".obj", loadObj);
+    for (auto e : {".png", ".jpg", ".jpeg", ".bmp"}) registerLoader<Texture>(e, loadImage);
+    for (auto e : {".txt", ".json", ".cfg"}) registerLoader<TextAsset>(e, loadText);
     eng.services.provide<ImportHandler>(this);
     return true;
 }
@@ -103,7 +103,7 @@ void ImportHandler::shutdown(engine::Engine& eng) {
     IMG_Quit();
 }
 
-std::shared_ptr<void> ImportHandler::loadRaw(const std::string& path) {
+ImportHandler::Loaded ImportHandler::loadRaw(const std::string& path) {
     auto hit = cache_.find(path);
     if (hit != cache_.end()) return hit->second;
 
@@ -111,12 +111,16 @@ std::shared_ptr<void> ImportHandler::loadRaw(const std::string& path) {
     std::string ext = dot == std::string::npos ? "" : path.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     auto it = loaders_.find(ext);
-    if (it == loaders_.end()) { std::fprintf(stderr, "[import] no loader for '%s'\n", ext.c_str()); return nullptr; }
+    if (it == loaders_.end()) { std::fprintf(stderr, "[import] no loader for '%s'\n", ext.c_str()); return {nullptr, typeid(void)}; }
 
-    auto asset = it->second(root_ + path);
-    if (!asset) { std::fprintf(stderr, "[import] failed to load %s%s\n", root_.c_str(), path.c_str()); return nullptr; }
-    cache_[path] = asset;
+    Loaded asset = it->second(root_ + path);
+    if (!asset.data) { std::fprintf(stderr, "[import] failed to load %s%s\n", root_.c_str(), path.c_str()); return {nullptr, typeid(void)}; }
+    cache_.insert_or_assign(path, asset);
     return asset;
+}
+
+void ImportHandler::reportTypeMismatch(const std::string& path) const {
+    std::fprintf(stderr, "[import] %s was loaded as a different type than requested\n", path.c_str());
 }
 
 REGISTER_MODULE(ImportHandler);

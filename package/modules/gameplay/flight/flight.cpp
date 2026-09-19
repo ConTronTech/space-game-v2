@@ -66,9 +66,10 @@ public:
         return true;
     }
 
-    void shutdown(engine::Engine&) override {
+    void shutdown(engine::Engine& eng) override {
         render_->removePass("flight/stars");
         render_->removePass("flight/rocks");
+        if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
     }
 
     void onFixedUpdate(engine::Engine&, float dt) override {
