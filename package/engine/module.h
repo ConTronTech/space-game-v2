@@ -17,6 +17,8 @@ public:
     // ---- identity ----
     virtual const char* name() const = 0;                          // unique, e.g. "core/input_handler"
     virtual std::vector<std::string> dependencies() const { return {}; } // names of modules that must init first
+    // Init after these modules IF they are loaded, but do not fail when they are absent (optional services).
+    virtual std::vector<std::string> optionalDependencies() const { return {}; }
     virtual int priority() const { return 0; }                     // lower = earlier (init order & per-phase order)
     virtual bool required() const { return false; }                // true: engine aborts if init fails
 

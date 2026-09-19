@@ -52,3 +52,4 @@ clean:
 	rm -rf $(BUILD) build_san $(TARGET)
 
 -include $(OBJS:.o=.d)
+-include $(TEST_OBJS:.o=.d)   # header changes must rebuild test objects too (a stale layout = silent UB)

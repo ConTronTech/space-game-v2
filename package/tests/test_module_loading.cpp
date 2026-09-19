@@ -29,6 +29,32 @@ TEST_MODULE(TFalse,   "t/init_false", {},                  0,  g_order.push_back
 TEST_MODULE(TAfterF,  "t/after_false",{"t/init_false"},    0,  OK)
 TEST_MODULE(TThrow,   "t/init_throws",{},                  0,  g_order.push_back("t/init_throws_ATTEMPT"); throw std::runtime_error("boom");)
 
+// optional dependencies: order after the module IF it exists, never fail if it does not
+class TOptAfterBase : public engine::Module {
+public:
+    const char* name() const override { return "t/opt_after_base"; }
+    std::vector<std::string> optionalDependencies() const override { return {"t/base", "t/not_installed"}; }
+    int priority() const override { return -100; }   // would run first, if the optional dependency did not hold it back
+    bool init(engine::Engine&) override { g_order.push_back(name()); return true; }
+};
+REGISTER_MODULE(TOptAfterBase);
+
+// two modules that optionally depend on each other: must both still load (no cycle drop)
+class TOptA : public engine::Module {
+public:
+    const char* name() const override { return "t/opt_cycle_a"; }
+    std::vector<std::string> optionalDependencies() const override { return {"t/opt_cycle_b"}; }
+    bool init(engine::Engine&) override { g_order.push_back(name()); return true; }
+};
+class TOptB : public engine::Module {
+public:
+    const char* name() const override { return "t/opt_cycle_b"; }
+    std::vector<std::string> optionalDependencies() const override { return {"t/opt_cycle_a"}; }
+    bool init(engine::Engine&) override { g_order.push_back(name()); return true; }
+};
+REGISTER_MODULE(TOptA);
+REGISTER_MODULE(TOptB);
+
 class TRequired : public engine::Module {
 public:
     const char* name() const override { return "t/required"; }
@@ -69,6 +95,24 @@ TEST(modules_with_missing_or_failed_deps_are_skipped) {
     CHECK_EQ(indexOf("t/after_false"), -1);           // ...its dependent was skipped
     CHECK(indexOf("t/init_throws_ATTEMPT") >= 0);     // throwing init is a failed init, not a crash
     CHECK(indexOf("t/base") >= 0);                    // and everything else still loaded
+}
+
+TEST(optional_dependency_orders_after_when_present_and_is_ignored_when_absent) {
+    g_order.clear();
+    CHECK_EQ(runEngine({}), 0);
+    CHECK(indexOf("t/opt_after_base") > indexOf("t/base"));    // waited for the optional dep despite priority -100
+    CHECK(indexOf("t/opt_after_base") >= 0);                    // "t/not_installed" does not exist: no failure
+
+    g_order.clear();
+    CHECK_EQ(runEngine({"--disable=t/base"}), 0);              // optional dep disabled: module still loads
+    CHECK(indexOf("t/opt_after_base") >= 0);
+}
+
+TEST(optional_dependency_cycles_do_not_drop_modules) {
+    g_order.clear();
+    CHECK_EQ(runEngine({}), 0);
+    CHECK(indexOf("t/opt_cycle_a") >= 0);
+    CHECK(indexOf("t/opt_cycle_b") >= 0);
 }
 
 TEST(disable_flag_removes_a_module) {

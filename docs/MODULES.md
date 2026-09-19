@@ -28,6 +28,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 |---|---|
 | `name()` | unique id, `category/name` |
 | `dependencies()` | names that must init first; missing/failed dep => module skipped |
+| `optionalDependencies()` | init after these *if they exist*; absence is fine (for optional services) |
 | `priority()` | lower runs earlier (init order and per-phase order) |
 | `required()` | true => engine aborts if `init` fails |
 | `init` / `shutdown` | lifecycle (shutdown runs in reverse order) |

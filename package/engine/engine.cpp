@@ -58,11 +58,18 @@ bool Engine::loadModules() {
     std::vector<std::unique_ptr<Module>> sorted;
     std::unordered_set<std::string> placed;
     while (!pending.empty()) {
+        // Pick the ready module with the lowest priority. Optional dependencies are honoured while possible;
+        // if that leaves nothing ready (an optional cycle) they are ignored, so they can never drop a module.
         Module* best = nullptr;
-        for (auto& [n, m] : pending) {
-            bool ready = true;
-            for (auto& d : m->dependencies()) if (!placed.count(d)) { ready = false; break; }
-            if (ready && (!best || m->priority() < best->priority())) best = m.get();
+        for (bool useOptional : {true, false}) {
+            for (auto& [n, m] : pending) {
+                bool ready = true;
+                for (auto& d : m->dependencies()) if (!placed.count(d)) { ready = false; break; }
+                if (ready && useOptional)
+                    for (auto& d : m->optionalDependencies()) if (d != n && pending.count(d)) { ready = false; break; }
+                if (ready && (!best || m->priority() < best->priority())) best = m.get();
+            }
+            if (best) break;
         }
         if (!best) break;
         std::string n = best->name();
