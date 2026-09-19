@@ -5,6 +5,7 @@
 #include <sstream>
 #include <unordered_set>
 #include "engine/engine.h"
+#include "engine/log.h"
 
 namespace core {
 
@@ -44,12 +45,12 @@ bool InputHandler::released(const std::string& a) const {
 bool InputHandler::loadProfile(const std::string& name) {
     std::string path = "config/input/" + name + ".json";
     std::ifstream f(path);
-    if (!f) { std::fprintf(stderr, "[input] cannot open %s - no bindings loaded\n", path.c_str()); return false; }
+    if (!f) { LOG_E("input", "cannot open %s - no bindings loaded", path.c_str()); return false; }
     std::stringstream ss;
     ss << f.rdbuf();
     std::string err;
     engine::Json root = engine::Json::parse(ss.str(), &err);
-    if (!root.isObject()) { std::fprintf(stderr, "[input] %s: %s\n", path.c_str(), err.empty() ? "expected a JSON object" : err.c_str()); return false; }
+    if (!root.isObject()) { LOG_E("input", "%s: %s", path.c_str(), err.empty() ? "expected a JSON object" : err.c_str()); return false; }
 
     for (auto& [dev, m] : methods_) m->clearBindings();
     profile_ = name;
@@ -72,15 +73,15 @@ bool InputHandler::loadProfile(const std::string& name) {
             auto it = methods_.find(dev);
             if (it == methods_.end()) {
                 if (warned.insert(dev).second)
-                    std::fprintf(stderr, "[input] %s: no input method for device '%s' (module not loaded?) - skipping those bindings\n", path.c_str(), dev.c_str());
+                    LOG_W("input", "%s: no input method for device '%s' (module not loaded?) - skipping those bindings", path.c_str(), dev.c_str());
                 continue;
             }
             std::string berr;
             if (it->second->addBinding(action, b, berr)) count++;
-            else { bad++; std::fprintf(stderr, "[input] %s: action '%s' #%zu: %s\n", path.c_str(), action.c_str(), i + 1, berr.c_str()); }
+            else { bad++; LOG_W("input", "%s: action '%s' #%zu: %s", path.c_str(), action.c_str(), i + 1, berr.c_str()); }
         }
     }
-    std::fprintf(stderr, "[input] profile '%s' (%s): %d bindings%s\n", name.c_str(), root["name"].str().c_str(), count, bad ? " (some invalid, see above)" : "");
+    LOG_I("input", "profile '%s' (%s): %d bindings%s", name.c_str(), root["name"].str().c_str(), count, bad ? " (some invalid, see above)" : "");
     return true;
 }
 

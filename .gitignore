@@ -2,3 +2,4 @@ build/
 space_game_v2
 config/game.json
 build_san/
+logs/

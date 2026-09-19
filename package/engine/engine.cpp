@@ -1,23 +1,14 @@
 #include "engine/engine.h"
+#include "engine/log.h"
 
 #include <algorithm>
 #include <chrono>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <map>
 
 namespace engine {
-
-void Engine::log(const char* fmt, ...) const {
-    va_list ap;
-    va_start(ap, fmt);
-    std::fputs("[engine] ", stderr);
-    std::vfprintf(stderr, fmt, ap);
-    std::fputc('\n', stderr);
-    va_end(ap);
-}
 
 bool Engine::hasFlag(const std::string& flag) const {
     return std::find(args_.begin(), args_.end(), "--" + flag) != args_.end();
@@ -59,8 +50,8 @@ bool Engine::loadModules() {
     for (auto& make : ModuleRegistry::factories()) {
         auto m = make();
         std::string n = m->name();
-        if (disabled.count(n)) { log("disabled by flag: %s", n.c_str()); continue; }
-        if (pending.count(n)) { log("duplicate module name '%s' - ignoring second", n.c_str()); continue; }
+        if (disabled.count(n)) { LOG_I("engine", "disabled by flag: %s", n.c_str()); continue; }
+        if (pending.count(n)) { LOG_W("engine", "duplicate module name '%s' - ignoring second", n.c_str()); continue; }
         pending[n] = std::move(m);
     }
 
@@ -80,7 +71,7 @@ bool Engine::loadModules() {
         pending.erase(n);
     }
     for (auto& [n, m] : pending) {
-        log("module '%s' skipped: missing or cyclic dependency", n.c_str());
+        LOG_W("engine", "module '%s' skipped: missing or cyclic dependency", n.c_str());
         if (m->required()) return false;
     }
 
@@ -90,20 +81,20 @@ bool Engine::loadModules() {
         bool depsOk = true;
         for (auto& d : m->dependencies()) if (!alive.count(d)) { depsOk = false; break; }
         if (!depsOk) {
-            log("module '%s' skipped: dependency failed", n.c_str());
+            LOG_W("engine", "module '%s' skipped: dependency failed", n.c_str());
             if (m->required()) return false;
             continue;
         }
         bool ok = false;
         try { ok = m->init(*this); }
-        catch (const std::exception& e) { log("module '%s' threw during init: %s", n.c_str(), e.what()); }
-        catch (...) { log("module '%s' threw during init", n.c_str()); }
+        catch (const std::exception& e) { LOG_E("engine", "module '%s' threw during init: %s", n.c_str(), e.what()); }
+        catch (...) { LOG_E("engine", "module '%s' threw during init", n.c_str()); }
         if (!ok) {
-            log("module '%s' failed to init", n.c_str());
+            LOG_E("engine", "module '%s' failed to init", n.c_str());
             if (m->required()) return false;
             continue;
         }
-        log("loaded %s", n.c_str());
+        LOG_I("engine", "loaded %s", n.c_str());
         alive.insert(n);
         modules_.push_back(std::move(m));
     }
@@ -114,10 +105,13 @@ int Engine::run(int argc, char** argv) {
     for (int i = 1; i < argc; i++) args_.push_back(argv[i]);
 
     config.load();
+    if (!log::setLevel(config.get<std::string>("engine.log_level", "info", "debug | info | warn | error")))
+        LOG_W("engine", "engine.log_level must be debug, info, warn or error - using info");
+    log::openFile(config.get<std::string>("engine.log_file", "logs/game.log", "log file, overwritten each run; empty = console only"));
     events.subscribe<QuitRequested>([this](const QuitRequested&) { quit(); });
 
     if (!loadModules()) {
-        log("a required module failed - aborting");
+        LOG_E("engine", "a required module failed - aborting");
         for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) (*it)->shutdown(*this);
         return 1;
     }

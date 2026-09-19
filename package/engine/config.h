@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "engine/json.h"
+#include "engine/log.h"
 
 namespace engine {
 
@@ -33,7 +34,7 @@ public:
         ss << f.rdbuf();
         std::string err;
         Json j = Json::parse(ss.str(), &err);
-        if (!j.isObject()) { std::fprintf(stderr, "[config] %s: %s - using defaults\n", path_.c_str(), err.empty() ? "expected an object" : err.c_str()); return; }
+        if (!j.isObject()) { LOG_W("config", "%s: %s - using defaults", path_.c_str(), err.empty() ? "expected an object" : err.c_str()); return; }
         fromJson(j, root_);
     }
 
@@ -63,7 +64,7 @@ public:
     void save() {
         if (!dirty_) return;
         std::ofstream f(path_);
-        if (!f) { std::fprintf(stderr, "[config] cannot write %s\n", path_.c_str()); return; }
+        if (!f) { LOG_E("config", "cannot write %s", path_.c_str()); return; }
         f << "// Tunables. Every value shows \"DEFAULT\" (use the built-in value shown in the comment).\n"
              "// Replace \"DEFAULT\" with your own number/true/false to change it. Applied on next launch.\n";
         write(f, root_, 0);
@@ -129,7 +130,7 @@ private:
     }
     void warn(const std::string& key, const char* want) {
         if (warned_.insert(key).second)
-            std::fprintf(stderr, "[config] %s in %s should be %s (or \"DEFAULT\") - using default\n", key.c_str(), path_.c_str(), want);
+            LOG_W("config", "%s in %s should be %s (or \"DEFAULT\") - using default", key.c_str(), path_.c_str(), want);
     }
     static void fromJson(const Json& j, Node& n) {
         for (auto& k : j.keys()) {

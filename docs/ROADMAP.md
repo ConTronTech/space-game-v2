@@ -21,7 +21,7 @@ Legend: `[x]` done, `[ ]` todo. Old-game source to port from is in *italics*.
 These stop the old game's problems (globals, hand-wired init, static flags) from coming back.
 
 - [ ] **1.0a Service interfaces**: services are currently keyed by the concrete class (`core::InputHandler`), so a replacement module has to be that exact class. Add small interfaces (`IInput`, `IAudio`, `ISaveSystem`, ...) that other modules depend on, so an alternative implementation can be dropped in for real.
-- [ ] **1.0b `core/log`**: levelled logging (error/warn/info/debug) to console and `logs/`, replacing raw `fprintf` in modules.
+- [x] **1.0b logging**: `engine/log.h` - `LOG_I/W/E/D(tag, fmt, ...)` to the console and `logs/game.log` (level and file via `engine.log_level` / `engine.log_file`); all modules converted.
 - [ ] **1.0c Fixed-step interpolation**: render between physics steps so motion is smooth on 144 Hz displays (moved up from Phase 7).
 - [ ] **1.0d Assets decision**: V2 has no `assets/` and the old one is not in git. Choose copy / symlink / shared folder before Phase 2 needs the cockpit model and skybox.
 
@@ -46,7 +46,7 @@ Done when: you can fly, burn fuel, take damage, die, respawn and save/load mid-f
 
 ## Phase 3 - World
 - [ ] **3.1 `world/starfield` + `world/skybox`** (move the demo starfield out of flight). *starfield.h, skybox.h*
-- [ ] **3.2 `world/star_system`**: seeded sun, planets, moons, orbits, sun lighting. *starsystem.h*
+- [ ] **3.2 `world/star_system`**: seeded sun, planets, moons, orbits, sun lighting. *starsystem.h*  (positions are 32-bit floats: render relative to the camera / re-origin the world so orbits of 80,000+ units and warp speeds don't jitter)
 - [ ] **3.3 `world/planet_mesh`**: icosphere terrain, FBM noise, biomes, 4 LOD levels. *planet_mesh.h*
 - [ ] **3.4 Collision wiring**: sun, planets, moons register with `physics_world`; ship damage from speed; sun = death.
 - [ ] **3.5 `ship/orbit_lock`**: one `toggle_orbit_lock` action. *ship.h*

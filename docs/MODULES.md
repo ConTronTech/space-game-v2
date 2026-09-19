@@ -55,6 +55,10 @@ publishes the camera. Copy its shape.
 
 - **Config** (`engine.config`): base value in code + optional override in `config/game.json` - see docs/CONFIG.md.
 
+## Logging
+`#include "engine/log.h"` then `LOG_I("mytag", "loaded %d things", n);` (also `LOG_W`, `LOG_E`, `LOG_D`). Goes to the console and
+`logs/game.log`. Set `engine.log_level` (debug/info/warn/error) in `config/game.json`. Don't use `printf`/`fprintf` in modules.
+
 ## Tests
 `make test` builds and runs `package/tests/` (no window needed). Add a file `package/tests/test_<thing>.cpp`:
 ```cpp

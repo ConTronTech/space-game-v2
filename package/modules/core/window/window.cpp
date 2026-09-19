@@ -5,11 +5,12 @@
 #include <cstdlib>
 #include <vector>
 #include "engine/engine.h"
+#include "engine/log.h"
 
 namespace core {
 
 bool Window::init(engine::Engine& eng) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return false; }
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) { LOG_E("window", "SDL_Init: %s", SDL_GetError()); return false; }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
@@ -17,9 +18,9 @@ bool Window::init(engine::Engine& eng) {
 
     win_ = SDL_CreateWindow("Space Game V2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                             w_, h_, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-    if (!win_) { std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError()); return false; }
+    if (!win_) { LOG_E("window", "SDL_CreateWindow: %s", SDL_GetError()); return false; }
     gl_ = SDL_GL_CreateContext(win_);
-    if (!gl_) { std::fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError()); return false; }
+    if (!gl_) { LOG_E("window", "SDL_GL_CreateContext: %s", SDL_GetError()); return false; }
     SDL_GL_SetSwapInterval(1);
     SDL_GetWindowSize(win_, &w_, &h_);
 
@@ -59,7 +60,7 @@ void Window::onPresent(engine::Engine& eng) {
         for (int y = 0; y < h_; y++)
             std::copy_n(&px[(size_t)y * w_ * 4], (size_t)w_ * 4, &flipped[(size_t)(h_ - 1 - y) * w_ * 4]);
         SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(flipped.data(), w_, h_, 32, w_ * 4, SDL_PIXELFORMAT_ABGR8888);
-        if (s) { SDL_SaveBMP(s, shot.c_str()); SDL_FreeSurface(s); std::fprintf(stderr, "[window] saved %s\n", shot.c_str()); }
+        if (s) { SDL_SaveBMP(s, shot.c_str()); SDL_FreeSurface(s); LOG_I("window", "saved %s", shot.c_str()); }
     }
     SDL_GL_SwapWindow(win_);
 }

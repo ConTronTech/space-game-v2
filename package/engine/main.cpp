@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "engine/engine.h"
+#include "engine/log.h"
 
 // config/ and assets/ are found relative to the game folder. Move there so launching from another
 // directory (a shortcut, an IDE, `../space_game_v2`) does not silently lose all bindings and assets.
@@ -22,9 +23,9 @@ int main(int argc, char** argv) {
         engine::Engine e;
         return e.run(argc, argv);
     } catch (const std::exception& ex) {
-        std::fprintf(stderr, "[fatal] uncaught exception: %s\n", ex.what());
+        LOG_E("fatal", "uncaught exception: %s", ex.what());
     } catch (...) {
-        std::fprintf(stderr, "[fatal] uncaught unknown exception\n");
+        LOG_E("fatal", "uncaught unknown exception");
     }
     return 2;
 }

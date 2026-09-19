@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include "engine/engine.h"
+#include "engine/log.h"
 #include "engine/math.h"
 
 namespace core {
@@ -111,16 +112,16 @@ ImportHandler::Loaded ImportHandler::loadRaw(const std::string& path) {
     std::string ext = dot == std::string::npos ? "" : path.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     auto it = loaders_.find(ext);
-    if (it == loaders_.end()) { std::fprintf(stderr, "[import] no loader for '%s'\n", ext.c_str()); return {nullptr, typeid(void)}; }
+    if (it == loaders_.end()) { LOG_W("import", "no loader for '%s'", ext.c_str()); return {nullptr, typeid(void)}; }
 
     Loaded asset = it->second(root_ + path);
-    if (!asset.data) { std::fprintf(stderr, "[import] failed to load %s%s\n", root_.c_str(), path.c_str()); return {nullptr, typeid(void)}; }
+    if (!asset.data) { LOG_E("import", "failed to load %s%s", root_.c_str(), path.c_str()); return {nullptr, typeid(void)}; }
     cache_.insert_or_assign(path, asset);
     return asset;
 }
 
 void ImportHandler::reportTypeMismatch(const std::string& path) const {
-    std::fprintf(stderr, "[import] %s was loaded as a different type than requested\n", path.c_str());
+    LOG_W("import", "%s was loaded as a different type than requested", path.c_str());
 }
 
 REGISTER_MODULE(ImportHandler);

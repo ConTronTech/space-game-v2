@@ -40,7 +40,6 @@ public:
 
 private:
     bool loadModules();
-    void log(const char* fmt, ...) const;
 
     std::vector<std::unique_ptr<Module>> modules_; // final, dependency-sorted, initialised
     std::vector<std::string> args_;

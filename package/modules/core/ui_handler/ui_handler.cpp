@@ -8,6 +8,7 @@
 #include <sstream>
 #include "core/window/window.h"
 #include "engine/engine.h"
+#include "engine/log.h"
 #include "engine/json.h"
 
 namespace core {
@@ -27,12 +28,12 @@ static Color mix(const Color& a, const Color& b, float t) {
 bool UIHandler::init(engine::Engine& eng) {
     window_ = eng.services.get<Window>();
     if (!window_) return false;
-    if (TTF_Init() != 0) { std::fprintf(stderr, "[ui] TTF_Init: %s (text disabled)\n", TTF_GetError()); }
+    if (TTF_Init() != 0) { LOG_E("ui", "TTF_Init: %s (text disabled)", TTF_GetError()); }
     else {
         for (auto* p : kFontCandidates) {
             if (FILE* f = std::fopen(p, "rb")) { std::fclose(f); fontPath_ = p; break; }
         }
-        if (fontPath_.empty()) std::fprintf(stderr, "[ui] no font found - text disabled\n");
+        if (fontPath_.empty()) LOG_W("ui", "no font found - text disabled");
     }
     loadTheme();
     eng.services.provide<UIHandler>(this);
@@ -54,7 +55,7 @@ bool UIHandler::loadTheme(const std::string& path) {
     ss << f.rdbuf();
     std::string err;
     engine::Json j = engine::Json::parse(ss.str(), &err);
-    if (!j.isObject()) { std::fprintf(stderr, "[ui] %s: %s\n", path.c_str(), err.c_str()); return false; }
+    if (!j.isObject()) { LOG_E("ui", "%s: %s", path.c_str(), err.c_str()); return false; }
     auto col = [&](const char* key, Color& c) {
         const engine::Json& a = j[key];
         if (a.size() >= 3) c = {(float)a.at(0).num(), (float)a.at(1).num(), (float)a.at(2).num(), (float)a.at(3).num(1.0)};
