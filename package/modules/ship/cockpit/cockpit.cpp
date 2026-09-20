@@ -35,7 +35,7 @@ class CockpitModule : public engine::Module, public ICockpitScreens {
 public:
     const char* name() const override { return "ship/cockpit"; }
     std::vector<std::string> dependencies() const override { return {"core/render_engine", "core/import_handler"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"core/camera", "ship/cockpit_dev_ship", "ship/ship_core"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"core/camera", "ship/fake_ship", "ship/ship_core"}; }
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;

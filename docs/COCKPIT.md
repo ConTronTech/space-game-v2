@@ -14,7 +14,6 @@ package/modules/ship/cockpit/
   hud_layout.{h,cpp}       pure text/colour logic for those screens, unit-tested
   ship_registry.{h,cpp}    scans assets/models/ship/*/ship.json, picks the ship, unit-tested
   cockpit_light.h          light tunable parsing
-  dev_ship.cpp             ship/cockpit_dev_ship: stand-in ship::IShip, inert unless --cockpit-dev-ship is given
 package/tests/test_obj_parser.cpp, test_cockpit.cpp
 ```
 
@@ -108,13 +107,13 @@ If ship.json does not name a tag, `INFO`/`SYSTEMS`/`RADAR` map to the three cont
 The light source lives in one function (`CockpitModule::light()` in cockpit.cpp). When the world module exists and provides the star direction through a service, that function
 is the only place to change (rotate the world direction into view space).
 
-## Testing without a ship module: `--cockpit-dev-ship`
-Module `ship/cockpit_dev_ship` is inert unless the flag is given; then it provides a fake `ship::IShip`:
-`--cockpit-dev-ship=hp:35,shield:120,fuel:10,speed:87,warp:1,dead:1` (any key optional; bare `--cockpit-dev-ship` = healthy defaults; `maxhp` also accepted).
-It steps aside when a real `ship::IShip` exists. Heading follows the `ITransformSource` pose when one is published.
+## Testing the screens: `--fake-ship`
+`ship/fake_ship` (not part of this module) provides a fake `ship::IShip` when started with
+`--fake-ship=hp:35,shield:120,fuel:10,speed:42,hit:20,dead` (see its own docs). Without the flag the real `ship/ship_core` feeds the screens.
 ```
-SDL_AUDIODRIVER=dummy ./space_game_v2 --frames=40 --screenshot=/tmp/cockpit.bmp --screenshot-frame=20 --cockpit-dev-ship=hp:35,shield:120,fuel:10
+SDL_AUDIODRIVER=dummy ./space_game_v2 --frames=40 --screenshot=/tmp/cockpit.bmp --screenshot-frame=20 --fake-ship=hp:35,shield:120,fuel:10
 echo '{"camera.mode": 1}' > /tmp/chase.json      # chase view: no cockpit;  ... --settings=/tmp/chase.json
+./space_game_v2 --disable=ship/ship_core ...      # no IShip at all: screens say NO DATA (one warning)
 ```
 
 ## OBJ / MTL parser (`core/import_handler/obj_parser.h`)
