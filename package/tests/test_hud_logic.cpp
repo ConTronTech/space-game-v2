@@ -90,7 +90,7 @@ TEST(hud_dead_ship_shows_no_warning_banners) {
 TEST(hud_impact_fades_over_0_7_seconds) {
     HudState h;
     CHECK_EQ(h.impactAlpha(5.0), 0.0f);
-    h.onDamage(12.0f, "asteroid", 5.0);
+    h.onDamage(12.0f, 0.0f, "asteroid", 5.0);
     CHECK(h.impactAlpha(5.0) > 0.99f);
     float mid = h.impactAlpha(5.35);
     CHECK(mid > 0.45f && mid < 0.55f);
@@ -105,4 +105,29 @@ TEST(hud_shield_and_fuel_bars_keep_colour_then_warn) {
     CHECK(low.r > 0.9f && low.g < 0.3f);
     RGB amber = barColor(Bar::Shield, 0.15f);
     CHECK(amber.r > 0.9f && amber.g > 0.6f);
+}
+
+TEST(hud_impact_total_includes_shield_absorption) {
+    HudState h;
+    h.onDamage(0.0f, 10.0f, "asteroid", 1.0);           // all absorbed
+    CHECK_EQ(h.impactAmount(), 10.0f);
+    CHECK(h.impactShielded());
+    CHECK_EQ(impactText(h.impactAmount(), h.impactSource(), h.impactShielded()), std::string("IMPACT  10  ASTEROID  (SHIELD)"));
+    h.onDamage(4.0f, 6.0f, "rock", 2.0);                // partly absorbed
+    CHECK_EQ(h.impactAmount(), 10.0f);
+    CHECK(h.impactShielded());
+    CHECK_EQ(impactText(h.impactAmount(), h.impactSource(), h.impactShielded()), std::string("IMPACT  10  ROCK  (SHIELD)"));
+    h.onDamage(10.0f, 0.0f, "asteroid", 3.0);           // none absorbed
+    CHECK_EQ(h.impactAmount(), 10.0f);
+    CHECK(!h.impactShielded());
+    CHECK_EQ(impactText(h.impactAmount(), h.impactSource(), h.impactShielded()), std::string("IMPACT  10  ASTEROID"));
+}
+
+TEST(hud_impact_severity_scales_with_total) {
+    HudState h;
+    h.onDamage(0.0f, 5.0f, "a", 1.0);
+    float small = h.impactSeverity();
+    h.onDamage(30.0f, 30.0f, "a", 2.0);
+    CHECK(h.impactSeverity() > small);
+    CHECK_EQ(h.impactSeverity(), 1.0f);
 }

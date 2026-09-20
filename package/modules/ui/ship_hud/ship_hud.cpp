@@ -17,7 +17,7 @@ public:
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
         ui_ = &eng.services.require<core::UIHandler>();
-        eng.events.subscribe<ship::DamageTaken>([this](const ship::DamageTaken& e) { state_.onDamage(e.amount, e.source, eng_->time()); });
+        eng.events.subscribe<ship::DamageTaken>([this](const ship::DamageTaken& e) { state_.onDamage(e.amount, e.absorbedByShield, e.source, eng_->time()); });
         eng.events.subscribe<ship::ShieldBroken>([this](const ship::ShieldBroken&) { state_.onShieldBroken(eng_->time()); });
         eng.events.subscribe<ship::FuelEmpty>([this](const ship::FuelEmpty&) { state_.onFuelEmpty(eng_->time()); });
         eng.events.subscribe<ship::Respawned>([this](const ship::Respawned&) { state_.onRespawned(); });
@@ -75,12 +75,12 @@ private:
 
         // hit flash: a faint red edge plus the IMPACT banner, fading over ~0.7 s
         float ia = state_.impactAlpha(now);
-        if (ia > 0 && st.alive) ui.vignette({1.0f, 0.15f, 0.1f, 0.35f * ia}, 90 * s);
+        if (ia > 0 && st.alive) ui.vignette({1.0f, 0.15f, 0.1f, 0.5f * state_.impactSeverity() * ia}, 90 * s);
 
         // warning banners, stacked from the top centre (the impact banner sits above them)
         float by = L.bannerY;
         if (ia > 0 && st.alive) {
-            drawBanner(ui, L, by, hud::impactText(state_.impactAmount(), state_.impactSource()), {1.0f, 0.5f, 0.4f}, ia);
+            drawBanner(ui, L, by, hud::impactText(state_.impactAmount(), state_.impactSource(), state_.impactShielded()), {1.0f, 0.5f, 0.4f}, ia);
             by += L.bannerH + L.bannerGap;
         }
         hud::Snapshot snap{st.hp, st.maxHp, st.warpFuel, st.maxWarpFuel, st.alive};

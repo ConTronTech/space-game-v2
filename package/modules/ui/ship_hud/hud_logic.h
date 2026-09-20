@@ -86,14 +86,20 @@ struct Snapshot { float hp = 100, maxHp = 100, warpFuel = 100, maxWarpFuel = 100
 
 class HudState {
 public:
-    void onDamage(float amount, const std::string& source, double now) { impactAmount_ = amount; impactSource_ = source; impactAt_ = now; }
+    // amount = what reached the hull, absorbedByShield = what the shield took (ship::DamageTaken); the HUD shows the total.
+    void onDamage(float amount, float absorbedByShield, const std::string& source, double now) {
+        impactAmount_ = amount + absorbedByShield; impactShielded_ = absorbedByShield > 0; impactSource_ = source; impactAt_ = now;
+    }
     void onShieldBroken(double now) { shieldBrokenAt_ = now; }
     void onFuelEmpty(double now) { fuelEmptyAt_ = now; }
     void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
     float impactAlpha(double now) const { return timedAlpha(impactAt_, now, kImpactSeconds); }
-    float impactAmount() const { return impactAmount_; }
+    float impactAmount() const { return impactAmount_; }        // total hit: hull + shield part
+    bool impactShielded() const { return impactShielded_; }     // the shield took any of it
+    // 0.3 .. 1: how strong the red edge is (a 40+ hit is full strength)
+    float impactSeverity() const { return clamp01(0.3f + impactAmount_ / 40.0f * 0.7f); }
     const std::string& impactSource() const { return impactSource_; }
 
     // Active warning banners, most urgent first. A dead ship shows none (the destroyed screen replaces them).
@@ -116,14 +122,16 @@ private:
     }
     double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever;
     float impactAmount_ = 0;
+    bool impactShielded_ = false;
     std::string impactSource_;
 };
 
-inline std::string impactText(float amount, const std::string& source) {
+inline std::string impactText(float amount, const std::string& source, bool shielded = false) {
     char b[96];
     std::snprintf(b, sizeof b, "IMPACT  %.0f", amount);
     std::string s = b;
     if (!source.empty()) { std::string up = source; for (auto& c : up) c = (char)std::toupper((unsigned char)c); s += "  " + up; }
+    if (shielded) s += "  (SHIELD)";
     return s;
 }
 
