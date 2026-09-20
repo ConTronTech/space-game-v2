@@ -35,7 +35,7 @@ modules: $(TARGET)
 	./$(TARGET) --list-modules
 
 # Unit tests: engine + input handler logic + package/tests, no SDL/GL needed.
-TEST_SRCS = $(shell find package/tests -name '*.cpp') $(filter-out package/engine/main.cpp,$(wildcard package/engine/*.cpp)) package/modules/core/input_handler/input_handler.cpp package/modules/core/settings/settings.cpp package/modules/core/save_system/save_system.cpp package/modules/core/data_registry/data_registry.cpp package/modules/core/physics_world/physics_world.cpp
+TEST_SRCS = $(shell find package/tests -name '*.cpp') $(filter-out package/engine/main.cpp,$(wildcard package/engine/*.cpp)) package/modules/core/input_handler/input_handler.cpp package/modules/core/settings/settings.cpp package/modules/core/save_system/save_system.cpp package/modules/core/data_registry/data_registry.cpp package/modules/core/physics_world/physics_world.cpp package/modules/core/import_handler/obj_parser.cpp $(addprefix package/modules/ship/cockpit/,stroke_font.cpp hud_layout.cpp ship_registry.cpp)
 TEST_OBJS = $(TEST_SRCS:%.cpp=$(BUILD)/%.o)
 
 $(BUILD)/test_runner: $(TEST_OBJS)

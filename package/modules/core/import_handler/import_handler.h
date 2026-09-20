@@ -13,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "core/import_handler/obj_parser.h"
 #include "engine/module.h"
 
 namespace core {
@@ -20,6 +21,8 @@ namespace core {
 struct Mesh {                       // flat triangle list
     std::vector<float> positions;   // xyz per vertex
     std::vector<float> normals;     // xyz per vertex
+    std::vector<float> colors;      // rgba per vertex from the .mtl (Kd, d); empty when the source had no colours
+    std::vector<TaggedQuad> tagged; // faces of '@' materials (custom content), NOT part of the arrays above - see obj_parser.h
 };
 struct Texture { GLuint id = 0; int w = 0, h = 0; };
 struct TextAsset { std::string text; };

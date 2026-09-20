@@ -1,59 +1,23 @@
 #include "core/import_handler/import_handler.h"
 #include <SDL2/SDL_image.h>
 #include <algorithm>
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include "engine/engine.h"
 #include "engine/log.h"
-#include "engine/math.h"
 
 namespace core {
 
 // ---- built-in loaders ----
 static std::shared_ptr<Mesh> loadObj(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return nullptr;
-    std::vector<engine::Vec3> v, vn;
+    ObjParseResult r;
+    if (!parseObjFile(path, r)) return nullptr;
+    for (auto& w : r.warnings) LOG_W("import", "%s: %s", path.c_str(), w.c_str());
     auto mesh = std::make_shared<Mesh>();
-    std::string line;
-    while (std::getline(f, line)) {
-        std::istringstream ss(line);
-        std::string tag;
-        ss >> tag;
-        if (tag == "v")  { engine::Vec3 p; ss >> p.x >> p.y >> p.z; v.push_back(p); }
-        else if (tag == "vn") { engine::Vec3 n; ss >> n.x >> n.y >> n.z; vn.push_back(n); }
-        else if (tag == "f") {
-            struct Idx { int v = 0, n = 0; };
-            std::vector<Idx> face;
-            std::string tok;
-            while (ss >> tok) {
-                Idx i;
-                size_t a = tok.find('/');
-                i.v = std::atoi(tok.substr(0, a).c_str());
-                size_t b = a == std::string::npos ? a : tok.find('/', a + 1);
-                if (b != std::string::npos) i.n = std::atoi(tok.substr(b + 1).c_str());
-                if (i.v < 0) i.v += (int)v.size() + 1;   // negative = relative index
-                if (i.n < 0) i.n += (int)vn.size() + 1;
-                face.push_back(i);
-            }
-            for (size_t k = 1; k + 1 < face.size(); k++) { // fan-triangulate
-                Idx tri[3] = {face[0], face[k], face[k + 1]};
-                engine::Vec3 fn;
-                bool ok = true;
-                for (auto& t : tri) if (t.v < 1 || t.v > (int)v.size()) ok = false;
-                if (!ok) continue;
-                fn = engine::normalize(engine::cross(v[tri[1].v - 1] - v[tri[0].v - 1],
-                                                     v[tri[2].v - 1] - v[tri[0].v - 1]));
-                for (auto& t : tri) {
-                    auto p = v[t.v - 1];
-                    auto n = (t.n >= 1 && t.n <= (int)vn.size()) ? vn[t.n - 1] : fn;
-                    mesh->positions.insert(mesh->positions.end(), {p.x, p.y, p.z});
-                    mesh->normals.insert(mesh->normals.end(), {n.x, n.y, n.z});
-                }
-            }
-        }
-    }
+    mesh->positions = std::move(r.positions);
+    mesh->normals = std::move(r.normals);
+    mesh->colors = std::move(r.colors);
+    mesh->tagged = std::move(r.tagged);
     return mesh;
 }
 
