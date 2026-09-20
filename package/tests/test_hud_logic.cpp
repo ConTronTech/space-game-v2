@@ -131,3 +131,38 @@ TEST(hud_impact_severity_scales_with_total) {
     CHECK(h.impactSeverity() > small);
     CHECK_EQ(h.impactSeverity(), 1.0f);
 }
+
+TEST(hud_overlay_mode_parsing) {
+    CHECK(parseOverlayMode("minimal").mode == OverlayMode::Minimal && !parseOverlayMode("minimal").unknown);
+    CHECK(parseOverlayMode("full").mode == OverlayMode::Full && !parseOverlayMode("full").unknown);
+    CHECK(parseOverlayMode("hidden").mode == OverlayMode::Hidden && !parseOverlayMode("hidden").unknown);
+    CHECK(parseOverlayMode("bogus").mode == OverlayMode::Minimal && parseOverlayMode("bogus").unknown);
+    CHECK(parseOverlayMode("").unknown);
+}
+
+TEST(hud_overlay_plan_all_modes) {
+    // default UI shown (chase view / no screens / no cockpit): everything, whatever the mode
+    for (auto m : {OverlayMode::Minimal, OverlayMode::Full, OverlayMode::Hidden}) {
+        OverlayPlan p = overlayPlan(m, true);
+        CHECK(p.speed && p.bars && p.crosshair && p.banners && p.vignette && p.hint && p.destroyed);
+    }
+    OverlayPlan full = overlayPlan(OverlayMode::Full, false);
+    CHECK(full.speed && full.bars && full.crosshair && full.banners && full.vignette && full.hint && full.destroyed);
+    OverlayPlan mn = overlayPlan(OverlayMode::Minimal, false);
+    CHECK(!mn.speed && !mn.bars);
+    CHECK(mn.crosshair && mn.banners && mn.vignette && mn.hint && mn.destroyed);
+    OverlayPlan hid = overlayPlan(OverlayMode::Hidden, false);
+    CHECK(!hid.speed && !hid.bars && !hid.crosshair && !hid.banners && !hid.hint);
+    CHECK(hid.vignette && hid.destroyed);
+}
+
+TEST(hud_hint_alpha_fade_edges) {
+    CHECK_EQ(hintAlpha(0.0, 20.0f), 1.0f);
+    CHECK_EQ(hintAlpha(19.9, 20.0f), 1.0f);
+    CHECK_EQ(hintAlpha(20.0, 20.0f), 1.0f);            // exactly at N: still full
+    CHECK_EQ(hintAlpha(21.0, 20.0f), 0.5f);            // N+1: halfway
+    CHECK_EQ(hintAlpha(22.0, 20.0f), 0.0f);            // N+2: gone
+    CHECK_EQ(hintAlpha(500.0, 20.0f), 0.0f);
+    CHECK_EQ(hintAlpha(0.0, 0.0f), 1.0f);              // seconds = 0: never fades
+    CHECK_EQ(hintAlpha(1e6, 0.0f), 1.0f);
+}

@@ -126,6 +126,37 @@ private:
     std::string impactSource_;
 };
 
+// ---- cockpit overlay mode (hud.cockpit_overlay) ----
+// While the cockpit model's own screens show speed/bars, the flat overlay is trimmed. When the default UI is shown
+// (chase view, no screens, no cockpit) everything is drawn whatever the mode says.
+enum class OverlayMode { Minimal, Full, Hidden };
+struct ParsedMode { OverlayMode mode = OverlayMode::Minimal; bool unknown = false; };
+
+inline ParsedMode parseOverlayMode(const std::string& s) {
+    if (s == "minimal") return {OverlayMode::Minimal, false};
+    if (s == "full") return {OverlayMode::Full, false};
+    if (s == "hidden") return {OverlayMode::Hidden, false};
+    return {OverlayMode::Minimal, true};
+}
+
+struct OverlayPlan { bool speed = true, bars = true, crosshair = true, banners = true, vignette = true, hint = true, destroyed = true; };
+
+inline OverlayPlan overlayPlan(OverlayMode mode, bool showsDefaultUI) {
+    OverlayPlan p;                                         // everything on
+    if (showsDefaultUI || mode == OverlayMode::Full) return p;
+    p.speed = p.bars = false;                              // minimal: that data lives on the ship's screens
+    if (mode == OverlayMode::Hidden) p.crosshair = p.banners = p.hint = false;
+    return p;
+}
+
+// Controls hint opacity: 1 for the first 'seconds' of engine time, then linear 1 -> 0 over kHintFadeSeconds. seconds <= 0: always 1.
+constexpr float kHintFadeSeconds = 2.0f;
+inline float hintAlpha(double now, float seconds) {
+    if (seconds <= 0) return 1.0f;
+    if (now <= seconds) return 1.0f;
+    return clamp01(1.0f - (float)((now - seconds) / kHintFadeSeconds));
+}
+
 inline std::string impactText(float amount, const std::string& source, bool shielded = false) {
     char b[96];
     std::snprintf(b, sizeof b, "IMPACT  %.0f", amount);

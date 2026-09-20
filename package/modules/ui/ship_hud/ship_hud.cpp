@@ -5,6 +5,7 @@
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "ship/cockpit/cockpit_screens_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/ship_hud/hud_logic.h"
 
@@ -12,7 +13,7 @@ class ShipHud : public engine::Module {
 public:
     const char* name() const override { return "ui/ship_hud"; }
     std::vector<std::string> dependencies() const override { return {"core/ui_handler"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship", "ship/cockpit"}; }
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
@@ -21,6 +22,11 @@ public:
         eng.events.subscribe<ship::ShieldBroken>([this](const ship::ShieldBroken&) { state_.onShieldBroken(eng_->time()); });
         eng.events.subscribe<ship::FuelEmpty>([this](const ship::FuelEmpty&) { state_.onFuelEmpty(eng_->time()); });
         eng.events.subscribe<ship::Respawned>([this](const ship::Respawned&) { state_.onRespawned(); });
+        auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
+            "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
+        if (parsed.unknown) LOG_W("ship_hud", "hud.cockpit_overlay: unknown value, using 'minimal' (valid: minimal, full, hidden)");
+        mode_ = parsed.mode;
+        hintSeconds_ = eng.config.get("hud.hint_seconds", 20.0f, "seconds the controls hint is shown at full opacity before it fades out over 2 s (0 = never fade)");
         ui_->addPanel("ui/ship_hud", 10, [this](core::UIHandler& ui) { draw(ui); });
         return true;
     }
@@ -37,34 +43,40 @@ private:
         }
         const ship::ShipStatus& st = ship->status();
         double now = eng_->time();
+        auto* screens = eng_->services.get<cockpit::ICockpitScreens>();
+        const hud::OverlayPlan plan = hud::overlayPlan(mode_, screens ? screens->showsDefaultUI() : true);
         const int W = ui.width(), H = ui.height();
         hud::Layout L = hud::computeLayout(W, H, st.shieldInstalled ? 3 : 2);
         const float s = L.scale;
         const int fSmall = (int)std::round(12 * s), fBig = (int)std::round(22 * s), fBar = (int)std::round(12 * s);
 
         // speed
-        char buf[64];
-        std::snprintf(buf, sizeof buf, "%.1f m/s", st.speed);
-        ui.glass(L.speed.x, L.speed.y, L.speed.w, L.speed.h);
-        ui.text(L.speed.x + 16 * s, L.speed.y + 6 * s, "SPEED", fSmall, ui.theme.textDim);
-        ui.text(L.speed.x + 16 * s, L.speed.y + 22 * s, buf, fBig, ui.theme.accent);
+        if (plan.speed) {
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "%.1f m/s", st.speed);
+            ui.glass(L.speed.x, L.speed.y, L.speed.w, L.speed.h);
+            ui.text(L.speed.x + 16 * s, L.speed.y + 6 * s, "SPEED", fSmall, ui.theme.textDim);
+            ui.text(L.speed.x + 16 * s, L.speed.y + 22 * s, buf, fBig, ui.theme.accent);
+        }
 
         // bars
-        ui.glass(L.bars.x, L.bars.y, L.bars.w, L.bars.h);
-        float y = L.bars.y + L.barPad;
-        auto row = [&](const char* label, float cur, float max, hud::Bar kind) {
-            float f = hud::fraction(cur, max);
-            float lw = 46 * s, bx = L.bars.x + 12 * s + lw, bw = L.bars.w - 24 * s - lw, bh = 10 * s;
-            ui.text(L.bars.x + 12 * s, y + (L.barRowH - fBar * 1.3f) / 2, label, fBar, ui.theme.textDim);
-            ui.bar(bx, y + (L.barRowH - bh) / 2, bw, bh, f, col(hud::barColor(kind, f), 0.95f));
-            y += L.barRowH;
-        };
-        row("HULL", st.hp, st.maxHp, hud::Bar::Hp);
-        if (st.shieldInstalled) row("SHLD", st.shield, st.maxShield, hud::Bar::Shield);
-        row("WARP", st.warpFuel, st.maxWarpFuel, hud::Bar::Fuel);
+        if (plan.bars) {
+            ui.glass(L.bars.x, L.bars.y, L.bars.w, L.bars.h);
+            float y = L.bars.y + L.barPad;
+            auto row = [&](const char* label, float cur, float max, hud::Bar kind) {
+                float f = hud::fraction(cur, max);
+                float lw = 46 * s, bx = L.bars.x + 12 * s + lw, bw = L.bars.w - 24 * s - lw, bh = 10 * s;
+                ui.text(L.bars.x + 12 * s, y + (L.barRowH - fBar * 1.3f) / 2, label, fBar, ui.theme.textDim);
+                ui.bar(bx, y + (L.barRowH - bh) / 2, bw, bh, f, col(hud::barColor(kind, f), 0.95f));
+                y += L.barRowH;
+            };
+            row("HULL", st.hp, st.maxHp, hud::Bar::Hp);
+            if (st.shieldInstalled) row("SHLD", st.shield, st.maxShield, hud::Bar::Shield);
+            row("WARP", st.warpFuel, st.maxWarpFuel, hud::Bar::Fuel);
+        }
 
         // crosshair (gap in the middle, thin arms)
-        if (st.alive) {
+        if (st.alive && plan.crosshair) {
             float g = 4 * s, r = L.crossR, t = std::max(1.0f, s);
             core::Color c = ui.theme.text; c.a = 0.75f;
             ui.rect(L.cx - g - r, L.cy - t / 2, r, t, c.r, c.g, c.b, c.a);
@@ -75,16 +87,16 @@ private:
 
         // hit flash: a faint red edge plus the IMPACT banner, fading over ~0.7 s
         float ia = state_.impactAlpha(now);
-        if (ia > 0 && st.alive) ui.vignette({1.0f, 0.15f, 0.1f, 0.5f * state_.impactSeverity() * ia}, 90 * s);
+        if (ia > 0 && st.alive && plan.vignette) ui.vignette({1.0f, 0.15f, 0.1f, 0.5f * state_.impactSeverity() * ia}, 90 * s);
 
         // warning banners, stacked from the top centre (the impact banner sits above them)
         float by = L.bannerY;
-        if (ia > 0 && st.alive) {
+        if (ia > 0 && st.alive && plan.banners) {
             drawBanner(ui, L, by, hud::impactText(state_.impactAmount(), state_.impactSource(), state_.impactShielded()), {1.0f, 0.5f, 0.4f}, ia);
             by += L.bannerH + L.bannerGap;
         }
         hud::Snapshot snap{st.hp, st.maxHp, st.warpFuel, st.maxWarpFuel, st.alive};
-        for (auto& b : state_.banners(snap, now)) {
+        if (plan.banners) for (auto& b : state_.banners(snap, now)) {
             hud::RGB c = (b.kind == hud::Warn::LowHp || b.kind == hud::Warn::FuelEmpty) ? hud::RGB{1.0f, 0.35f, 0.3f} : hud::RGB{1.0f, 0.75f, 0.25f};
             drawBanner(ui, L, by, b.text, c, b.alpha);
             by += L.bannerH + L.bannerGap;
@@ -92,12 +104,16 @@ private:
 
         // controls hint (kept from the old demo HUD, plus V camera)
         const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
-        int hf = hud::fitHint(L, W, [&](const std::string& t, int sz) { return ui.textWidth(t, sz); }, hint);
-        ui.glass(L.hint.x, L.hint.y, L.hint.w, L.hint.h, 0.9f, false, 10 * s);
-        ui.textCentered(W / 2.0f, L.hint.y + (L.hint.h - hf * 1.3f) / 2, hint, hf, ui.theme.textDim);
+        float ha = plan.hint ? hud::hintAlpha(now, hintSeconds_) : 0.0f;
+        if (ha > 0) {
+            int hf = hud::fitHint(L, W, [&](const std::string& t, int sz) { return ui.textWidth(t, sz); }, hint);
+            ui.glass(L.hint.x, L.hint.y, L.hint.w, L.hint.h, 0.9f * ha, false, 10 * s);
+            core::Color hc = ui.theme.textDim; hc.a *= ha;
+            ui.textCentered(W / 2.0f, L.hint.y + (L.hint.h - hf * 1.3f) / 2, hint, hf, hc);
+        }
 
         // destroyed
-        if (!st.alive) {
+        if (!st.alive && plan.destroyed) {
             ui.vignette({0.8f, 0.0f, 0.0f, 0.75f}, std::min(W, H) * 0.45f);
             ui.rect(0, 0, (float)W, (float)H, 0.25f, 0.0f, 0.0f, 0.25f);
             ui.textCentered(W / 2.0f, H * 0.42f, "SHIP DESTROYED", (int)std::round(44 * s), {1.0f, 0.3f, 0.25f, 1.0f});
@@ -115,6 +131,8 @@ private:
     core::UIHandler* ui_ = nullptr;
     hud::HudState state_;
     bool warned_ = false;
+    hud::OverlayMode mode_ = hud::OverlayMode::Minimal;
+    float hintSeconds_ = 20.0f;
 };
 
 REGISTER_MODULE(ShipHud);
