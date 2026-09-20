@@ -177,6 +177,9 @@ private:
         auto rowY = [&](int r) { return py + head + r * (itemH + gap); };
         if (emptyLoad) ui.textCentered(W / 2, rowY(0) + 16, "No saved games yet", 16, ui.theme.textDim);
 
+        // A click must NOT change the page/lists while we are still drawing rows of the old page (the loop would then index the new
+        // page's arrays with the old page's row numbers: out-of-bounds). Record the click and act on it after the loop.
+        int pending = -1;
         for (int i = 0; i < n; i++) {
             float iy = rowY(i + (emptyLoad ? 1 : 0));
             if (moved && ui.hovered(ix, iy, iw, itemH) && focus_ != i) { focus_ = i; sound("ui_click", 0.5f); }
@@ -184,10 +187,10 @@ private:
 
             if (page_ == Page::Main) {
                 static const char* labels[] = {"Resume", "Save Game", "Load Game", "Settings", "Exit Game"};
-                if (ui.button(labels[(int)main_[(size_t)i]], ix, iy, iw, itemH, f)) activate(i);
+                if (ui.button(labels[(int)main_[(size_t)i]], ix, iy, iw, itemH, f)) pending = i;
             } else if (page_ == Page::Load) {
-                if (i == (int)slots_.size()) { if (ui.button("Back", ix, iy, iw, itemH, f)) activate(i); }
-                else if (ui.button(when(slots_[(size_t)i].time), ix, iy, iw, itemH, f)) activate(i);
+                if (i == (int)slots_.size()) { if (ui.button("Back", ix, iy, iw, itemH, f)) pending = i; }
+                else if (ui.button(when(slots_[(size_t)i].time), ix, iy, iw, itemH, f)) pending = i;
             } else {
                 switch (rows_[(size_t)i]) {
                     case Row::Fov: {
@@ -227,11 +230,13 @@ private:
                         break;
                     }
                     case Row::Back:
-                        if (ui.button("Back", ix, iy, iw, itemH, f)) activate(i);
+                        if (ui.button("Back", ix, iy, iw, itemH, f)) pending = i;
                         break;
                 }
             }
         }
+
+        if (pending >= 0) activate(pending);
 
         if (!status_.empty())
             ui.textCentered(W / 2, py + ph - pad - 14, status_, 15, statusOk_ ? ui.theme.accent : core::Color{1.0f, 0.45f, 0.4f, 1.0f});

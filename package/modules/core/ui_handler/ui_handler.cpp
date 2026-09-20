@@ -82,9 +82,25 @@ void UIHandler::removePanel(const std::string& name) {
 }
 
 // ---------------- frame ----------------
-void UIHandler::onFrameBegin(engine::Engine&) {
+void UIHandler::onFrameBegin(engine::Engine& eng) {
     Uint32 b = SDL_GetMouseState(&mx_, &my_);
     bool down = (b & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    // Dev aid for repeatable UI tests without touching the real mouse:  --ui-click=X,Y,FRAME[;X,Y,FRAME...]
+    // presses the left button at pixel (X,Y) during that frame only (e.g. to click menu items in a screenshot/ASan run).
+    if (!injectParsed_) {
+        injectParsed_ = true;
+        std::string v = eng.flagValue("ui-click");
+        size_t pos = 0;
+        while (pos < v.size()) {
+            size_t end = v.find(';', pos);
+            std::string one = v.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+            int x, y; long f;
+            if (std::sscanf(one.c_str(), "%d,%d,%ld", &x, &y, &f) == 3) injectClicks_.push_back({x, y, f});
+            if (end == std::string::npos) break;
+            pos = end + 1;
+        }
+    }
+    for (auto& c : injectClicks_) if ((long)eng.frame() == c.frame) { mx_ = c.x; my_ = c.y; down = true; }
     if (down && !mouseDown_) clicked_ = true;
     mouseDown_ = down;
     if (!mouseDown_) activeSlider_.clear();

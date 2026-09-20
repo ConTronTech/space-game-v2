@@ -20,6 +20,11 @@ out=$(mktemp -d)
 SDL_AUDIODRIVER=dummy ./space_game_v2 --frames=60 --paused --screenshot="$out/shot.bmp" --screenshot-frame=30 2>"$out/log" \
     || fail "game exited non-zero (see $out/log)"
 [ -s "$out/shot.bmp" ] || fail "no screenshot written"
+# Menu click regression: clicking "Load Game" (row 3 at 1280x720) used to segfault when the save list was empty, because the page
+# changed in the middle of drawing the rows. --ui-click injects the click without touching the real mouse.
+mkdir -p "$out/nosaves"
+SDL_AUDIODRIVER=dummy ./space_game_v2 --frames=40 --paused --ui-click=640,388,10 --saves="$out/nosaves" --settings="$out/settings.json" >/dev/null 2>&1 \
+    || fail "clicking Load Game in the pause menu crashed"
 grep -q "audio\] ready" "$out/log" || { cat "$out/log"; fail "audio did not initialise (dummy driver)"; }
 grep -qi "failed\|threw\|skipped" "$out/log" && { cat "$out/log"; fail "module problem in log"; }
 

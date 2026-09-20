@@ -93,6 +93,9 @@ private:
     int mx_ = 0, my_ = 0;
     bool mouseDown_ = false, clicked_ = false;
     std::string activeSlider_;
+    struct InjectedClick { int x, y; long frame; };
+    bool injectParsed_ = false;            // --ui-click dev aid (see onFrameBegin)
+    std::vector<InjectedClick> injectClicks_;
 };
 
 } // namespace core
