@@ -31,3 +31,22 @@ Keys: `hp`, `shield` (installs the shield; `0` = broken), `fuel`, `speed`, `hit:
 ./space_game_v2 --fake-ship=hp:0,dead                   # SHIP DESTROYED
 ```
 (`--disable=gameplay/flight` hides the old demo HUD, which draws on top of this one until ship_core replaces it.)
+
+## On the ship: cockpit overlay modes
+The default setup is the cockpit ship model, whose own screens (INFO / SYSTEMS / RADAR) already show speed, hull/shield/fuel and radar.
+Each frame the HUD looks up `cockpit::ICockpitScreens` (optional; `ship/cockpit`, see `ship/cockpit/cockpit_screens_api.h`).
+- `showsDefaultUI()` **true** (chase view, ship model without screens, cockpit off) or no service: everything is drawn as described above, whatever the tunable says.
+- `showsDefaultUI()` **false** (the ship's screens are visible): the tunable `hud.cockpit_overlay` (in `config/game.json`) decides:
+
+| Mode | Speed + bars | Crosshair | IMPACT / warning banners | Hint | Hit vignette + SHIP DESTROYED |
+|---|---|---|---|---|---|
+| `minimal` (default) | hidden | yes | yes | yes (fades) | yes |
+| `full` | yes | yes | yes | yes (fades) | yes |
+| `hidden` | hidden | hidden | hidden | hidden | yes |
+
+An unknown value logs one warning and uses `minimal`.
+
+## Controls hint fade
+The hint shows at full opacity for the first `hud.hint_seconds` (default 20, engine time) and then fades out over 2 s. `0` = never fade.
+
+The decisions are pure functions in `hud_logic.h` (`parseOverlayMode`, `overlayPlan`, `hintAlpha`), unit-tested for every mode x `showsDefaultUI` combination and the fade edges.
