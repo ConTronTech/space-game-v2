@@ -108,3 +108,17 @@ Survival pressure (fuel decay, hull wear, O2, heat) slots in at step 2.1 as smal
 5. If it has state worth keeping, register it as saveable (after 1.3).
 6. `package/tools/smoke.sh` (after 0.2), then commit: `feat(<module>): ...`.
 7. Tick the box here.
+
+---
+
+## Parked ideas (later - NOT being built now)
+Added 2026-09-20 at the user's request. Nothing here is scheduled; it only shapes small habits while the game is built.
+Note: the old game's design doc listed multiplayer under "what this does NOT need"; the user has since decided to want it later.
+
+| Idea | What it could mean | Keep this true while building now |
+|---|---|---|
+| **Local multiplayer** | Shared-machine play (split-screen / couch co-op) and/or LAN. Which one is undecided - ask before planning. | Game state lives inside modules and is saved through `ISaveable` (that is also what you would sync). The simulation runs on a fixed step (`onFixedUpdate`) so it can be made deterministic. Nothing assumes exactly one ship or one camera or one input source (`IInput` actions, `ICamera`, `IShip` are services, so a second instance is possible). |
+| **Mobile app** (Android / iOS) | SDL2 runs on both, but the renderer is desktop OpenGL 2.1 fixed-function and mobile needs OpenGL ES 2, so drawing would need porting. Touch controls become another input-method module. | Input stays action-based (`config/input/*.json` + `InputMethod` modules), so touch is one new device. Draw code stays behind `RenderEngine` passes / `UIHandler`, not scattered. Keep game logic free of SDL/GL (pure headers with tests, as done so far). The 167 MB `assets/` skybox PNGs would need compressing. |
+| **Browser build** (a "try the game" branch) | Emscripten / WebAssembly with WebGL. SDL2, SDL_mixer and SDL_ttf all have Emscripten ports. Fixed-function GL needs an emulation layer or a port. Assets must be small enough to download. | Avoid new Linux-only code outside `core/window` and `engine/main.cpp` (today `main.cpp` uses `/proc/self/exe`, which is Linux-only; note it). No threads, no raw file paths in modules (go through `ImportHandler` / config paths). Keep `assets/` sizes in mind. |
+
+When any of these is picked up: start with a spike branch (`web/`, `mobile/`), not on `main`, and decide the renderer question (GL 2.1 vs GLES2/WebGL) first, since it decides the cost of both the mobile and browser builds.
