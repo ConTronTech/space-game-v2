@@ -198,6 +198,41 @@ void UIHandler::glass(float x, float y, float w, float h, float alpha, bool focu
     glEnd();
 }
 
+void UIHandler::bar(float x, float y, float w, float h, float frac, const Color& fill) {
+    frac = std::clamp(frac, 0.0f, 1.0f);
+    float r = h / 2;
+    Color track{0.02f, 0.04f, 0.08f, 0.55f};
+    roundedRect(x, y, w, h, r, track, track);
+    if (frac > 0) {
+        float fw = std::max(h, w * frac);      // keep the cap round even at tiny values
+        Color top = mix(fill, Color{1, 1, 1, fill.a}, 0.35f), bot = mix(fill, Color{0, 0, 0, fill.a}, 0.15f);
+        roundedRect(x, y, fw, h, r, top, bot);
+    }
+    Color bc = theme.border; bc.a *= 0.8f;
+    std::vector<std::pair<float, float>> pts;
+    outline(pts, x, y, w, h, r);
+    glLineWidth(1.0f);
+    glColor4f(bc.r, bc.g, bc.b, bc.a);
+    glBegin(GL_LINE_LOOP);
+    for (auto& p : pts) glVertex2f(p.first, p.second);
+    glEnd();
+}
+
+void UIHandler::vignette(const Color& c, float t) {
+    float W = (float)w_, H = (float)h_;
+    auto quad = [&](float x0, float y0, float x1, float y1, float a0, float a1, bool horizontal) {
+        glBegin(GL_QUADS);
+        glColor4f(c.r, c.g, c.b, a0); glVertex2f(x0, y0);
+        if (horizontal) { glColor4f(c.r, c.g, c.b, a1); glVertex2f(x1, y0); glVertex2f(x1, y1); glColor4f(c.r, c.g, c.b, a0); glVertex2f(x0, y1); }
+        else            { glVertex2f(x1, y0); glColor4f(c.r, c.g, c.b, a1); glVertex2f(x1, y1); glVertex2f(x0, y1); }
+        glEnd();
+    };
+    quad(0, 0, W, t, c.a, 0, false);            // top
+    quad(0, H, W, H - t, c.a, 0, false);        // bottom (y1 < y0: same winding trick is fine, no culling in 2D)
+    quad(0, 0, t, H, c.a, 0, true);             // left
+    quad(W, 0, W - t, H, c.a, 0, true);         // right
+}
+
 TTF_Font* UIHandler::font(int size) {
     if (fontPath_.empty()) return nullptr;
     TTF_Font*& f = fonts_[size];

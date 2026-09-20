@@ -65,6 +65,12 @@ public:
     // 'alpha' scales the whole thing; 'focused' tints it with the accent color.
     void glass(float x, float y, float w, float h, float alpha = 1.0f, bool focused = false, float radius = -1);
 
+    // ---- HUD widgets (additive) ----
+    // Glass-style horizontal bar: dark track + 'frac' (0..1) fill in 'fill' with a top sheen. Draws no text and never reacts to the pointer.
+    void bar(float x, float y, float w, float h, float frac, const Color& fill);
+    // Screen-edge tint that fades to transparent towards the middle ('thickness' in pixels; 'c.a' is the edge alpha). For damage/death.
+    void vignette(const Color& c, float thickness);
+
     // ---- pointer + widgets (only react while the cursor is free, e.g. in a menu) ----
     bool pointerFree() const;
     int mouseX() const { return mx_; }
