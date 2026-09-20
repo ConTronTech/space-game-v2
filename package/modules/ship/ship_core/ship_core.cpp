@@ -1,8 +1,7 @@
-// gameplay/flight - Newtonian flight + starfield + speed readout.
-// Doubles as the reference for how a game module uses the core services.
+// ship/ship_core - the player's ship: Newtonian flight, HP / shield / warp-fuel storage, collision damage, death.
+// Provides ship::IShip (see ship_api.h and docs/SHIP.md). Pure rules live in ship_rules.h. The HUD is ui/ship_hud's job.
 #include <GL/gl.h>
 #include <algorithm>
-#include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include "core/audio/audio_api.h"
@@ -11,28 +10,29 @@
 #include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
-#include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "engine/math.h"
+#include "ship/ship_core/ship_api.h"
+#include "ship/ship_core/ship_rules.h"
 
 using engine::Vec3;
+namespace rules = ship::rules;
 
-class Flight : public engine::Module, public core::ISaveable, public core::ITransformSource {
+class ShipCore : public engine::Module, public ship::IShip, public core::ISaveable, public core::ITransformSource {
 public:
-    const char* name() const override { return "gameplay/flight"; }
+    const char* name() const override { return "ship/ship_core"; }
     // use these if they are loaded, and initialise after them (none are required)
     std::vector<std::string> optionalDependencies() const override {
         return {"core/settings", "core/save_system", "core/audio", "core/physics_world", "core/camera"};
     }
     std::vector<std::string> dependencies() const override {
-        return {"core/input_handler", "core/render_engine", "core/ui_handler"};
+        return {"core/input_handler", "core/render_engine"};
     }
 
     bool init(engine::Engine& eng) override {
         input_ = &eng.services.require<core::IInput>();
         render_ = &eng.services.require<core::RenderEngine>();
-        auto& ui = eng.services.require<core::UIHandler>();
 
         // tunables: base values live here, config/game.json can override them (see docs/CONFIG.md)
         auto& c = eng.config;
@@ -44,6 +44,23 @@ public:
         assist_      = c.get("flight.assist_strength", 4.0f, "damping per second when drift is 0 (scales with 1 - drift)");
         brake_       = c.get("flight.brake", 2.0f, "speed decay per second while braking");
         maxSpeed_    = c.get("flight.max_speed", 0.0f, "speed cap in m/s, 0 = unlimited");
+
+        // ship stats (old game values)
+        auto& st = vit_;
+        st.maxHp = c.get("ship.max_hp", 100.0f, "base hull points");
+        st.maxShield = c.get("ship.max_shield", 200.0f, "shield capacity when a shield generator is installed");
+        st.maxWarpFuel = c.get("ship.max_warp_fuel", 100.0f, "warp fuel tank size");
+        st.hp = st.maxHp;
+        st.warpFuel = st.maxWarpFuel;
+        hpRegen_ = c.get("ship.hp_regen", 0.2f, "passive hull regeneration, HP per second (alive only)");
+        maxHpCap_ = c.get("ship.max_hp_cap", 200.0f, "highest max HP hull plating can reach");
+        col_.refSpeed = c.get("ship.damage_ref_speed", 200.0f, "closing speed (m/s) that counts as full impact damage");
+        col_.asteroidSmall = c.get("ship.damage_asteroid_small", 10.0f, "full-speed damage of a hit on an asteroid smaller than 5 m");
+        col_.asteroidMed = c.get("ship.damage_asteroid_med", 20.0f, "full-speed damage of a hit on an asteroid 5-30 m");
+        col_.asteroidBig = c.get("ship.damage_asteroid_big", 35.0f, "full-speed damage of a hit on an asteroid over 30 m");
+        col_.planet = c.get("ship.damage_planet", 50.0f, "full-speed damage of a hit on a planet or moon");
+        col_.other = c.get("ship.damage_other", 10.0f, "full-speed damage of a hit on anything else");
+        col_.minDamage = c.get("ship.damage_min", 1.0f, "every hit does at least this much (scratch)");
 
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
         if ((audio_ = eng.services.get<core::IAudio>())) hum_ = audio_->playLoop("engine_loop", 0.0f, core::Bus::Engine);
@@ -57,27 +74,8 @@ public:
         render_->addPass("flight/ship", 110, [this](core::RenderEngine&) { drawShip(); });
         eng_ = &eng;
         eng.services.provide<core::ITransformSource>(this);
-
-        // 3. register our HUD
-        ui.addPanel("flight/hud", 10, [this](core::UIHandler& ui) {
-            char buf[64];
-            std::snprintf(buf, sizeof buf, "%.1f m/s", engine::length(vel_));
-            ui.glass(16, 16, 200, 58);
-            ui.text(32, 22, "SPEED", 12, ui.theme.textDim);
-            ui.text(32, 38, buf, 22, ui.theme.accent);
-
-            if (eng_->time() - lastImpact_ < 0.7) {           // brief warning flash after a hit
-                float a = (float)(1.0 - (eng_->time() - lastImpact_) / 0.7);
-                ui.glass(ui.width() / 2.0f - 110, 24, 220, 44, a, false, 10);
-                char ib[48];
-                std::snprintf(ib, sizeof ib, "IMPACT  %.0f m/s", lastImpactSpeed_);
-                ui.textCentered(ui.width() / 2.0f, 34, ib, 18, core::Color{1.0f, 0.5f, 0.4f, a});
-            }
-            const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
-            float w = (float)ui.textWidth(hint, 13) + 40;
-            ui.glass((ui.width() - w) / 2, ui.height() - 52.0f, w, 34, 0.9f, false, 10);
-            ui.textCentered(ui.width() / 2.0f, ui.height() - 44.0f, hint, 13, ui.theme.textDim);
-        });
+        eng.services.provide<ship::IShip>(this);
+        sync();
 
         // world content
         std::srand(1234);
@@ -93,7 +91,7 @@ public:
             shipBody_ = physics_->addBody("ship", pos_, hullRadius_, true);
             for (auto& r : rocks_) rockBodies_.push_back(physics_->addBody("asteroid", r.pos, r.size * 0.8f, false));
             eng.events.subscribe<core::Collided>([this](const core::Collided& e) { onCollided(e); });
-            LOG_D("flight", "%zu rocks registered with physics; first at (%.1f, %.1f, %.1f) radius %.1f", rocks_.size(),
+            LOG_D("ship", "%zu rocks registered with physics; first at (%.1f, %.1f, %.1f) radius %.1f", rocks_.size(),
                   rocks_[0].pos.x, rocks_[0].pos.y, rocks_[0].pos.z, rocks_[0].size * 0.8f);
         }
         return true;
@@ -104,7 +102,7 @@ public:
         render_->removePass("flight/rocks");
         render_->removePass("flight/ship");
         eng.services.withdraw<core::ITransformSource>();
-        if (auto* ui = eng.services.get<core::UIHandler>()) ui->removePanel("flight/hud");
+        eng.services.withdraw<ship::IShip>();
         if (saves_) saves_->unregisterSaveable(this);
         if (physics_) {
             physics_->removeBody(shipBody_);
@@ -119,12 +117,14 @@ public:
         prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; // for render interpolation
         const float thrust = thrust_, turn = turnRate_, turnTau = turnTau_, engineTau = engineTau_;
 
-        pitchRate_  = ease(pitchRate_,  input_->value("pitch"),  turnTau, dt);
-        yawRate_    = ease(yawRate_,    input_->value("yaw"),    turnTau, dt);
-        rollRate_   = ease(rollRate_,   input_->value("roll"),   turnTau, dt);
-        thrustOut_  = ease(thrustOut_,  input_->value("thrust"), engineTau, dt);
-        strafeOut_  = ease(strafeOut_,  input_->value("strafe"), engineTau, dt);
-        liftOut_    = ease(liftOut_,    input_->value("lift"),   engineTau, dt);
+        rules::regen(vit_, hpRegen_, dt);   // frozen while paused: fixed updates do not run then
+        const bool live = vit_.alive;       // a dead ship ignores the controls and just coasts
+        pitchRate_  = ease(pitchRate_,  live ? input_->value("pitch") : 0.0f,  turnTau, dt);
+        yawRate_    = ease(yawRate_,    live ? input_->value("yaw") : 0.0f,    turnTau, dt);
+        rollRate_   = ease(rollRate_,   live ? input_->value("roll") : 0.0f,   turnTau, dt);
+        thrustOut_  = ease(thrustOut_,  live ? input_->value("thrust") : 0.0f, engineTau, dt);
+        strafeOut_  = ease(strafeOut_,  live ? input_->value("strafe") : 0.0f, engineTau, dt);
+        liftOut_    = ease(liftOut_,    live ? input_->value("lift") : 0.0f,   engineTau, dt);
 
         // orientation: rotate the basis around its own axes
         float pitch = pitchRate_ * turn * dt;
@@ -139,20 +139,21 @@ public:
 
         Vec3 acc = fwd_ * thrustOut_ + right_ * strafeOut_ + up_ * liftOut_;
         vel_ += acc * (thrust * dt);
-        if (input_->down("brake")) vel_ *= std::exp(-brake_ * dt);
+        if (live && input_->down("brake")) vel_ *= std::exp(-brake_ * dt);
         if (drift_ < 1.0f) vel_ *= std::exp(-(1.0f - drift_) * assist_ * dt); // flight assist; drift 1.0 = none
         if (maxSpeed_ > 0.0f) {
             float sp = engine::length(vel_);
             if (sp > maxSpeed_) vel_ *= maxSpeed_ / sp;
         }
         pos_ += vel_ * dt;
+        sync();
         if (physics_) physics_->setBody(shipBody_, pos_, vel_);   // the physics world sweeps this move for hits right after us
     }
 
     void onUpdate(engine::Engine& eng, float) override {
         if (audio_ && hum_) {   // idle rumble, louder with throttle; silent while the menu is open
             float throttle = std::min(1.0f, std::abs(thrustOut_) + 0.6f * std::abs(strafeOut_) + 0.6f * std::abs(liftOut_));
-            audio_->setLoopVolume(hum_, eng.paused() ? 0.0f : 0.25f + 0.75f * throttle);
+            audio_->setLoopVolume(hum_, (eng.paused() || !vit_.alive) ? 0.0f : 0.25f + 0.75f * throttle);
         }
     }
 
@@ -168,10 +169,14 @@ public:
         return p;
     }
 
-    // ---- saving: position, velocity and orientation. Control easing is not saved (it settles in a fraction of a second).
-    const char* saveId() const override { return "gameplay/flight"; }
+    // ---- saving: pose + stats. Control easing is not saved (it settles in a fraction of a second).
+    // Missing keys keep the current value, so saves from before the stats existed still load.
+    const char* saveId() const override { return "gameplay/flight"; }   // kept from the flight demo so existing saves still load
     engine::Json save() const override {
-        return engine::Json::object().set("pos", vec(pos_)).set("vel", vec(vel_)).set("fwd", vec(fwd_)).set("up", vec(up_));
+        return engine::Json::object().set("pos", vec(pos_)).set("vel", vec(vel_)).set("fwd", vec(fwd_)).set("up", vec(up_))
+            .set("hp", vit_.hp).set("maxHp", vit_.maxHp).set("shield", vit_.shield)
+            .set("shieldInstalled", vit_.shieldInstalled).set("shieldEnabled", vit_.shieldEnabled)
+            .set("warpFuel", vit_.warpFuel).set("alive", vit_.alive);
     }
     void load(const engine::Json& j) override {
         pos_ = readVec(j["pos"], pos_);
@@ -184,6 +189,65 @@ public:
         pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
         prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_;   // no interpolation smear across the jump
         if (physics_ && shipBody_ != core::kNoBody) physics_->teleport(shipBody_, pos_);
+
+        auto& v = vit_;
+        v.maxHp = std::clamp((float)j["maxHp"].num(v.maxHp), 1.0f, std::max(maxHpCap_, v.maxHp));
+        v.hp = std::clamp((float)j["hp"].num(v.hp), 0.0f, v.maxHp);
+        v.shieldInstalled = j["shieldInstalled"].boolean(v.shieldInstalled);
+        v.shieldEnabled = j["shieldEnabled"].boolean(v.shieldEnabled) && v.shieldInstalled;
+        v.shield = v.shieldEnabled ? std::clamp((float)j["shield"].num(v.shield), 0.0f, v.maxShield) : 0.0f;
+        v.warpFuel = std::clamp((float)j["warpFuel"].num(v.warpFuel), 0.0f, v.maxWarpFuel);
+        v.alive = j["alive"].boolean(v.hp > 0.0f) && v.hp > 0.0f;
+        sync();
+    }
+
+    // ---- ship::IShip ----
+    const ship::ShipStatus& status() const override { return status_; }
+    Vec3 position() const override { return pos_; }
+    Vec3 velocity() const override { return vel_; }
+    Vec3 forward() const override { return fwd_; }
+
+    void applyDamage(float amount, const std::string& source) override {
+        auto r = rules::applyDamage(vit_, amount);
+        if (r.toHull <= 0.0f && r.absorbed <= 0.0f) return;   // dead, or nothing to apply
+        sync();
+        eng_->events.emit(ship::DamageTaken{r.toHull, r.absorbed, source});
+        if (r.shieldBroken) eng_->events.emit(ship::ShieldBroken{});
+        if (r.died) die(source);
+    }
+    void heal(float hp) override { rules::heal(vit_, hp); sync(); }
+    void addWarpFuel(float amount) override { rules::addWarpFuel(vit_, amount); sync(); }
+    bool consumeWarpFuel(float amount) override {
+        bool emptied = false;
+        bool ok = rules::consumeWarpFuel(vit_, amount, emptied);
+        sync();
+        if (emptied) eng_->events.emit(ship::FuelEmpty{});
+        return ok;
+    }
+    void addMaxHp(float amount) override { rules::addMaxHp(vit_, amount, maxHpCap_); sync(); }
+    void installShield(bool enabled) override { rules::installShield(vit_, enabled); sync(); }
+    void setVelocity(const Vec3& v) override {
+        vel_ = v;
+        sync();
+        if (physics_ && shipBody_ != core::kNoBody) physics_->setBody(shipBody_, pos_, vel_);
+    }
+    void kill(const std::string& cause) override {
+        if (!rules::kill(vit_)) return;
+        sync();
+        die(cause);
+    }
+    void respawn() override {
+        vel_ = {0, 0, 0};
+        pos_ = spawnPos_;
+        fwd_ = {0, 0, -1}; up_ = {0, 1, 0}; right_ = {1, 0, 0};
+        pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
+        prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_;
+        vit_.hp = vit_.maxHp;                  // like the old game: full hull + full fuel; the shield is not restored
+        vit_.warpFuel = vit_.maxWarpFuel;
+        vit_.alive = true;
+        sync();
+        if (physics_ && shipBody_ != core::kNoBody) physics_->teleport(shipBody_, pos_);
+        eng_->events.emit(ship::Respawned{});
     }
 
 private:
@@ -199,9 +263,22 @@ private:
         if (into > 0) vel_ -= n * ((1.0f + bounce_) * into);
         physics_->teleport(shipBody_, pos_);
         if (audio_ && c.speed > 1.0f) audio_->play("impact", std::clamp(c.speed / 40.0f, 0.25f, 1.0f));
-        lastImpact_ = eng_->time();
-        lastImpactSpeed_ = c.speed;
+        const std::string& kind = shipIsA ? c.kindB : c.kindA;
+        if (kind == "sun") { kill("sun"); return; }
+        applyDamage(rules::collisionDamage(kind, otherR, c.speed, col_), kind);
     }
+
+    // mirror the internal vitals + speed into the public status
+    void sync() {
+        auto& s = status_;
+        s.hp = vit_.hp; s.maxHp = vit_.maxHp;
+        s.shield = vit_.shield; s.maxShield = vit_.maxShield;
+        s.shieldInstalled = vit_.shieldInstalled; s.shieldEnabled = vit_.shieldEnabled;
+        s.warpFuel = vit_.warpFuel; s.maxWarpFuel = vit_.maxWarpFuel;
+        s.alive = vit_.alive;
+        s.speed = engine::length(vel_);
+    }
+    void die(const std::string& cause) { LOG_I("ship", "destroyed by %s", cause.c_str()); eng_->events.emit(ship::Died{cause}); }
 
     static engine::Json vec(const Vec3& v) { return engine::Json::array().push(v.x).push(v.y).push(v.z); }
     static Vec3 readVec(const engine::Json& j, Vec3 def) {
@@ -274,8 +351,11 @@ private:
     core::BodyId shipBody_ = core::kNoBody;
     std::vector<core::BodyId> rockBodies_;
     float hullRadius_ = 2.5f, bounce_ = 0.35f;
-    double lastImpact_ = -100;
-    float lastImpactSpeed_ = 0;
+    ship::rules::Vitals vit_;
+    ship::ShipStatus status_;
+    ship::rules::CollisionParams col_;
+    float hpRegen_ = 0.2f, maxHpCap_ = 200.0f;
+    Vec3 spawnPos_{0, 0, 0};
     int hum_ = 0;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {
@@ -294,4 +374,4 @@ private:
     std::vector<Rock> rocks_;
 };
 
-REGISTER_MODULE(Flight);
+REGISTER_MODULE(ShipCore);
