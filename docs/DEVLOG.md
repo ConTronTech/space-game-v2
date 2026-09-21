@@ -19,6 +19,8 @@ only after the full check passes, so it should always run.
   `core/benchmark` module (`--benchmark[=seconds]`: avg fps, 1% low, worst frame, writes `logs/benchmark.txt`); `docs/BENCHMARK.md` (how the user runs it on the laptop);
   target-hardware rules in `docs/VISION.md`.
 - **Verified:** 144 tests under ASan/UBSan (4 new for the statistics); the real game ran a 4 s benchmark (dev machine: RTX 2060 SUPER, ~2,260 fps, so not comparable to the laptop); a normal run prints no benchmark line.
+- **Plan (user, 2026-09-20 night): focus on the main rig first; the user will give SSH access to the laptop in the morning.** Then: check the laptop has the build dependencies (SDL2 dev libs), build a *generic* binary there
+  (no -march=native), run `./space_game_v2 --benchmark=20 --no-vsync`, read `logs/game.log` for the real GL version, and record it in this log. Use only what is needed over SSH.
 - **Known:** no laptop numbers yet - the user needs to run `./space_game_v2 --benchmark=20 --no-vsync` on it and send `logs/benchmark.txt` and the first lines of `logs/game.log`.
 
 ## Leap 2 - 2026-09-20 (IN PROGRESS): Phase 2 Wave 2 - warp drive + respawn
@@ -26,7 +28,8 @@ only after the full check passes, so it should always run.
   Contract additions already on main: `IShip::setWarping` (non-pure), `ship::IRespawn`, input action `toggle_warp` (Z).
 - **Design decisions to review when the user is back:** leaving warp cuts speed to `warp.exit_speed` (default 200 m/s, like the old game; 0 = keep momentum, pure Newtonian);
   warp key is Z (rebind in `config/input/default.json`); respawn takes `respawn.seconds` (default 3) and can be disabled with `respawn.enabled=false`.
-- **State:** workers running; nothing merged yet. Last green tag: `good-20260920-01` (+ contract commit `527d965`, smoke pending).
+- **State:** respawn (2.4) is MERGED and verified in the real game (lethal hit -> SHIP DESTROYED + RESPAWNING IN 3 -> alive at spawn, HULL 100/100); 154 tests under sanitizers.
+  Warp drive (2.2) is still being built by the ship-core worker. Full smoke on `main` passed (20 modules): tagged `good-20260920-03`. Warp drive: built and verified in the real game (2000 m/s, fuel burn, auto-disengage at empty); a FIX LIST is with the worker (ignore Z while paused, do not cache the IShip pointer) before merge.
 - **Next after this leap (updated: the user's laptop specs are now in docs/VISION.md):** FIRST 3.0 hardware log + `--benchmark` mode; then 3.1 starfield + skybox out of `ship_core`
   as a world module (with a texture-size cap for the laptop), then 3.2 star system. Qwen can take small doc/data/test jobs (max 2 at once).
 

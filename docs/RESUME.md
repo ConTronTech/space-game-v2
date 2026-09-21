@@ -15,6 +15,10 @@ Agents build in parallel worktrees and **never commit**; the coordinator reviews
 the user plays; problems go back as one numbered FIX LIST. Task specs live in `docs/agent_specs/` (Wave 1 specs are the template for Wave 2).
 Qwen (free, max 2 concurrent) is a good reviewer of SMALL pieces only: `docs/QWEN_REPORT.md`.
 
+## The target laptop ("crap-top")
+Specs and rules: `docs/VISION.md` (Target hardware). The user will give **SSH access in the morning (2026-09-21)**; until then the main rig comes first. When access exists: build there, run
+`./space_game_v2 --benchmark=20 --no-vsync` (see `docs/BENCHMARK.md`), record the numbers in `docs/DEVLOG.md`. Use only the access needed, and never leave anything running there.
+
 ## Orca state (repo id `4901aa59-f2a8-4d6b-a1f1-1f91fa5d2e8a`)
 - Run `run_ac08f93c352e` (bound to the coordinator terminal of the 2026-09-20 session; a new session needs a NEW run: `orca-ide orchestration run-create`).
 - Three **retained** Claude workers with full context of their code, ready for FIX LISTS: `p2w1-ship-core`, `p2w1-ship-hud`, `p2w1-cockpit` (worktrees under `~/orca/workspaces/space-game-v2/`).
