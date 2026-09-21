@@ -30,6 +30,13 @@ lower `glass_top` / `glass_bottom` alpha for more transparency, change `accent` 
 
 Fonts: `assets/fonts/ui.ttf` if present, otherwise the system DejaVu Sans.
 
+## Tabs and list rows (`core/ui_handler`)
+```cpp
+selected = ui.tabs({"CARGO", "CRAFTING"}, selected, x, y, w, h);   // a row of glass tab buttons; returns the new index (a click on a tab)
+if (ui.listRow("Iron", "50", x, y, w, h, /*selected=*/false)) { ... }   // label left, value right; true on click
+```
+Like the other widgets they react only while the cursor is free. The layout math (equal widths, hit test, wrap-around cycling) is pure and unit-tested: `core/ui_handler/tabs_layout.h`. The game menu (docs/GAME_MENU.md) is the first user.
+
 ## Pause menu (`ui/pause_menu`)
 Esc pauses the simulation (`Engine::setPaused`) and opens the menu: Resume / Settings (FOV slider, fullscreen) / Exit Game.
 Mouse works, and so do the `ui_up`, `ui_down`, `ui_left`, `ui_right`, `ui_confirm` and `pause` actions from the input profile.

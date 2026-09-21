@@ -380,3 +380,75 @@ TEST(hud_kill_age) {
     h.onEnemyKilled(5.0);
     CHECK(std::fabs(h.killAge(5.2) - 0.2f) < 1e-4f);
 }
+
+TEST(hud_cargo_fraction_colour_text) {
+    CHECK(std::fabs(cargoFraction(45, 100) - 0.45f) < 1e-5f);
+    CHECK(cargoFraction(150, 100) <= 1.0f);
+    CHECK(cargoFraction(5, 0) <= 0.0f);
+    RGB calm = cargoColor(0.5f), amber = cargoColor(0.9f), red = cargoColor(1.0f);
+    CHECK(calm.b > calm.r);                         // cyan
+    CHECK(amber.r > 0.9f && amber.g > 0.6f && amber.b < 0.4f);
+    CHECK(red.r > 0.9f && red.g < 0.3f);
+    CHECK(cargoColor(0.8f).b > 0.9f);               // 80% is still calm, above it is amber
+    CHECK_EQ(cargoText(45, 100), std::string("CARGO 45 / 100"));
+    CHECK_EQ(cargoText(0, 800), std::string("CARGO 0 / 800"));
+}
+
+TEST(hud_pickup_text_and_labels) {
+    CHECK_EQ(pickupText(6, "CRYSTAL"), std::string("+6 CRYSTAL"));
+    CHECK_EQ(oreLabel("crystal", "Crystal"), std::string("CRYSTAL"));
+    CHECK_EQ(oreLabel("mystery", ""), std::string("MYSTERY"));
+}
+
+TEST(hud_pickups_merge_within_the_window) {
+    HudState h;
+    RGB c{0.5f, 0.5f, 0.5f};
+    CHECK_EQ(h.pickupCount(1.0), 0);
+    h.onOreMined("iron", "IRON", c, 3, 1.0);
+    h.onOreMined("iron", "IRON", c, 4, 1.3);        // within 0.5 s: merged
+    CHECK_EQ(h.pickupCount(1.4), 1);
+    std::string text; float alpha = 0;
+    h.forEachPickup(1.4, [&](const std::string& t, const RGB&, float a) { text = t; alpha = a; });
+    CHECK_EQ(text, std::string("+7 IRON"));
+    CHECK(alpha > 0.0f && alpha <= 1.0f);
+    h.onOreMined("iron", "IRON", c, 2, 2.0);        // 0.7 s after the last one: a new banner
+    CHECK_EQ(h.pickupCount(2.0), 2);
+    h.onOreMined("copper", "COPPER", c, 1, 2.0);    // another ore: separate
+    CHECK_EQ(h.pickupCount(2.0), 3);
+}
+
+TEST(hud_pickups_expire_and_fade) {
+    HudState h;
+    RGB c;
+    h.onOreMined("gold", "GOLD", c, 5, 10.0);
+    float a0 = 0, a1 = 0;
+    h.forEachPickup(10.0, [&](const std::string&, const RGB&, float a) { a0 = a; });
+    h.forEachPickup(10.0 + kPickupSeconds * 0.9, [&](const std::string&, const RGB&, float a) { a1 = a; });
+    CHECK(a0 > 0.99f);
+    CHECK(a1 > 0.0f && a1 < a0);
+    CHECK_EQ(h.pickupCount(10.0 + kPickupSeconds + 0.01), 0);
+    h.onOreMined("gold", "GOLD", c, 0, 20.0);       // nothing fitted: no banner
+    CHECK_EQ(h.pickupCount(20.0), 0);
+}
+
+TEST(hud_pickup_slots_are_reused_when_full) {
+    HudState h;
+    RGB c;
+    for (int i = 0; i < kMaxPickups + 3; i++) h.onOreMined("ore" + std::to_string(i), "X", c, 1, 1.0 + i * 0.01);
+    CHECK_EQ(h.pickupCount(1.1), kMaxPickups);       // the oldest were replaced, no growth
+}
+
+TEST(hud_cargo_full_banner_is_rate_limited) {
+    HudState h;
+    Snapshot s;
+    h.onCargoFull(10.0);
+    auto b = h.banners(s, 10.1);
+    CHECK_EQ(b.size(), 1u);
+    CHECK(b[0].kind == Warn::CargoFull);
+    CHECK_EQ(b[0].text, std::string("CARGO FULL"));
+    h.onCargoFull(10.5);                              // too soon: ignored, does not extend it
+    h.onCargoFull(11.0);
+    CHECK(h.banners(s, 10.0 + kCargoFullSeconds + 0.05).empty());
+    h.onCargoFull(12.5);                              // after the gap: shows again
+    CHECK_EQ(h.banners(s, 12.6).size(), 1u);
+}

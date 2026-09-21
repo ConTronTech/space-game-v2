@@ -76,3 +76,13 @@ Uses `combat::ICombat` (per-use get) and the events `combat::Overheated`, `comba
 - **Banners:** "BLASTER OVERHEATED" (flashing, warning colour, 2.5 s) and "WEAPON: MINING BEAM" (2 s, calm). `WeaponChanged` is only emitted when the player switches, not for `--auto-weapon`.
 - While `IDocking::busy()` (approaching the pad, not yet docked) the station prompt is hidden.
 - Logic: `heatColor`, `heatSegments`, `overheatFlash`, `hitMarker`, `weaponLabel`, `weaponRowState`, `HudState::onOverheated/onWeaponChanged/onEnemyKilled` in `hud_logic.h`.
+
+## Cargo and ore pickups (`gameplay/inventory`, `gameplay/mining`, optional)
+- **Cargo row:** "CARGO 45 / 100" + a thin fill bar, the first row of the bottom-left block (the same single glass panel as the weapon rows, so it costs no extra panel). Cyan up to 80 %, amber above, red at 100 %. Hidden without `gameplay::IInventory`; shown in cockpit `minimal` too (banner group).
+- **Pickup banners:** on `gameplay::OreMined` a stacked "+6 CRYSTAL" banner (display name from `data/ores.json` via `core::IData`, else the id; ore colour brightened, else calm cyan), fading over 1.5 s; repeated pickups of the same ore within 0.5 s merge into one banner with the summed amount; at most 4 shown (the oldest slot is reused).
+- **CARGO FULL:** on `gameplay::CargoFull` a flashing amber banner (2 s), rate-limited to one per 2 s.
+- Logic (`cargoFraction/Colour/Text`, `pickupText`, `oreLabel`, `HudState::onOreMined/forEachPickup/onCargoFull`) is in `hud_logic.h`, unit-tested. Test cargo: `--give=iron:90`.
+
+## HUD cost notes (laptop pass)
+Text is cached or throttled and per-frame allocations were removed: the speed text refreshes 10x a second (a live number otherwise creates a new text texture every frame), the hint text/fit is computed once per window size, the orbit/dock lines are built once per event, cargo text once per change, ore names once per ore id, weapon labels once.
+The remaining cost is dominated by `UIHandler::glass()` (5 shadow layers + fill + border per panel); the HUD keeps the number of panels low (cargo shares the weapon panel). Measure with `--profile --benchmark=8 --no-vsync`, row `core/ui_handler:ui`.

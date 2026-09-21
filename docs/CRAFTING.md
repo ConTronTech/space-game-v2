@@ -1,0 +1,38 @@
+# Crafting (`gameplay/crafting`)
+
+Ore becomes items, and items become fuel, repairs and upgrades. **Fuel, shield and repair are never free** (docking gives nothing by default): everything comes from mined ore (docs/MINING.md) through the cargo hold (docs/INVENTORY.md).
+Code: `package/modules/gameplay/crafting/` (`crafting_rules.h` is pure and unit-tested by `test_crafting.cpp`). The UI is the CRAFTING tab of the game menu (docs/GAME_MENU.md) and the USE buttons of the CARGO tab.
+
+## Recipes (`data/recipes.json`)
+`"id": { "name": ..., "result": <item id from items.json>, "ingredients": { <ore or item id>: amount, ... } }`. Adding a recipe is adding an entry (a unit test checks every recipe makes a real item from real ores).
+**`craft(id)`** is atomic: it works only if **all** ingredients are in the hold **and** the result fits (ingredients leave first, so their space counts as free; the result's volume is the optional `"volume"` in `data/items.json`, default 1), otherwise nothing changes. Refusal reasons: `missing N <ore>` (the first missing ingredient), `cargo full`, `dock at a station to craft` (only with `crafting.require_dock`), `unknown recipe`, `no cargo hold`.
+
+## Items and effects (`data/items.json`, `effect`)
+`use(item)` applies the effect **only through `ship::IShip`** and consumes one item **only after** it has been applied. A refused use keeps the item. Effect table:
+
+| Effect key | What it does | Refused when |
+|---|---|---|
+| `warp_fuel` | `IShip::addWarpFuel` (clamped at the tank size) | warp fuel already full |
+| `hp` | `IShip::heal` | hull already at maximum |
+| `hp_full` | heal to maximum | hull already at maximum |
+| `max_hp` + `max_hp_cap` | `IShip::addMaxHp` (permanent, up to the cap, 200) | max HP already at the cap |
+| `shield_enabled` | `IShip::installShield(true)` (permanent) | a shield is already installed |
+| `missiles` | nothing yet | **"not available yet"** (missiles come with 4.2b) |
+| `hud_ore_labels` | nothing yet | **"not available yet"** (the ore scanner has no feature behind it) |
+
+Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no ship`. An item with an implemented and an unimplemented effect applies the implemented one. Permanent items apply one at a time (the shield generator refuses a second one; hull plating keeps working until the cap).
+The two "not available yet" items can be crafted and carried but not used: the simplest honest behaviour, without inventing state in the inventory module (an "ore scanner owned" flag would need a small addition there; see docs/QUESTIONS.md).
+
+## The hard-game switch
+`crafting.require_dock` (default **false**): craft anywhere. `true`: crafting works only while `ship::IDocking::docked()`; the tab shows "Dock at a station to craft" and every button is greyed with that reason. Whether the real game should need a workbench is an open question for the user (docs/QUESTIONS.md).
+
+## Service, events, save
+`gameplay::ICrafting` (`crafting_api.h`): `recipes(out)` (with have/need per ingredient and the verdict), `canCraft(id, reason)`, `craft(id, reason)`, `usable(item)`, `use(item, reason)`, `requiresDock()`, `message()` / `messageOk()` / `messageAge()` (the last result line for the UI).
+Events: `gameplay::CraftResult{recipe, ok, reason}`, `gameplay::ItemUsed{item}`. Sound: plays `ui_confirm` if `core/audio` has it, else silent.
+**Saving:** crafting keeps no state. The hold is saved by the inventory; shield and max HP by `ship_core`.
+
+## The CRAFTING tab
+One row per recipe: name, ingredients as `Name have/need` (**green** enough, **red** missing), a CRAFT button that is greyed out (clicks ignored) with the reason next to it when the recipe cannot be crafted. The result of the last craft / use is shown at the bottom for 8 s.
+
+## Tunables
+`crafting.require_dock` (false).

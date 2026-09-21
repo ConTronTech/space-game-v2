@@ -15,8 +15,8 @@ Consequences: the game must pick WHICH display, must cope with 5:4 / 4:3 (and 16
 |---|---|---|---|
 | PXN PXN-V10 Wheel | 11ff:3245 | js0, event5 (+ event11 as a keyboard/mouse-like interface) | racing wheel |
 | Microsoft SideWinder Joystick | 045e:003c | js1, event12 | classic joystick |
-| stick shifter | - | - | waiting for an adapter |
-| pedals | - | - | to be connected |
+| stick shifter | - | - | waiting for an adapter; **plugs into the wheel base**, so it will appear as extra buttons/axes on the PXN wheel device |
+| pedals | - | - | **plug into the wheel base** too: the wheel is ONE USB device exporting steering, pedal axes (throttle/brake/clutch) and the shifter buttons |
 
 `/dev/input/js*` are world-readable (SDL joystick works without the `input` group); `event*` need the `input` group (the user is not in it).
 
@@ -28,3 +28,5 @@ Monitor awareness (display selection, resolution/mode list, aspect-aware UI and 
 * Display numbers are SDL's 0-based indices, in the order SDL reports them (not necessarily xrandr's); on this dev PC three monitors report `KG241Y S 24" 1920x1080 @120`, `DELL SE198WFP 1440x900`, `HP 2010 1600x900` with the primary at x = 1600. Bounds are desktop coordinates: a display's origin is not (0,0) (the laptop panel at (1280,256) in the rig), so the window is centred with `SDL_WINDOWPOS_CENTERED_DISPLAY(n)`.
 * `video.mode=exclusive` really switches the mode (a CRT wants this at 640x480 .. 1024x768): it picks the closest of the display's own modes, so an unsupported request is corrected and logged instead of failing. `borderless` keeps the desktop mode and skips the compositor.
 * Windowed at 5:4 / 4:3 works without letterboxing: the field of view is held horizontally (Hor+), the HUD and menus scale with `min(w/1280, h/720)`.
+
+**One device, many controls (user, 2026-09-21):** pedals and the shifter connect through the steering wheel, so the input layer must handle a single joystick device with many axes (steering, throttle, brake, clutch, maybe combined pedal axes) and buttons (shifter gears, wheel buttons, hat). Profiles are per DEVICE with axis-by-axis mappings, calibration (min/max/centre), dead zone, invert, and an optional combined-pedals mode (one axis = throttle above centre, brake below).

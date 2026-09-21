@@ -43,6 +43,7 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | toggle_orbit_lock | O (circular orbit around the nearest planet/moon/sun; again to release) |
 | fire | left mouse button (hold: fire the selected weapon; only while the mouse is captured) |
 | weapon_1 / weapon_2 / weapon_next | 1 (blaster) / 2 (mining beam) / mouse wheel (next weapon) |
+| toggle_menu | I (the game menu: CARGO and CRAFTING tabs; I or Esc closes it; the ship keeps flying) |
 | dock | G (dock at / undock from a station: inside its dock zone, slowly; again to undock) |
 | camera_next | V (cockpit <-> chase view) |
 | toggle_profiler | F3 (live profiler overlay: fps, frame graph, top consumers, hitches) |
