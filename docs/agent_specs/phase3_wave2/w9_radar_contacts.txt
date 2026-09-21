@@ -1,0 +1,13 @@
+TASK 3.4b - radar contacts on the cockpit PROXIMITY_RADAR screen. You wrote the cockpit screens (hud_screens.cpp proximityRadar currently draws an empty scope: "contacts come later"). Now show real contacts from the star system and the demo rocks.
+
+RULES: read docs/WORKFLOW.md, docs/COCKPIT.md, docs/HUD.md, docs/WORLD.md. Edit ONLY files under OWNERSHIP. DO NOT COMMIT; leave everything uncommitted. Run package/tools/smoke.sh and make test-san at the end. Report per item ("N: done | needs decision") + 3-sentence summary (built / verified how / could NOT verify) + manual checklist. Worktree was fast-forwarded to main; run package/tools/link_assets.sh. Old game (read-only): /home/contolis/Documents/Space-Game-V2/space-game/space-game, look at its radar for behaviour.
+
+CHANGE:
+1. Contacts come from world::IStarSystem (package/modules/world/star_system/star_system_api.h; optional service via eng.services.get, per use, no crash when absent): sun, planets, moons (doubles). Subtract the ship position (ship::IShip::position) IN DOUBLE, then convert to float; transform into the ship's frame with the ship's forward/up/right (use what IShip exposes; if only forward() exists, say what you need and use a world-yaw fallback, do not change ship_core).
+2. Scope: top-down/forward-relative plot, ship at the centre, range rings, the sun/planet/moon as coloured dots (sun orange, planet/moon by body colour, moons dim), size by kind. Range is logarithmic or auto-scaled so both a planet 400 units away and one 40,000 away are usable; unit-test the mapping (pure function in a header, tolerances). Show the nearest body name + distance as text under the scope (e.g. "PLANET 1  41.9K"). Bodies beyond the max range clamp to the rim as a small arrow/dot. Do not draw more than ~20 contacts, no per-frame heap allocation beyond what ScreenCanvas already does.
+3. No IStarSystem: keep the current empty scope with "NO CONTACTS". Keep the old-flat-HUD overlay unchanged.
+4. Docs: docs/COCKPIT.md and docs/HUD.md.
+
+OWNERSHIP: package/modules/ship/cockpit/**, package/tests/ (the cockpit/hud test file(s) only), docs/COCKPIT.md, docs/HUD.md. Do NOT edit star_system or ship_core; ask in the report.
+
+ACCEPTANCE: smoke + make test-san pass; screenshots of the real cockpit radar at the default spawn (sun should show) and from a saved-game position near Planet 1 (see docs/WARP.md for the save+flags method; you may use --fake-ship only if needed); describe them. Delete scratch files.
