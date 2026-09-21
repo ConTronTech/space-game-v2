@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 16 - 2026-09-21 (DONE, tag `good-20260921-11`): Phase 3.7 stations + docking - PHASE 3 COMPLETE
+- **Changed:** `world/stations` (seeded 1-3 stations, orbital or planetary, analytic positions, placeholder cube + cylinder models, static physics bodies, `world::IStations`) and `ship/docking` (`G` key: dock inside the zone (scale*60) below `docking.max_speed` 15 m/s, refusals logged with reasons, steered hold like orbit_lock, thrust or `G` undocks with a small push, events + `ship::IDocking`). `docking.test_refill` (default FALSE, test only: real fuel/shield come from mining). `stations.seed_offset` re-rolls stations only (default seed puts both on Planet 2 as surface stations).
+- **Verified:** 235 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game scenarios: dock/hold (distance stayed 112.38 over 7 s while the station moved ~140 units)/undock, too fast, too far, planetary dock, station collision (other-tier damage + bounce), screenshots of both station types; benchmark unchanged.
+- **Not verified:** the G key itself, test_refill path, docked state through death/warp (handlers only). **No HUD prompt or radar marker for stations yet** (the IDocking/IStations services are ready for it).
+- **Next:** perf pass on the laptop (dispatch in flight), HUD "DOCK [G]" prompt + station/asteroid radar markers, then Phase 4.
+
 ## Leap 15 - 2026-09-21: laptop ("crap-top") online - first real numbers
 - **Access:** SSH key `~/.ssh/id_ed25519_spacegame_laptop` -> `contolis@192.168.1.150` (Linux Mint 22.3, i5 M 560 2c/4t, HD Graphics ILK, OpenGL 2.1 Mesa 25.2.8, 7.6 GB, 1366x768). No sudo, and the SDL2 dev packages are NOT installed there, so nothing is built on the laptop: the main rig builds the generic binary and `package/tools/laptop_bench.sh` rsyncs it plus assets/data and the four missing runtime libs (SDL2_image/ttf/mixer, opusfile) into `~/space-game-v2-test/libs`. Its config/game.json and settings.json are never copied (laptop runs defaults). Nothing is left running.
 - **Auto quality worked:** the laptop picked LOW by itself ("older Intel integrated graphics (Ironlake/Sandy Bridge class)").
