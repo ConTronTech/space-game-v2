@@ -9,6 +9,7 @@
 #include "core/render_engine/render_engine.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "fx/particles/particles_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "world/asteroids/asteroid_rules.h"
 #include "world/asteroids/asteroids_api.h"
@@ -37,6 +38,7 @@ public:
         maxBodies_ = std::max(1, c.get("asteroids.max_bodies", 300, "most asteroid physics bodies alive at once"));
         triBudget_ = std::max(100, c.get("asteroids.triangle_budget", 15000, "most asteroid triangles drawn per frame"));
         edgePx_ = std::max(2.0f, c.get("asteroids.lod_edge_px", 10.0f, "target on-screen size of a mesh edge in pixels"));
+        hpScale_ = std::max(0.01f, c.get("asteroids.hp_scale", 1.25f, "asteroid hit points = this * radius^2 (radius 9: about 100 HP)"));
 
         // ore table from data/ores.json (optional)
         if (auto* data = eng.services.get<core::IData>()) {
@@ -70,6 +72,9 @@ public:
 
         cand_.reserve(n); levels_.reserve(n); pts_.reserve((size_t)n * 3); addList_.reserve(n);
         bodyIds_.assign(n, core::kNoBody);
+        aliveMask_.assign(n, 1);
+        hp_.resize(n);
+        for (int i = 0; i < n; i++) hp_[i] = world::asteroidMaxHp(field_.radius[i], hpScale_);
         physics_ = eng.services.get<core::IPhysics>();
         eng_ = &eng;
         render_ = &eng.services.require<core::RenderEngine>();
@@ -91,7 +96,26 @@ public:
     world::Vec3d position(int i) const override { return ok(i) ? world::Vec3d{field_.x[i], field_.y[i], field_.z[i]} : world::Vec3d{}; }
     float radius(int i) const override { return ok(i) ? field_.radius[i] : 0.0f; }
     std::string ore(int i) const override { return ok(i) && field_.ore[i] < ores_.ids.size() ? ores_.ids[field_.ore[i]] : "rock"; }
-    void nearest(const world::Vec3d& p, int n, std::vector<int>& out) const override { world::nearestIndices(field_, p, n, out); }
+    void nearest(const world::Vec3d& p, int n, std::vector<int>& out) const override { world::nearestIndices(field_, p, n, out, &aliveMask_); }
+    bool alive(int i) const override { return ok(i) && aliveMask_[i]; }
+    bool damage(int i, float amount, world::Vec3d hitPos) override {
+        if (!ok(i) || !aliveMask_[i]) return false;
+        (void)hitPos;
+        if (!world::applyAsteroidDamage(hp_[i], amount)) return false;
+        aliveMask_[i] = 0;                                              // gone from drawing, the physics pool and nearest()
+        if (physics_ && bodyIds_[i] != core::kNoBody) { physics_->removeBody(bodyIds_[i]); bodyIds_[i] = core::kNoBody; live_--; }
+        world::Vec3d p{field_.x[i], field_.y[i], field_.z[i]};
+        world::AsteroidDestroyed ev{i, p, field_.radius[i], ore(i)};
+        LOG_I("asteroids", "asteroid %d destroyed (radius %.1f, %s)", i, field_.radius[i], ev.ore.c_str());
+        if (eng_) {
+            eng_->events.emit(ev);
+            fx::SpawnParticles debris; debris.kind = "debris"; debris.position = p; debris.count = 8 + (int)std::min(24.0f, field_.radius[i]); debris.size = std::max(1.0f, field_.radius[i] * 0.3f);
+            eng_->events.emit(debris);
+            fx::SpawnParticles spark; spark.kind = "spark"; spark.position = p; spark.count = 20; spark.size = std::max(1.0f, field_.radius[i] * 0.2f);
+            eng_->events.emit(spark);
+        }
+        return true;
+    }
 
     // ---- physics pool: static bodies only for asteroids near the ship ----
     void onFixedUpdate(engine::Engine& eng, float) override {
@@ -103,6 +127,7 @@ public:
         addList_.clear();
         int removed = 0;
         for (int i = 0; i < field_.count(); i++) {
+            if (!aliveMask_[i]) continue;                                      // destroyed: no body
             double dx = field_.x[i] - sp.x, dy = field_.y[i] - sp.y, dz = field_.z[i] - sp.z;
             double d = std::sqrt(dx * dx + dy * dy + dz * dz);
             int act = world::poolAction(d - field_.radius[i], bodyIds_[i] != core::kNoBody, R, hyst);
@@ -149,6 +174,7 @@ private:
 
         cand_.clear(); pts_.clear();
         for (int i = 0; i < n; i++) {
+            if (!aliveMask_[i]) continue;
             double dx = field_.x[i] - cam.x, dy = field_.y[i] - cam.y, dz = field_.z[i] - cam.z;
             double d2 = dx * dx + dy * dy + dz * dz;
             if (d2 > (double)drawDist_ * drawDist_) continue;
@@ -248,6 +274,9 @@ private:
     int maxDrawn_ = 400, maxBodies_ = 300, triBudget_ = 15000, live_ = 0;
     double lastReport_ = -10;
     size_t meshBytes_ = 0;
+    float hpScale_ = 1.25f;
+    std::vector<uint8_t> aliveMask_;
+    std::vector<float> hp_;
     world::AsteroidField field_;
     world::OreTable ores_;
     world::AsteroidMesh meshes_[world::kAsteroidVariants][world::kAsteroidLevels];

@@ -41,6 +41,8 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | brake | X or right mouse button |
 | toggle_warp | Z (engage/disengage warp drive) |
 | toggle_orbit_lock | O (circular orbit around the nearest planet/moon/sun; again to release) |
+| fire | left mouse button (hold: fire the selected weapon; only while the mouse is captured) |
+| weapon_1 / weapon_2 / weapon_next | 1 (blaster) / 2 (mining beam) / mouse wheel (next weapon) |
 | dock | G (dock at / undock from a station: inside its dock zone, slowly; again to undock) |
 | camera_next | V (cockpit <-> chase view) |
 | mouse_capture_toggle | Tab (free/capture cursor) |

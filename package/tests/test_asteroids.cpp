@@ -184,3 +184,36 @@ TEST(asteroids_nearest_and_physics_pool_hysteresis) {
     CHECK_EQ(world::poolAction(1801, true, 1500, 1.2), -1);            // beyond 1.2 R: removed
     CHECK_EQ(world::poolAction(1500, true, 1500, 0.5), 0);             // hysteresis below 1 counts as 1
 }
+
+TEST(asteroids_health_scales_with_radius_and_damage_destroys_once) {
+    // radius 9 with the default scale: about 100 HP = ten blaster bolts of 10, or 3-4 s of beam at 30 per second
+    CHECK(close(world::asteroidMaxHp(9.0f, 1.25f), 101.25, 1e-6));
+    CHECK(world::asteroidMaxHp(20.0f, 1.25f) > world::asteroidMaxHp(10.0f, 1.25f) * 3.9);          // grows with the surface (radius squared)
+    CHECK(world::asteroidMaxHp(0.0f, 1.25f) >= 1.0f);                                                // never zero: a speck still needs a hit
+    float hp = world::asteroidMaxHp(9.0f, 1.25f); int hits = 0; bool destroyed = false;
+    while (!destroyed && hits < 1000) { destroyed = world::applyAsteroidDamage(hp, 10.0f); hits++; }
+    CHECK(destroyed); CHECK_EQ(hits, 11);                                                            // 101.25 HP: the 11th bolt of 10
+    CHECK(hp == 0.0f);
+    CHECK(!world::applyAsteroidDamage(hp, 10.0f));                                                   // already destroyed: never "destroyed" twice
+    float h2 = 50.0f; CHECK(!world::applyAsteroidDamage(h2, 0.0f)); CHECK(!world::applyAsteroidDamage(h2, -5.0f)); CHECK(close(h2, 50.0f));   // no damage, no change
+    float beam = world::asteroidMaxHp(9.0f, 1.25f); double t = 0;                                    // beam: 30 damage per second in 60 Hz steps
+    while (!world::applyAsteroidDamage(beam, 30.0f / 60.0f) && t < 100) t += 1.0 / 60;
+    CHECK(t > 3.0 && t < 4.0);
+}
+
+TEST(asteroids_nearest_hides_destroyed_ones) {
+    Sys s; world::GenParams gp;
+    auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
+    std::vector<uint8_t> alive(f.count(), 1);
+    Vec3d p{f.x[10] + 1.0, f.y[10], f.z[10]};
+    std::vector<int> out;
+    world::nearestIndices(f, p, 3, out, &alive);
+    CHECK_EQ(out[0], 10);
+    alive[10] = 0;                                                                                    // destroyed: gone from the radar list
+    world::nearestIndices(f, p, 3, out, &alive);
+    CHECK_EQ((int)out.size(), 3);
+    for (int i : out) CHECK(i != 10);
+    for (int i = 0; i < f.count(); i++) alive[i] = 0;                                                 // all destroyed: nothing to list, no crash
+    world::nearestIndices(f, p, 3, out, &alive); CHECK(out.empty());
+    world::nearestIndices(f, p, 3, out); CHECK_EQ((int)out.size(), 3);                                // no mask: as before
+}

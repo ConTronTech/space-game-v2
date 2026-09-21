@@ -24,7 +24,7 @@ physics steps can run in one frame and the same press would count more than once
 safe in both.
 
 ## Ship actions in the default profile
-`thrust strafe lift pitch yaw roll brake`, `toggle_warp` (Z), `toggle_orbit_lock` (O), **`dock` (G)**: docks at / undocks from the nearest station (docs/STATIONS.md), `camera_next` (V), `mouse_capture_toggle` (Tab), `pause` (Esc). The full list with keys is in docs/QUICKSTART.md.
+`thrust strafe lift pitch yaw roll brake`, `toggle_warp` (Z), `toggle_orbit_lock` (O), **`fire` (left mouse), `weapon_1` / `weapon_2` (keys 1 / 2), `weapon_next` (mouse wheel)** (docs/COMBAT.md), **`dock` (G)**: docks at / undocks from the nearest station (docs/STATIONS.md), `camera_next` (V), `mouse_capture_toggle` (Tab), `pause` (Esc). The full list with keys is in docs/QUICKSTART.md.
 
 ## Profile format
 ```json
