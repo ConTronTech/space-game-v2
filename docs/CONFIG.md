@@ -38,7 +38,7 @@ Precedence: **your game.json value > the preset's value > the default in code**.
 ## Player settings vs tunables
 - **`config/game.json`** = tunables you edit by hand (`engine.config`).
 - **`config/settings.json`** = player preferences the game writes when you change something in the menu (`core::ISettings`):
-  `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`, `quality.preset`. Only values you changed are stored; delete the file to reset.
+  `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`, `input.joystick_enabled` (true), `input.joystick_deadzone_scale` (0.5..2), `input.joystick_sensitivity` (0.1..4), `quality.preset`. Only values you changed are stored; delete the file to reset.
   The module that owns a setting reads it at startup and listens for `SettingChanged`; menus just call `set()`.
   `--settings=<file>` uses another file.
 

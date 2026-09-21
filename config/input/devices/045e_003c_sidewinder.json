@@ -1,0 +1,31 @@
+// Microsoft SideWinder Joystick (USB 045e:003c): a classic 3-axis flight stick with a throttle slider.
+// UNVERIFIED: this is a first guess from general knowledge of the device. Run ./space_game_v2 --joystick-monitor to see which axis is which
+// and --joystick-calibrate to get real min/max/centre values (docs/CONTROLLERS.md), then edit the numbers below.
+//
+// Conventions (same as config/input/default.json): roll + = roll right (like E), pitch + = nose up (like the Up... "pull back" = nose up),
+// yaw + = turn LEFT (like the Left key), thrust + = forward. SDL reports a stick pushed right / pulled back / twisted clockwise as POSITIVE.
+{
+  "name": "Microsoft SideWinder Joystick",
+  "status": "UNVERIFIED: run --joystick-calibrate",
+  "match": { "vid": "045e", "pid": "003c", "name_contains": "SideWinder" },
+
+  "axes": [
+    { "index": 0, "role": "stick", "action": "roll",   "deadzone": 0.06, "curve": 1.4 },                       // stick right -> roll right
+    { "index": 1, "role": "stick", "action": "pitch",  "deadzone": 0.06, "curve": 1.4 },                       // pulled back (+) -> nose up: no invert needed
+    { "index": 2, "role": "stick", "action": "yaw",    "deadzone": 0.10, "curve": 1.6, "invert": true },       // twist right (+) -> turn right (yaw is + = left)
+    { "index": 3, "role": "stick", "action": "thrust",  "deadzone": 0.08, "invert": true }                     // throttle slider: forward = thrust (slider forward reads -)
+  ],
+
+  "buttons": [
+    { "index": 0, "action": "fire" },                       // trigger
+    { "index": 1, "action": "weapon_1", "mode": "hold" },
+    { "index": 2, "action": "weapon_2", "mode": "hold" },
+    { "index": 3, "action": "dock" },
+    { "index": 4, "action": "toggle_warp" },
+    { "index": 5, "action": "toggle_orbit_lock" },
+    { "index": 6, "action": "toggle_menu" },
+    { "index": 7, "action": "camera_next" }
+  ],
+
+  "hats": []                                                // add {"index": 0, "up": "...", "down": "...", "left": "...", "right": "..."} once the hat is identified
+}

@@ -30,3 +30,14 @@ Monitor awareness (display selection, resolution/mode list, aspect-aware UI and 
 * Windowed at 5:4 / 4:3 works without letterboxing: the field of view is held horizontally (Hor+), the HUD and menus scale with `min(w/1280, h/720)`.
 
 **One device, many controls (user, 2026-09-21):** pedals and the shifter connect through the steering wheel, so the input layer must handle a single joystick device with many axes (steering, throttle, brake, clutch, maybe combined pedal axes) and buttons (shifter gears, wheel buttons, hat). Profiles are per DEVICE with axis-by-axis mappings, calibration (min/max/centre), dead zone, invert, and an optional combined-pedals mode (one axis = throttle above centre, brake below).
+
+## Shipped controller profiles (phase 1.9) - UNVERIFIED
+`config/input/devices/*.json`, matched automatically by USB id (then by name). **Both are first guesses from general knowledge of the devices and were NOT tested against the real hardware** (this dev PC has none; the logic is proven with simulated devices in `test_joystick.cpp`). Every profile says `"status": "UNVERIFIED: run --joystick-calibrate"`. The first job on the rig: `--joystick-monitor` and `--joystick-calibrate` (docs/CONTROLLERS.md), then correct the axis / button numbers.
+
+| Device | Profile | First guess |
+|---|---|---|
+| Microsoft SideWinder Joystick `045e:003c` | `045e_003c_sidewinder.json` | axis 0 X -> roll, axis 1 Y -> pitch (pulled back = nose up), axis 2 twist -> yaw (inverted), axis 3 slider -> thrust (inverted); trigger = fire, buttons 1-7 = weapon_1, weapon_2, dock, toggle_warp, toggle_orbit_lock, toggle_menu, camera_next |
+| PXN V10 wheel `11ff:3245` | `11ff_3245_pxn_v10.json` | axis 0 steering -> yaw (inverted, curve 1.5, dead zone 0.04); pedals: axis 2 throttle -> thrust, axis 3 brake -> brake, axis 1 clutch -> lift down (all "rest at max": a guess); buttons 0-7 = fire, dock, toggle_menu, camera_next, toggle_warp (paddle), toggle_orbit_lock (paddle), weapon_1, weapon_2; shifter buttons 12-14 = toggle_warp, toggle_orbit_lock, toggle_menu (gear numbering is a guess; a commented-out `throttle_limit` button group shows the discrete-gear format) |
+| any other device | generic fallback | maps NOTHING (so it can never make the ship spin) and logs a line telling you to run the two flags |
+
+Shifter and pedals will plug into the wheel base later: they show up as more axes and buttons of the SAME device, so only this device's profile changes.

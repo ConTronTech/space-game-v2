@@ -1,0 +1,41 @@
+// PXN V10 racing wheel (USB 11ff:3245). ONE device: steering, the pedals that plug into the wheel base, the stick shifter and the wheel buttons.
+// UNVERIFIED: a first guess. Run ./space_game_v2 --joystick-monitor while turning the wheel, pressing each pedal and using the shifter to see which
+// axis / button number is which, and --joystick-calibrate for min / max / centre (docs/CONTROLLERS.md). Then edit the indices and numbers below.
+//
+// Ship mapping: steering -> yaw (turn the wheel right = turn right), throttle pedal -> thrust, brake pedal -> brake, clutch pedal -> lift down.
+// Pedals: many wheels report an unpressed pedal at one END of the range (-32768 or +32767) and pressed at the other: "rest" says which end (min or max).
+// If the throttle and brake are on ONE axis ("combined pedals": throttle above the centre, brake below), use the combined_pedals axis in the comment.
+{
+  "name": "PXN V10 Wheel",
+  "status": "UNVERIFIED: run --joystick-calibrate",
+  "match": { "vid": "11ff", "pid": "3245", "name_contains": "PXN" },
+
+  "axes": [
+    { "index": 0, "role": "steering", "action": "yaw", "invert": true, "deadzone": 0.04, "curve": 1.5 },        // wheel right (+) -> turn right (yaw + = left)
+    { "index": 2, "role": "throttle", "action": "thrust", "rest": "max", "deadzone": 0.02 },                     // GUESS: unpressed = +32767, pressed = -32768
+    { "index": 3, "role": "brake",    "action": "brake",  "rest": "max", "deadzone": 0.02 },
+    { "index": 1, "role": "clutch",   "action": "lift",   "rest": "max", "deadzone": 0.02, "scale": -1 }        // clutch pressed -> lift down
+    // combined pedals instead of the two above:
+    // { "index": 2, "role": "combined_pedals", "above": "thrust", "below": "brake", "deadzone": 0.03 }
+  ],
+
+  "buttons": [
+    { "index": 0,  "action": "fire" },
+    { "index": 1,  "action": "dock" },
+    { "index": 2,  "action": "toggle_menu" },
+    { "index": 3,  "action": "camera_next" },
+    { "index": 4,  "action": "toggle_warp" },            // right paddle (GUESS)
+    { "index": 5,  "action": "toggle_orbit_lock" },      // left paddle (GUESS)
+    { "index": 6,  "action": "weapon_1" },
+    { "index": 7,  "action": "weapon_2" },
+    { "index": 12, "action": "toggle_warp" },            // stick shifter gears (GUESS: buttons 12..17 = gears 1..6, 18 = reverse), initially just three actions
+    { "index": 13, "action": "toggle_orbit_lock" },
+    { "index": 14, "action": "toggle_menu" }
+  ],
+
+  // "Button group -> discrete value": the highest pressed button wins, "default" applies when none is pressed. Example: gears as a throttle limit
+  // (nothing reads throttle_limit yet; this only shows the format):
+  // "groups": [ { "action": "throttle_limit", "buttons": { "12": 0.15, "13": 0.3, "14": 0.5, "15": 0.7, "16": 0.85, "17": 1.0 }, "default": 1.0 } ],
+
+  "hats": [ { "index": 0 } ]                              // the hat is not mapped yet
+}

@@ -9,6 +9,7 @@ package/modules/core/      window, input_handler, render_engine, ui_handler, imp
 package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orbit_lock, docking (IDocking), respawn, fake_ship (dev)
 package/modules/ui/        pause_menu, ship_hud
 package/modules/combat/    weapons (blaster + mining beam, ICombat)
+package/modules/core/input_methods/  keyboard, mouse, joystick (joysticks / wheels / pedals / shifters: docs/CONTROLLERS.md)
 package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore chunks from destroyed asteroids), crafting (ICrafting)
 package/modules/ui/game_menu  the tabbed game menu (IGameMenu)
 package/modules/fx/        particles (engine exhaust, sparks, debris, warp flash; fx::SpawnParticles event)
@@ -64,6 +65,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `world::IAsteroids` | the asteroid field, read-only: `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(point, n, out)` - see docs/WORLD.md |
 | `world::IStations` | the space stations: `count()`, `info(i)` (position/velocity in double, dock radius, up), `nearest(p)` - see docs/STATIONS.md |
 | `ship::IDocking` (+ events `Docked`, `Undocked`) | `docked()`, `stationName()`, `nearestDockable(...)`: what a "DOCK [G]" prompt needs - see docs/STATIONS.md |
+| `core::IControllers` | the connected joysticks / wheels: `devices()`, `deviceCount()`, `rawAxis(dev, i)`, `rawButton`, `rawHat`, `lastEvent()` - see docs/CONTROLLERS.md |
 | `ui::IGameMenu` | `addTab(name, order, drawFn)`, `removeTab`, `open()`, `close()`, `isOpen()`: the game menu on the I key; other modules add tabs - see docs/GAME_MENU.md |
 | `gameplay::ICrafting` (+ events `CraftResult`, `ItemUsed`) | `recipes()`, `canCraft`, `craft`, `use`: turn ore into items and use them - see docs/CRAFTING.md |
 | `gameplay::IInventory` (+ events `InventoryChanged`, `CargoFull`, `OreMined`) | the cargo hold: `capacity()`, `used()`, `free()`, `count(id)`, `add(id, n)` (partial accept), `remove(id, n)` (atomic), `stacks()`, upgrade levels - see docs/INVENTORY.md, docs/MINING.md |
