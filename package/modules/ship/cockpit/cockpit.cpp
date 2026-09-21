@@ -11,9 +11,11 @@
 #include "core/render_engine/render_engine.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "engine/profiler.h"
 #include "ship/cockpit/cockpit_light.h"
 #include "ship/cockpit/cockpit_screens_api.h"
 #include "ship/cockpit/hud_screens.h"
+#include "ship/cockpit/screen_rate.h"
 #include "ship/cockpit/ship_registry.h"
 
 namespace cockpit {
@@ -27,7 +29,10 @@ struct Batch {
 
 // Where the light comes from. Nothing in the game has a sun yet; when the world module exists it supplies the star's direction
 // through a service and this is the ONE function to change (rotate it into view space here). Direction points TOWARD the light.
-struct Light { engine::Vec3 toLight; float intensity; };
+struct Light {
+    engine::Vec3 toLight; float intensity;
+    bool operator==(const Light& o) const { return toLight.x == o.toLight.x && toLight.y == o.toLight.y && toLight.z == o.toLight.z && intensity == o.intensity; }
+};
 
 } // namespace
 
@@ -39,6 +44,9 @@ public:
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
+        prof_ = eng.services.get<engine::Profiler>();
+        profGpu_ = prof_ && eng.flagValue("profile") == "gpu";
+        if (prof_) { idSolid_ = prof_->intern("cockpit:solid"); idScreens_ = prof_->intern("cockpit:screens"); idGlass_ = prof_->intern("cockpit:glass"); idSetup_ = prof_->intern("cockpit:setup"); }
         auto& c = eng.config;
         enabled_ = c.get("cockpit.enabled", true, "draw the 3D cockpit model in cockpit view");
         std::string wanted = c.get<std::string>("cockpit.ship", "ShipV2", "ship folder to use: the 'name' in assets/models/ship/*/ship.json (falls back to the first ship found)");
@@ -48,6 +56,7 @@ public:
         if (!parseVec3(dir, lightDir_)) LOG_W("cockpit", "cockpit.light_dir '%s' is not three numbers: using 0.35,0.75,0.55", dir.c_str());
         brightness_ = std::clamp(c.get("cockpit.screen_brightness", 1.0f, "brightness of the cockpit screens' content, 0.2 (dim) .. 2"), 0.2f, 2.0f);
         glassScale_ = std::clamp(c.get("cockpit.glass_opacity", 1.0f, "canopy glass opacity multiplier: 0 = invisible glass, 1 = as modelled (30%), 3 = heavy tint"), 0.0f, 3.0f);
+        screenHz_ = std::clamp(c.get("cockpit.screen_hz", 30.0f, "how often the cockpit screens redraw, per second (they are cached between redraws); 0 = every frame. Quality presets: low 15, medium 30, high 120, ultra 240 (= every frame)"), 0.0f, 240.0f);
         cam_ = eng.services.get<core::ICamera>();
 
         eng.services.provide<ICockpitScreens>(this);
@@ -65,6 +74,7 @@ public:
 
     void shutdown(engine::Engine& eng) override {
         if (render_) render_->removePass("ship/cockpit");
+        deleteLists();
         eng.services.withdraw<ICockpitScreens>();
     }
 
@@ -121,38 +131,29 @@ private:
 
     Light light() const { return {engine::normalize(lightDir_), intensity_}; }
 
-    void drawBatch(const Batch& b) const {
-        if (!b.vertexCount()) return;
-        glVertexPointer(3, GL_FLOAT, 0, b.positions.data());
-        glNormalPointer(GL_FLOAT, 0, b.normals.data());
-        glColorPointer(4, GL_FLOAT, 0, b.colors.data());
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)b.vertexCount());
+    // ---- drawing ----
+    // Static geometry and constant GL state live in display lists (one glCallList each instead of hundreds of API calls per frame);
+    // the screens are recorded into vertex arrays at cockpit.screen_hz. If glGenLists fails the model falls back to immediate mode.
+    void emitBatch(const Batch& b) const {
+        glBegin(GL_TRIANGLES);
+        for (size_t i = 0; i < b.vertexCount(); i++) {
+            glColor4fv(&b.colors[i * 4]);
+            glNormal3fv(&b.normals[i * 3]);
+            glVertex3fv(&b.positions[i * 3]);
+        }
+        glEnd();
     }
 
-    void drawPass() {
-        if (!ready_) return;
-        if (cam_ && cam_->showsShip()) return;   // chase view: the ship is seen from outside, no cockpit
-
-        glPushAttrib(GL_ALL_ATTRIB_BITS);
-        glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
-        glLoadIdentity();                        // view space: the model rides on the camera
-
-        glDisable(GL_SCISSOR_TEST);
-        glDisable(GL_BLEND);
-        glDisable(GL_TEXTURE_2D);
-        glDepthMask(GL_TRUE);                    // glClear ignores the depth buffer while the mask is off
-        glClear(GL_DEPTH_BUFFER_BIT);            // the cockpit never clips into the world
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-
-        // lighting: one directional light + ambient
-        Light L = light();
+    // Everything that does not change between frames: depth test, one directional light + ambient, two-sided lit colour material.
+    void emitLightState(const Light& L) const {
         const float pos[4] = {L.toLight.x, L.toLight.y, L.toLight.z, 0.0f};
         const float diff[4] = {L.intensity, L.intensity, L.intensity, 1.0f};
         const float none[4] = {0, 0, 0, 1};
         const float amb[4] = {ambient_, ambient_, ambient_, 1.0f};
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
         glEnable(GL_LIGHTING);
         for (int i = 1; i < 8; i++) glDisable(GL_LIGHT0 + i);
         glEnable(GL_LIGHT0);
@@ -165,58 +166,119 @@ private:
         glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, none);
         glEnable(GL_COLOR_MATERIAL);
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
-        glEnableClientState(GL_VERTEX_ARRAY);
-        glEnableClientState(GL_NORMAL_ARRAY);
-        glEnableClientState(GL_COLOR_ARRAY);
-
-        drawBatch(solid_);
-
-        drawScreens();                           // right after the opaque model, before the see-through glass
-
-        // glass: lit, blended, no depth writes
-        glEnable(GL_LIGHTING);
-        glEnable(GL_COLOR_MATERIAL);
+    }
+    void emitGlass() const {                     // lit, blended, no depth writes
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
-        drawBatch(glass_);
+        emitBatch(glass_);
+    }
+
+    // (Re)compiles a list; returns false (list unusable) if the driver gave none.
+    template <class F> bool compile(GLuint& list, F&& fn) {
+        if (!list) list = glGenLists(1);
+        if (!list) return false;
+        glNewList(list, GL_COMPILE);
+        fn();
+        glEndList();
+        return true;
+    }
+    void deleteLists() {
+        for (GLuint* l : {&solidList_, &glassList_}) if (*l) { glDeleteLists(*l, 1); *l = 0; }
+        cache_.clear();
+    }
+
+    void drawPass() {
+        if (!ready_) return;
+        if (cam_ && cam_->showsShip()) return;   // chase view: the ship is seen from outside, no cockpit
+
+        // Only the state groups this pass touches (GL_ALL_ATTRIB_BITS copies far more and is slow in Mesa).
+        glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_CURRENT_BIT | GL_LINE_BIT | GL_POLYGON_BIT);
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();                        // view space: the model rides on the camera
+
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_TEXTURE_2D);
+        glDepthMask(GL_TRUE);                    // glClear ignores the depth buffer while the mask is off
+        glClear(GL_DEPTH_BUFFER_BIT);            // the cockpit never clips into the world
+
+        { Sub t(*this, idSolid_);
+            Light L = light();
+            if (!solidList_ || !(L == lastLight_)) {
+                lastLight_ = L;
+                listsOk_ = compile(solidList_, [&] { emitLightState(L); emitBatch(solid_); }) && (glassList_ || compile(glassList_, [&] { emitGlass(); }));
+            }
+            if (listsOk_) glCallList(solidList_);
+            else { emitLightState(L); emitBatch(solid_); }
+        }
+
+        { Sub t(*this, idScreens_); drawScreens(); }   // right after the opaque model, before the see-through glass
+
+        { Sub t(*this, idGlass_);
+            if (listsOk_) glCallList(glassList_);
+            else { glEnable(GL_LIGHTING); glEnable(GL_COLOR_MATERIAL); emitGlass(); }
+        }
 
         glPopMatrix();
-        glPopClientAttrib();
         glPopAttrib();
     }
 
+    // Each screen is recorded into a ScreenMesh (quads, no GL) at cockpit.screen_hz and drawn every frame with ONE array draw.
     void drawScreens() {
         if (tagged_.empty()) return;
         glDisable(GL_LIGHTING);
         glDisable(GL_COLOR_MATERIAL);
-        glDisableClientState(GL_COLOR_ARRAY);
-        glDisableClientState(GL_NORMAL_ARRAY);
-        glDisableClientState(GL_VERTEX_ARRAY);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE);
-
-        for (const core::TaggedQuad& q : tagged_) {
-            ScreenCanvas canvas(q, brightness_);
-            canvas.fill({0.01f, 0.02f, 0.04f, 1.0f});          // dark backing (depth-writing), then the group's content
-            auto it = renderers_.find(q.group);
-            if (it == renderers_.end()) continue;               // nobody draws this group: a dark, blank screen
-            const ScreenDef* def = nullptr;
-            for (const ScreenDef& s : screens_) if (s.tag == q.tag) def = &s;
-            const std::string& content = def ? def->content : empty_;
-            try {
-                it->second(ScreenContext{q, canvas, content, (float)eng_->time(), brightness_});
-            } catch (const std::exception& e) {
-                if (warnedThrow_.insert(q.group).second) LOG_W("cockpit", "renderer for screen group '%s' threw: %s", q.group.c_str(), e.what());
-            }
-            glDepthMask(GL_FALSE);                              // whatever a renderer did, the next screen starts clean
+        glDepthMask(GL_FALSE);                   // screens never write depth: contents are drawn in the order they were recorded
+        const double now = eng_->time();
+        if (cache_.size() != tagged_.size()) {
+            cache_.assign(tagged_.size(), ScreenCache{});
+            for (auto& c : cache_) c.rate.setHz(screenHz_);
         }
-        glEnableClientState(GL_VERTEX_ARRAY);                   // drawPass expects the arrays on for the glass
-        glEnableClientState(GL_NORMAL_ARRAY);
+        glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
+        glEnableClientState(GL_VERTEX_ARRAY);
         glEnableClientState(GL_COLOR_ARRAY);
+        glDisableClientState(GL_NORMAL_ARRAY);
+        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+
+        for (size_t i = 0; i < tagged_.size(); i++) {
+            const core::TaggedQuad& q = tagged_[i];
+            ScreenCache& c = cache_[i];
+            if (c.rate.tick(now) || !c.built) {
+                c.built = true;
+                c.mesh.clear();
+                ScreenCanvas canvas(q, brightness_, c.mesh);
+                canvas.fill({0.01f, 0.02f, 0.04f, 1.0f});          // dark backing, then the group's content
+                auto it = renderers_.find(q.group);                 // nobody draws this group: a dark, blank screen
+                if (it != renderers_.end()) {
+                    const ScreenDef* def = nullptr;
+                    for (const ScreenDef& s : screens_) if (s.tag == q.tag) def = &s;
+                    try {
+                        it->second(ScreenContext{q, canvas, def ? def->content : empty_, (float)now, brightness_});
+                    } catch (const std::exception& e) {
+                        if (warnedThrow_.insert(q.group).second) LOG_W("cockpit", "renderer for screen group '%s' threw: %s", q.group.c_str(), e.what());
+                    }
+                }
+            }
+            if (c.mesh.vertexCount() == 0) continue;
+            glVertexPointer(3, GL_FLOAT, 0, c.mesh.positions.data());
+            glColorPointer(4, GL_FLOAT, 0, c.mesh.colors.data());
+            glDrawArrays(GL_QUADS, 0, (GLsizei)c.mesh.vertexCount());
+        }
+        glPopClientAttrib();
     }
 
+    // --profile: time the parts of the pass (glFinish first under --profile=gpu so the GPU work lands on the right part)
+    struct Sub {
+        CockpitModule& m; int id; engine::ProfScope scope;
+        Sub(CockpitModule& mm, int i) : m(mm), id(i), scope((mm.profGpu_ ? glFinish() : void(), mm.prof_), i) {}
+        ~Sub() { if (m.profGpu_) glFinish(); }
+    };
+    engine::Profiler* prof_ = nullptr;
+    bool profGpu_ = false;
+    int idSolid_ = -1, idScreens_ = -1, idGlass_ = -1, idSetup_ = -1;
     engine::Engine* eng_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     core::ICamera* cam_ = nullptr;
@@ -224,6 +286,12 @@ private:
     std::map<std::string, ScreenRenderer> renderers_;
     std::set<std::string> warnedThrow_;
     Batch solid_, glass_;
+    struct ScreenCache { ScreenMesh mesh; bool built = false; ScreenRate rate; };
+    std::vector<ScreenCache> cache_;
+    GLuint solidList_ = 0, glassList_ = 0;
+    bool listsOk_ = false;
+    Light lastLight_{};
+    float screenHz_ = 30.0f;
     std::vector<core::TaggedQuad> tagged_;
     std::vector<ScreenDef> screens_;
     std::string empty_;

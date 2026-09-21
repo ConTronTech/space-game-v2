@@ -83,6 +83,7 @@ void UIHandler::removePanel(const std::string& name) {
 
 // ---------------- frame ----------------
 void UIHandler::onFrameBegin(engine::Engine& eng) {
+    frame_ = eng.frame();
     Uint32 b = SDL_GetMouseState(&mx_, &my_);
     bool down = (b & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     // Dev aid for repeatable UI tests without touching the real mouse:  --ui-click=X,Y,FRAME[;X,Y,FRAME...]
@@ -257,9 +258,13 @@ TTF_Font* UIHandler::font(int size) {
 }
 
 int UIHandler::textWidth(const std::string& s, int size) {
+    if (int* hit = widthCache_.find(size, s, frame_)) return *hit;
     TTF_Font* f = font(size);
     int w = 0, h = 0;
     if (f && !s.empty()) TTF_SizeUTF8(f, s.c_str(), &w, &h);
+    if (widthCache_.size() >= 1024) widthCache_.evictStale(frame_, 60, [](int) {});
+    if (widthCache_.size() >= 1024) widthCache_.clear([](int) {});
+    widthCache_.insert(size, s, w, frame_);
     return w;
 }
 
@@ -268,15 +273,13 @@ void UIHandler::textCentered(float cx, float y, const std::string& s, int size, 
 }
 
 void UIHandler::clearTextCache() {
-    for (auto& [k, t] : textCache_) glDeleteTextures(1, &t.id);
-    textCache_.clear();
+    textCache_.clear([](TextTex& t) { glDeleteTextures(1, &t.id); });
+    widthCache_.clear([](int) {});
 }
 
 // Renders a string to a GL texture once; identical strings reuse it on later frames.
 const UIHandler::TextTex* UIHandler::textTexture(const std::string& s, int size) {
-    std::string key = std::to_string(size) + ":" + s;
-    auto it = textCache_.find(key);
-    if (it != textCache_.end()) return &it->second;
+    if (TextTex* hit = textCache_.find(size, s, frame_)) return hit;
 
     TTF_Font* f = font(size);
     if (!f) return nullptr;
@@ -287,7 +290,9 @@ const UIHandler::TextTex* UIHandler::textTexture(const std::string& s, int size)
     SDL_FreeSurface(raw);
     if (!surf) return nullptr;
 
-    if (textCache_.size() >= 512) clearTextCache(); // e.g. a live-changing number; keep memory bounded
+    // keep memory bounded (e.g. a live-changing number): first drop what has not been drawn for a second, flush everything only as a last resort
+    if (textCache_.size() >= 512) textCache_.evictStale(frame_, 60, [](TextTex& t) { glDeleteTextures(1, &t.id); });
+    if (textCache_.size() >= 512) textCache_.clear([](TextTex& t) { glDeleteTextures(1, &t.id); });
 
     TextTex t{0, surf->w, surf->h};
     glGenTextures(1, &t.id);
@@ -298,7 +303,7 @@ const UIHandler::TextTex* UIHandler::textTexture(const std::string& s, int size)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf->w, surf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     SDL_FreeSurface(surf);
-    return &(textCache_[key] = t);
+    return textCache_.insert(size, s, t, frame_);
 }
 
 void UIHandler::text(float x, float y, const std::string& s, int size, float r, float g, float b, float a) {

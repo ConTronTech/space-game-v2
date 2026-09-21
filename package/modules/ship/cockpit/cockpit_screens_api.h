@@ -12,7 +12,8 @@
 //     ... shutdown: screens->removeRenderer("NAV");
 //
 // Renderers run inside the cockpit's view-space render pass, every frame the cockpit is visible, right after the model. The
-// screen already has its dark backing; blending is on, lighting off. Do not change GL state beyond what the canvas does.
+// screen already has its dark backing. The canvas only records quads (it never calls OpenGL); the cockpit draws and caches them,
+// so a renderer is called at cockpit.screen_hz, not necessarily every frame: keep it a pure function of the game state and c.time.
 // The built-in "HUD" group (the ShipV2 screens FLIGHT_DATA / SHIP_SYSTEMS / PROXIMITY_RADAR) uses this same interface.
 #include <functional>
 #include <string>

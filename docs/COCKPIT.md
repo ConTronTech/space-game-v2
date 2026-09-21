@@ -17,6 +17,11 @@ package/modules/ship/cockpit/
 package/tests/test_obj_parser.cpp, test_cockpit.cpp
 ```
 
+## How it draws (performance)
+The model (opaque hull + light state, and the glass) is compiled into display lists on first use. `ScreenCanvas` does not call OpenGL: every drawing call appends coloured quads to a `ScreenMesh`; the cockpit records each screen
+into its mesh at `cockpit.screen_hz` and draws each screen with one `glDrawArrays(GL_QUADS)` (screens never write depth: contents are drawn in the order they were recorded). Text is still geometry, so it is crisp at any distance.
+Consequence for renderers registered through `ICockpitScreens`: they are called at `cockpit.screen_hz`, not every frame, so they must be pure functions of the game state and `ScreenContext::time`. See docs/PERFORMANCE.md.
+
 ## What it does each frame
 Render pass `ship/cockpit` (order 800, after the world). In this order:
 1. skip if `cockpit.enabled` is false, the model did not load, or the camera shows the ship (chase view);
@@ -118,6 +123,7 @@ Pure maths (frame, mapping, height offset/level test, nearest-N list, distance a
 | `cockpit.light_dir` | `0.35,0.75,0.55` | direction **toward** the light, view space (x right, y up, z back); stand-in until the world has a sun |
 | `cockpit.glass_opacity` | 1.0 | multiplier on the canopy alpha (0 invisible, 1 as modelled, 3 heavy tint) |
 | `cockpit.screen_brightness` | 1.0 | brightness of the content on the screens (0.2 - 2) |
+| `cockpit.screen_hz` | 30 (by preset: low 15, medium 30, high 120, ultra 240) | how often the screens are redrawn per second; between redraws the cached geometry is drawn. At or above the frame rate = every frame; 0 = every frame |
 | `cockpit.radar_range` | 400000 | radar rim distance in units (logarithmic scale) |
 
 The light source lives in one function (`CockpitModule::light()` in cockpit.cpp). When the world module exists and provides the star direction through a service, that function

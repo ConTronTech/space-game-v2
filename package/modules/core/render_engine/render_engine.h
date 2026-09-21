@@ -5,9 +5,11 @@
 //     r.addPass("my_stuff", 100, [](core::RenderEngine& r){ /* GL calls, camera already set */ });
 // Passes run in ascending 'order': 0 = background, 100 = world, 200 = effects.
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 #include "engine/module.h"
+#include "engine/profiler.h"
 
 namespace core {
 
@@ -33,9 +35,12 @@ public:
     Camera camera;
 
 private:
-    struct Entry { std::string name; int order; Pass fn; };
-    std::vector<Entry> passes_;
+    struct Entry { std::string name; int order; Pass fn; int profId = -1; };
+    std::vector<std::shared_ptr<Entry>> passes_;
+    std::vector<std::shared_ptr<Entry>> running_;   // scratch copy for onRender (a pass may add/remove passes): reused, no per-frame allocation
     class Window* window_ = nullptr;
+    engine::Profiler* prof_ = nullptr;   // --profile: time every pass
+    bool profGpu_ = false;               // --profile=gpu: glFinish around each pass
 };
 
 } // namespace core

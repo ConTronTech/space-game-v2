@@ -196,19 +196,24 @@ private:
         for (int i = 0; i < 16; i++) m[i] = r.camera.view[i];
         m[12] = m[13] = m[14] = 0;
         glLoadMatrixf(m);
-        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_CURRENT_BIT | GL_TEXTURE_BIT);
+        // only the state this pass changes (GL_TEXTURE_BIT would copy every texture unit's state; we just rebind 0 at the end)
+        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_CURRENT_BIT);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
         glDisable(GL_LIGHTING);
         glEnable(GL_TEXTURE_2D);
         glColor4f(1, 1, 1, 1);
         const float s = kHalf;
-        quad(0, {{-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}});   // front  (-Z)
-        quad(1, {{s, -s, s}, {-s, -s, s}, {-s, s, s}, {s, s, s}});       // back   (+Z)
-        quad(2, {{-s, -s, s}, {-s, -s, -s}, {-s, s, -s}, {-s, s, s}});   // left   (-X)
-        quad(3, {{s, -s, -s}, {s, -s, s}, {s, s, s}, {s, s, -s}});       // right  (+X)
-        quad(4, {{-s, s, -s}, {s, s, -s}, {s, s, s}, {-s, s, s}});       // top    (+Y)
-        quad(5, {{-s, -s, s}, {s, -s, s}, {s, -s, -s}, {-s, -s, -s}});   // bottom (-Y)
+        GLint vp[4] = {0, 0, 1, 1};
+        glGetIntegerv(GL_VIEWPORT, vp);
+        // draw only the faces that can be on screen (off-screen ones would be clipped anyway, but cost API calls and a texture bind)
+        const world::FaceVisibility vis = world::visibleFaces(m, r.camera.fovDeg, vp[3] > 0 ? (float)vp[2] / (float)vp[3] : 1.0f);
+        if (vis.visible[0]) quad(0, {{-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}});   // front  (-Z)
+        if (vis.visible[1]) quad(1, {{s, -s, s}, {-s, -s, s}, {-s, s, s}, {s, s, s}});       // back   (+Z)
+        if (vis.visible[2]) quad(2, {{-s, -s, s}, {-s, -s, -s}, {-s, s, -s}, {-s, s, s}});   // left   (-X)
+        if (vis.visible[3]) quad(3, {{s, -s, -s}, {s, -s, s}, {s, s, s}, {s, s, -s}});       // right  (+X)
+        if (vis.visible[4]) quad(4, {{-s, s, -s}, {s, s, -s}, {s, s, s}, {-s, s, s}});       // top    (+Y)
+        if (vis.visible[5]) quad(5, {{-s, -s, s}, {s, -s, s}, {s, -s, -s}, {-s, -s, -s}});   // bottom (-Y)
         glBindTexture(GL_TEXTURE_2D, 0);
         glPopAttrib();
     }

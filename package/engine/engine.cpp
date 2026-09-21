@@ -1,11 +1,14 @@
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "engine/profiler.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <map>
 
 namespace engine {
@@ -117,6 +120,11 @@ int Engine::run(int argc, char** argv) {
     log::openFile(config.get<std::string>("engine.log_file", "logs/game.log", "log file, overwritten each run; empty = console only"));
     events.subscribe<QuitRequested>([this](const QuitRequested&) { quit(); });
 
+    // --profile: per-phase / per-pass timing (docs/PERFORMANCE.md). Provided as a service BEFORE the modules load so RenderEngine can time its passes.
+    Profiler profiler;
+    Profiler* prof = (hasFlag("profile") || !flagValue("profile").empty()) ? &profiler : nullptr;
+    if (prof) { services.provide<Profiler>(prof); profiler.setSlowMs(std::atof(flagValue("profile-slow", "0").c_str())); }
+
     if (!loadModules()) {
         LOG_E("engine", "a required module failed - aborting");
         for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) (*it)->shutdown(*this);
@@ -136,29 +144,71 @@ int Engine::run(int argc, char** argv) {
     float acc = 0;
     running_ = true;
 
+    // profiling ids: one per module and hook, e.g. "core/window:present" (only built with --profile)
+    static const char* const kHooks[7] = {"begin", "fixed", "update", "render", "ui", "end", "present"};
+    std::vector<int> hookIds[7];
+    int idOther = -1;
+    if (prof) {
+        for (int h = 0; h < 7; h++)
+            for (auto& m : modules_) hookIds[h].push_back(prof->intern(std::string(m->name()) + ":" + kHooks[h]));
+        idOther = prof->intern("engine:unaccounted");
+    }
+    double phaseMs = 0;   // time inside module hooks this frame (profiling only)
+    auto runPhase = [&](int hook, auto&& fn) {
+        for (size_t i = 0; i < modules_.size(); i++) {
+            if (!prof) { fn(*modules_[i]); continue; }
+            auto t0 = clock::now();
+            fn(*modules_[i]);
+            double ms = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+            prof->add(hookIds[hook][i], ms);
+            phaseMs += ms;
+        }
+    };
+    auto closeProfiledFrame = [&](double frameMs) {
+        prof->add(idOther, std::max(0.0, frameMs - phaseMs));
+        prof->endFrame(frameMs);
+    };
+
     while (running_) {
         auto now = clock::now();
-        float dt = std::chrono::duration<float>(now - last).count();
+        float rawDt = std::chrono::duration<float>(now - last).count();
+        float dt = rawDt;
         last = now;
         dt = std::min(dt, 0.1f); // don't spiral after a stall
+        if (prof) {
+            if (frame_ > 0) closeProfiledFrame(rawDt * 1000.0);   // the frame that just ended, swap included
+            prof->beginFrame(frame_);
+            phaseMs = 0;
+        }
         time_ += dt;
         acc += dt;
 
-        for (auto& m : modules_) m->onFrameBegin(*this);
+        runPhase(0, [&](Module& m) { m.onFrameBegin(*this); });
         if (paused_) acc = 0; // don't fast-forward the simulation after resuming
         while (acc >= step) {
-            for (auto& m : modules_) m->onFixedUpdate(*this, step);
+            runPhase(1, [&](Module& m) { m.onFixedUpdate(*this, step); });
             acc -= step;
         }
         alpha_ = paused_ ? 1.0f : std::clamp(acc / step, 0.0f, 1.0f); // paused: show the frozen state exactly
-        for (auto& m : modules_) m->onUpdate(*this, dt);
-        for (auto& m : modules_) m->onRender(*this);
-        for (auto& m : modules_) m->onRenderUI(*this);
-        for (auto& m : modules_) m->onFrameEnd(*this);
-        for (auto& m : modules_) m->onPresent(*this);
+        runPhase(2, [&](Module& m) { m.onUpdate(*this, dt); });
+        runPhase(3, [&](Module& m) { m.onRender(*this); });
+        runPhase(4, [&](Module& m) { m.onRenderUI(*this); });
+        runPhase(5, [&](Module& m) { m.onFrameEnd(*this); });
+        runPhase(6, [&](Module& m) { m.onPresent(*this); });
 
         frame_++;
         if (maxFrames > 0 && (long)frame_ >= maxFrames) quit();
+    }
+
+    if (prof) {
+        closeProfiledFrame(std::chrono::duration<double, std::milli>(clock::now() - last).count());
+        std::string report = prof->report();
+        std::fputs(report.c_str(), stdout);
+        std::error_code ec;
+        std::filesystem::create_directories("logs", ec);
+        std::ofstream("logs/profile.txt") << report;
+        LOG_I("engine", "profile written to logs/profile.txt");
+        services.withdraw<Profiler>();
     }
 
     for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) (*it)->shutdown(*this);

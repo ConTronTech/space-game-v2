@@ -123,6 +123,7 @@ inline const std::vector<Entry>& presetTable() {
         {"asteroids.draw_distance",         3500,  6000,   8000,   10000},
         {"asteroids.triangle_budget",       6000,  15000,  30000,  60000},
         {"asteroids.lod_edge_px",           16,    10,     8,      6},
+        {"cockpit.screen_hz",               15,    30,     120,    240},  // cockpit screens redraw rate; at or above the frame rate = every frame
     };
     return t;
 }

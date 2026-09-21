@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cctype>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -110,6 +111,45 @@ inline void boxDownscale(const uint8_t* src, int sw, int sh, int srcPitch, int b
             if (n) { o[0] = (uint8_t)((r + n / 2) / n); o[1] = (uint8_t)((g + n / 2) / n); o[2] = (uint8_t)((b + n / 2) / n); }
         }
     }
+}
+
+// ---- which faces can be seen (pure) ----
+// The cube is centred on the camera with half-size 's'. 'rot' is the 3x3 rotation of the view matrix (column-major 4x4 with the
+// translation ignored: rot[col*4 + row]). A face is skipped only when all four of its corners lie outside the SAME frustum plane
+// (left/right/top/bottom) or all behind the camera, which is conservative: it never hides a face that is on screen.
+// fovYdeg is the vertical field of view, aspect = width / height. 'margin' widens the frustum a little (1.05 = 5%).
+struct FaceVisibility { bool visible[6]; int count = 0; };
+
+inline FaceVisibility visibleFaces(const float* view, float fovYdeg, float aspect, float margin = 1.05f) {
+    const float h = 1.0f;   // the cube is scale-free: corners are +-1
+    const float faces[6][4][3] = {   // same corner tables as the draw code, for a unit cube
+        {{-h, -h, -h}, {h, -h, -h}, {h, h, -h}, {-h, h, -h}},   // front  (-Z)
+        {{h, -h, h}, {-h, -h, h}, {-h, h, h}, {h, h, h}},       // back   (+Z)
+        {{-h, -h, h}, {-h, -h, -h}, {-h, h, -h}, {-h, h, h}},   // left   (-X)
+        {{h, -h, -h}, {h, -h, h}, {h, h, h}, {h, h, -h}},       // right  (+X)
+        {{-h, h, -h}, {h, h, -h}, {h, h, h}, {-h, h, h}},       // top    (+Y)
+        {{-h, -h, h}, {h, -h, h}, {h, -h, -h}, {-h, -h, -h}},   // bottom (-Y)
+    };
+    float tanV = std::tan(fovYdeg * 0.5f * 3.14159265f / 180.0f) * margin;
+    float tanH = tanV * (aspect > 0 ? aspect : 1.0f);
+    FaceVisibility out;
+    for (int f = 0; f < 6; f++) {
+        bool allLeft = true, allRight = true, allBottom = true, allTop = true, allBehind = true;
+        for (int c = 0; c < 4; c++) {
+            const float* p = faces[f][c];
+            float x = view[0] * p[0] + view[4] * p[1] + view[8] * p[2];
+            float y = view[1] * p[0] + view[5] * p[1] + view[9] * p[2];
+            float d = -(view[2] * p[0] + view[6] * p[1] + view[10] * p[2]);   // distance in front of the camera
+            allBehind = allBehind && d <= 0;
+            allLeft = allLeft && x < -d * tanH;
+            allRight = allRight && x > d * tanH;
+            allBottom = allBottom && y < -d * tanV;
+            allTop = allTop && y > d * tanV;
+        }
+        out.visible[f] = !(allBehind || allLeft || allRight || allBottom || allTop);
+        out.count += out.visible[f];
+    }
+    return out;
 }
 
 } // namespace world

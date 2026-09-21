@@ -14,6 +14,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "core/ui_handler/text_cache.h"
 #include "engine/module.h"
 
 namespace core {
@@ -90,7 +91,9 @@ private:
     struct TextTex { unsigned int id; int w, h; };
     const TextTex* textTexture(const std::string& s, int size);
     void clearTextCache();
-    std::map<std::string, TextTex> textCache_; // key: "<size>:<string>"; flushed when it grows large
+    TextCache<TextTex> textCache_;             // (size, string) -> GL texture; stale entries are dropped when it grows large
+    TextCache<int> widthCache_;                // (size, string) -> pixel width, so centred text does not re-measure every frame
+    unsigned long frame_ = 0;                  // engine frame number, for the caches
     std::vector<Entry> panels_;
     std::map<int, TTF_Font*> fonts_;
     std::string fontPath_;

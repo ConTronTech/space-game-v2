@@ -27,3 +27,7 @@ Every time the world gets heavier (planets, asteroids, more triangles) run this 
 ## Implementation
 `package/modules/core/benchmark/` (`bench_stats.h` is pure and unit-tested). It measures real wall-clock frame times (the engine's own `dt` is clamped to 0.1 s and would hide hitches),
 and is inert unless `--benchmark` is given. `--no-vsync` is handled by `core/window`. The startup hardware log is in `core/window`.
+
+## Finding what is slow: `--profile`
+`--benchmark` gives the totals; `--profile` (add `=gpu` to charge GPU work to the pass that caused it) prints and writes `logs/profile.txt`: average / worst ms per module hook and per render pass, and every slow frame with its three slowest parts.
+See docs/PERFORMANCE.md for how to read it, how to run it on the laptop and what the performance pass changed. The benchmark itself is unchanged.

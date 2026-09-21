@@ -52,6 +52,7 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `asteroids.draw_distance` | 3500 | 6000 | 8000 | 10000 |
 | `asteroids.triangle_budget` | 6000 | 15000 | 30000 | 60000 |
 | `asteroids.lod_edge_px` | 16 | 10 | 8 | 6 |
+| `cockpit.screen_hz` | 15 | 30 | 120 | 240 |
 
 (The skybox source faces are 1024 px today, so High/Ultra only pay off with larger face images.) Not tied to a preset: vsync (the window sets it; `--no-vsync` for benchmarks), `world.terrain_height`, gameplay tunables.
 To add a tunable, add a row to `presetTable()` in `quality_rules.h` (the table test checks monotonic growth).
