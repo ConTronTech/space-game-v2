@@ -268,3 +268,65 @@ TEST(radar_distance_text) {
     CHECK_EQ(cockpit::radarDistanceText(1200000), std::string("1.2M"));
     CHECK_EQ(cockpit::radarDistanceText(-4), std::string("0"));
 }
+
+// ---- radar height stems ----
+TEST(radar_height_offset_sign_zero_and_clamp) {
+    const float range = 400000.0f;
+    CHECK(nearf(cockpit::radarHeightOffset(0, range), 0.0f));
+    CHECK(nearf(cockpit::radarHeightOffset(10, range), 0.0f));                 // level: no stem
+    CHECK(nearf(cockpit::radarHeightOffset(-10, range), 0.0f));
+    CHECK(nearf(cockpit::radarHeightOffset(cockpit::kLevelHeight - 0.1f, range), 0.0f));
+    CHECK(cockpit::radarHeightOffset(800, range) > 0);                          // above = positive
+    CHECK(cockpit::radarHeightOffset(-800, range) < 0);                         // below = negative
+    CHECK(nearf(cockpit::radarHeightOffset(800, range), -cockpit::radarHeightOffset(-800, range)));   // symmetric
+    CHECK(nearf(cockpit::radarHeightOffset(range, range), cockpit::kMaxStem));  // full range = the longest stem
+    CHECK(nearf(cockpit::radarHeightOffset(range * 50, range), cockpit::kMaxStem));   // clamped
+    CHECK(nearf(cockpit::radarHeightOffset(-range * 50, range), -cockpit::kMaxStem));
+    float prev = 0;
+    for (float h : {30.0f, 100.0f, 800.0f, 4500.0f, 40000.0f, 300000.0f}) {     // monotonic and readable
+        float o = cockpit::radarHeightOffset(h, range);
+        CHECK(o > prev);
+        prev = o;
+    }
+    CHECK(cockpit::radarHeightOffset(800, range) > 0.05f);                      // a body 800 up is clearly visible
+    CHECK(nearf(cockpit::radarHeightOffset(std::nanf(""), range), 0.0f));       // no NaN on the scope
+    CHECK(nearf(cockpit::radarHeightOffset(500, 0), 0.0f));                     // bad range
+}
+TEST(radar_plot_height_uses_ship_up) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    auto above = cockpit::radarPlot({0, 800, -5000}, f, 400000.0f);
+    CHECK(nearf(above.height, 800.0f) && above.stem > 0);
+    CHECK(nearf(above.x, 0.0f) && above.y > 0.3f);                              // the flat position ignores height
+    auto below = cockpit::radarPlot({0, -800, -5000}, f, 400000.0f);
+    CHECK(nearf(below.height, -800.0f) && below.stem < 0);
+    CHECK(nearf(below.y, above.y));                                             // same flat position
+    auto level = cockpit::radarPlot({0, 3, -5000}, f, 400000.0f);
+    CHECK(nearf(level.stem, 0.0f));
+    auto shallow = cockpit::radarPlot({0, 100, -10000}, f, 400000.0f);          // 0.6 degrees: level even though 100 units
+    CHECK(nearf(shallow.stem, 0.0f) && nearf(shallow.height, 100.0f));
+    // roll the ship 90 degrees (up = +X): a body to the right is now "above"
+    auto rolled = cockpit::radarFrame({0, 0, -1}, {1, 0, 0});
+    auto p = cockpit::radarPlot({2000, 0, -5000}, rolled, 400000.0f);
+    CHECK(p.height > 1900.0f && p.stem > 0);
+}
+TEST(radar_stem_never_leaves_the_scope) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    for (float h : {-300000.0f, -5000.0f, 5000.0f, 300000.0f})
+        for (float fwd : {-390000.0f, -100000.0f, -3000.0f, 0.0f, 3000.0f, 100000.0f, 390000.0f}) {
+            auto p = cockpit::radarPlot({50000, h, fwd}, f, 400000.0f);
+            float ex = p.x, ey = p.y + p.stem;
+            CHECK(ex * ex + ey * ey <= 1.0001f);
+            CHECK(p.stem == 0 || (p.stem > 0) == (h > 0));                                  // shortening never flips the direction
+        }
+    auto rim = cockpit::radarPlot({0, 100000, -390000}, f, 400000.0f);          // base on the rim: stem cannot go up, shrinks to ~0
+    CHECK(rim.stem >= 0 && rim.stem < 0.2f);
+}
+TEST(radar_height_text) {
+    CHECK_EQ(cockpit::radarHeightText(800, 5000), std::string("UP 800"));
+    CHECK_EQ(cockpit::radarHeightText(-8100, 40000), std::string("DN 8.1K"));
+    CHECK_EQ(cockpit::radarHeightText(5, 5000), std::string(""));
+    CHECK_EQ(cockpit::radarHeightText(0, 0), std::string(""));
+    CHECK_EQ(cockpit::radarHeightText(-25, 10300), std::string(""));            // 25 units off at 10K distance: ~0.1 degree, level
+    CHECK(cockpit::radarIsLevel(200, 10300) && !cockpit::radarIsLevel(300, 10300));
+    CHECK(cockpit::radarIsLevel(std::nanf(""), 100));
+}

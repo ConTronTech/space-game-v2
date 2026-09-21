@@ -37,9 +37,28 @@ inline float radarFraction(float distance, float range, float scale = kRadarScal
     return std::clamp(std::log1p(distance / scale) / std::log1p(range / scale), 0.0f, 1.0f);
 }
 
+constexpr float kLevelHeight = 25.0f;   // units: closer to the ship's plane than this counts as level (no stem)
+constexpr float kLevelSlope = 0.02f;    // ... or closer than this fraction of the distance (~1 degree of elevation)
+constexpr float kMaxStem = 0.5f;        // longest stem, as a fraction of the scope radius
+
+// Is a body at this height / distance level with the ship's plane (no stem, no UP/DN label)?
+inline bool radarIsLevel(float height, float dist) {
+    return !(std::fabs(height) >= std::max(kLevelHeight, kLevelSlope * dist));   // also true for NaN
+}
+
+// Vertical offset on the scope for a body 'height' units above (+) / below (-) the ship's plane: the same logarithmic scale as
+// the distance rings, scaled to at most maxStem. Level bodies (|height| < kLevelHeight) give exactly 0.
+inline float radarHeightOffset(float height, float range, float maxStem = kMaxStem) {
+    float a = std::fabs(height);
+    if (!(a >= kLevelHeight)) return 0;     // also catches NaN
+    return (height > 0 ? 1.0f : -1.0f) * radarFraction(a, range) * maxStem;
+}
+
 struct RadarPlot {
-    float x = 0, y = 0;      // unit disc: x right, y forward
+    float x = 0, y = 0;      // flat position on the unit disc: x right, y forward
     float dist = 0;          // true 3D distance
+    float height = 0;        // signed distance above (+) / below (-) the ship's plane, units
+    float stem = 0;          // vertical offset of the contact's dot from (x, y) on the scope, unit-disc units; 0 = level
     bool clamped = false;    // beyond range: sits on the rim
 };
 
@@ -52,6 +71,13 @@ inline RadarPlot radarPlot(const engine::Vec3& rel, const RadarFrame& f, float r
     p.clamped = h > range;
     float r = radarFraction(h, range);
     if (h > 1e-3f) { p.x = lx / h * r; p.y = lz / h * r; }
+    p.height = engine::dot(rel, f.up);
+    p.stem = radarIsLevel(p.height, p.dist) ? 0.0f : radarHeightOffset(p.height, range);
+    // keep the dot inside the scope: shorten the stem if it would poke through the rim (the base is always inside the disc)
+    if (p.stem != 0 && p.x * p.x + (p.y + p.stem) * (p.y + p.stem) > 1.0f) {
+        float room = std::sqrt(std::max(0.0f, 1.0f - p.x * p.x));
+        p.stem = (p.stem > 0 ? room : -room) - p.y;
+    }
     return p;
 }
 
@@ -81,6 +107,12 @@ inline std::string radarDistanceText(float d) {
     else if (d < 1000000.0f) std::snprintf(b, sizeof b, "%.0fK", d / 1000.0f);
     else std::snprintf(b, sizeof b, "%.1fM", d / 1000000.0f);
     return b;
+}
+
+// "UP 800" / "DN 8.1K" for the label; "" when level.
+inline std::string radarHeightText(float height, float dist) {
+    if (radarIsLevel(height, dist)) return "";
+    return std::string(height > 0 ? "UP " : "DN ") + radarDistanceText(std::fabs(height));
 }
 
 } // namespace cockpit
