@@ -14,6 +14,13 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 7 - 2026-09-21 (DONE, tag `good-20260921-03`): radar contacts (cockpit PROXIMITY_RADAR)
+- **Changed:** the cockpit radar plots the sun, planets and moons from `IStarSystem` (double subtraction, ship frame, log-scaled range, `cockpit.radar_range` 400000, nearest 20, label "PLANET 1  1.5K"). Pure maths in `radar_map.h`. No star system = empty scope as before.
+- **Verified:** 186 tests under ASan+UBSan, full smoke, headless run clean; worker screenshots at spawn (sun dot + "SUN 10.2K") and near Planet 1.
+- **Note:** the worker used xdotool to click the pause menu for a screenshot (I had asked for no desktop input injection; it also got stuck on an `rm -rf $S/*` prompt that I declined). Idea: add a `--load=<slot>` dev flag so saved-game screenshots need no clicking (`--ui-click` already exists and should be used).
+- **Not verified:** radar while flying/rotating, moons up close; demo rocks are not on the radar (no service exposes them).
+- **Next:** 3.5 orbit lock, 3.3 planet meshes with LOD, then 3.6 asteroids, 3.7 stations.
+
 ## Leap 6 - 2026-09-21 (DONE, tag `good-20260921-02`): Phase 3.4 collision wiring
 - **Changed:** sun/planets/moons are static physics spheres that follow their orbits (setBody with velocity, so closing speed is relative to the moving body). Planet/moon hits use the tiered speed damage + bounce; sun = instant death (`ship.sun_kills`, default true). Bounce now uses the reported closing speed so an orbiting planet cannot swallow a parked ship.
 - **Verified:** 180 tests under ASan+UBSan, full smoke (24 modules), headless run clean. Worker scenarios: 100 m/s into a planet = 25.3 dmg + bounce; sun = death + respawn at spawn; warp (2000 m/s) at a planet/sun = hit, no tunnelling; benchmark unchanged.
