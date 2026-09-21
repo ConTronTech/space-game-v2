@@ -65,7 +65,7 @@ Esc opens the pause menu (Resume, Save Game, Load Game, Settings, Exit Game).
 ./space_game_v2 --list-modules           # print loaded modules and exit
 ```
 
-`--disable` takes module names like `gameplay/flight,core/ui_handler`.
+`--disable` takes module names like `ship/cockpit,core/ui_handler`.
 To disable a module at build time instead, prefix its folder with `_`.
 
 ## 5. Where things live
@@ -77,7 +77,7 @@ To disable a module at build time instead, prefix its folder with `_`.
 | `saves/` | save slots written by the save system |
 | `assets/` | models and skybox images (git-ignored; linked in by `package/tools/link_assets.sh`); sounds are synthesized in code, optional files go in `assets/sounds/` |
 | `package/engine/` | the kernel: module interface, event bus, services, main loop |
-| `package/modules/` | all modules: `core/` (window, input, rendering, UI, saves, settings, audio, data), `gameplay/` (flight), `ship/` (ship status and damage contract), `ui/` (pause menu) |
+| `package/modules/` | all modules: `core/` (window, input, rendering, UI, saves, settings, audio, data), `ship/` (ship core, cockpit, dev fake ship), `ui/` (pause menu, ship HUD) |
 
 For more: `docs/MODULES.md` (modules), `docs/INPUT.md` (input profiles),
 `docs/WORKFLOW.md` (how phases are built).

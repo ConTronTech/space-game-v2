@@ -1,36 +1,28 @@
-# Resume guide (written 2026-09-19, before Claude's weekly limit reset, Mon 6:00 AM)
+# Resume guide (updated 2026-09-20, end of Phase 2 Wave 1)
 
 ## Where the project stands
-- `main` branch of `/home/contolis/Documents/Space-Game-V2/space-game-v2` is the real project. The old `space-game/space-game` folder is a **read-only concept reference**.
-- Phases 0 and 1 are complete: 15 modules, 78 unit tests, all green under ASan/UBSan (`package/tools/smoke.sh`). See `docs/ROADMAP.md`.
-- Phase 2 (ship) is **designed but not started**: contract `package/modules/ship/ship_core/ship_api.h` is committed; task specs for Wave 1 are in
-  `docs/agent_specs/phase2_wave1/` (`w1_ship_core`, `w2_ship_hud`, `w3_cockpit`). Wave 2 (warp drive 2.2, respawn 2.4) comes after ship_core is merged.
-- Process: `docs/WORKFLOW.md`. Agents build in parallel worktrees and **never commit**; the coordinator reviews the diff, then commits (`SG_COMMIT_APPROVED=1 git commit`).
-- Qwen (Spark gateway) evaluation and how to use it: `docs/QWEN_REPORT.md`.
+- `main` of `/home/contolis/Documents/Space-Game-V2/space-game-v2` is the real project (the old `space-game/space-game` folder is a read-only concept reference).
+- Phases 0-1 are complete. **Phase 2 Wave 1 is complete and merged:** `ship/ship_core` (real ship: HP, shield, fuel storage, collision damage, death),
+  `ui/ship_hud` (glass HUD; steps back in cockpit view) and `ship/cockpit` (ShipV2 interior with live `@HUD` screens). 140 unit tests, green under ASan/UBSan.
+- **Default setup:** cockpit view with the ShipV2 model, the HUD on the ship's own screens (INFO / SYSTEMS / RADAR). `V` toggles chase view (full flat overlay).
+- **Next: Wave 2** = `ship/warp_drive` (2.2) and `ship/respawn` (2.4), then the user's playtest FIX LIST. Then Phase 3 (world). See `docs/ROADMAP.md`.
+- Known gaps: no way to gain shield/fuel yet (inventory is Phase 5); death ends on a frozen screen until 2.4; the radar shows NO CONTACTS until the world exists;
+  audio verified only with SDL's dummy driver.
+- Parked (later): local multiplayer, mobile app, browser build - `docs/ROADMAP.md` "Parked ideas".
 
-## Orca state left behind (Orca repo id `4901aa59-f2a8-4d6b-a1f1-1f91fa5d2e8a`, run `run_1c7f951d082c`)
-- Worktree `p2-ship-core`: the **stalled first attempt** (dispatch `ctx_c208dc4c0320`, failed at agent readiness). Its Claude terminal showed the weekly-limit
-  notice. Nothing was written there. Safe to remove.
-- Worktree `spark-quickstart`: the Qwen trial; its work is merged into `main`. Safe to remove.
-- Neither was removed because that wasn't approved.
+## How work gets done (`docs/WORKFLOW.md`)
+Agents build in parallel worktrees and **never commit**; the coordinator reviews the diff, runs smoke + sanitizers, then commits (`SG_COMMIT_APPROVED=1`) and merges;
+the user plays; problems go back as one numbered FIX LIST. Task specs live in `docs/agent_specs/` (Wave 1 specs are the template for Wave 2).
+Qwen (free, max 2 concurrent) is a good reviewer of SMALL pieces only: `docs/QWEN_REPORT.md`.
 
-## Agents and quota
-- Claude: weekly limit was at 96% (resets Mon 6:00 AM). Check first: `orca-ide account list --json` (see `rateLimits`).
-- Codex: signed in (Free plan), quota unreadable when checked. Cursor and OpenCode are installed, untested.
-- Qwen3.8 27B via Spark gateway (`omp --model spark-gateway/qwen3.8-27b`): free inference, **max 2 concurrent agents**, slow, good reviewer. Read the report before delegating.
+## Orca state (repo id `4901aa59-f2a8-4d6b-a1f1-1f91fa5d2e8a`)
+- Run `run_ac08f93c352e` (bound to the coordinator terminal of the 2026-09-20 session; a new session needs a NEW run: `orca-ide orchestration run-create`).
+- Three **retained** Claude workers with full context of their code, ready for FIX LISTS: `p2w1-ship-core`, `p2w1-ship-hud`, `p2w1-cockpit` (worktrees under `~/orca/workspaces/space-game-v2/`).
+  Their branches are merged into `main`. To reuse one, fast-forward its worktree (`git -C <wt> merge --ff-only main`), `task-create`, then `worker-start --task <id> --terminal <handle> --worktree id:<repo-id>::<path>`.
+- Old leftovers, safe to remove: worktrees `p2-ship-core` (failed first attempt) and `spark-quickstart` (Qwen trial, merged).
+- Use `orca-ide` (never bare `orca`). Read the skill guide with `orca-ide skills get orchestration`.
 
-## To resume Phase 2
-1. Check quota (above). Optionally remove the two leftover worktrees.
-2. Start Wave 1 workers one at a time (worker-start creates the worktree and agent terminal; use the saved specs):
-   ```text
-   orca-ide orchestration worker-start --run run_1c7f951d082c --spec "$(cat docs/agent_specs/phase2_wave1/w1_ship_core.txt)" \
-     --task-title "2.1 ship/ship_core" --worktree new-top-level --repo id:4901aa59-f2a8-4d6b-a1f1-1f91fa5d2e8a \
-     --base-branch main --name p2-ship-core --agent claude --setup skip --json
-   ```
-   (the worktree name `p2-ship-core` exists already; remove it first or use another `--name`). If a start fails at `agent_readiness`, do NOT relaunch:
-   read the terminal (`orca-ide terminal read --terminal <handle>`); a quota notice or a "trust this folder" prompt is the likely cause.
-3. Wait for `worker_done` (`orca-ide orchestration check --wait ...`). Then review the **uncommitted** diff in each worktree
-   (`git -C <worktree> status` / `diff`), run `package/tools/smoke.sh` there, write a numbered FIX LIST for anything wrong, and send it to the same worker.
-4. When approved: commit in the worktree with `SG_COMMIT_APPROVED=1`, merge into `main`, run smoke, tick the roadmap boxes, release the worker.
-5. The user plays the build; their findings join the FIX LIST. Then Wave 2.
-6. Cheap in the meantime: use Qwen for review of every diff, docs, data (see the report's task-brief checklist).
+## Useful commands
+- Build/run: `make -j8 && ./space_game_v2`; tests: `make test-san`; full check: `package/tools/smoke.sh`.
+- Dev flags: `--fake-ship=hp:35,shield:120,fuel:10[,dead][,hit:20]`, `--paused[=settings|load]`, `--screenshot=f.bmp --screenshot-frame=N`,
+  `--ui-click=X,Y,FRAME[;...]` (injects menu clicks; Load Game is at 640,388 at 1280x720).

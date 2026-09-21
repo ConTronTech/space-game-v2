@@ -6,7 +6,8 @@ only knows how to find modules, order them, and call their hooks. Build: C++23, 
 ```
 package/engine/            kernel: Module interface, EventBus, Services, main loop  (rarely touched)
 package/modules/core/      window, input_handler, render_engine, ui_handler, import_handler
-package/modules/gameplay/  game features (flight, weapons, ...)
+package/modules/ship/      the ship: ship_core (IShip), cockpit, fake_ship (dev)
+package/modules/ui/        pause_menu, ship_hud
 package/template/          scaffold used by package/tools/new_module.sh
 ```
 
@@ -19,8 +20,8 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 ## Change or remove a module
 - Replace: edit or swap the folder. Other modules only depend on the module's **name** and its
   public header, so an alternative implementation can take its place.
-- Disable at build time: prefix the folder or file with `_` (`package/modules/gameplay/_flight/`).
-- Disable at run time: `./space_game_v2 --disable=gameplay/flight,core/ui_handler`
+- Disable at build time: prefix the folder or file with `_` (`package/modules/ship/_cockpit/`).
+- Disable at run time: `./space_game_v2 --disable=ship/cockpit,core/ui_handler`
 - See what loaded: `make modules` (or `--list-modules`).
 
 ## The Module interface (`engine/module.h`)
@@ -53,11 +54,13 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::IData` | game content by id: `get("ores", "iron")`, `ids("recipes")` - see docs/DATA.md |
 | `core::ICamera` / `ITransformSource` | the view: publish a pose with `ITransformSource::transform(alpha)`; camera modes (V) |
 | `core::IPhysics` | sphere bodies + `Collided` events: `addBody`, `setBody`, `teleport` - see docs/PHYSICS.md |
+| `ship::IShip` | the ship's status and actions: `status()`, `applyDamage`, `consumeWarpFuel`, `kill`, `respawn`; events `DamageTaken`, `Died`... - see docs/SHIP.md |
+| `cockpit::ICockpitScreens` | put content on the cockpit model's `@` screens: `registerRenderer(group, fn)`; `showsDefaultUI()` - see docs/COCKPIT.md |
 | `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
 
-`package/modules/gameplay/flight/flight.cpp` is the reference: binds input, registers passes and a HUD panel,
+`package/modules/ship/ship_core/ship_core.cpp` is the reference: provides `ship::IShip`, registers render passes, is saveable, uses physics/audio,
 publishes the camera. Copy its shape.
 
 - **Config** (`engine.config`): base value in code + optional override in `config/game.json` - see docs/CONFIG.md.

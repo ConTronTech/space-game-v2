@@ -48,7 +48,9 @@ refactors, architecture decisions, physics/math-heavy debugging without pointers
 5. **Breaks "only edit these files".** Left a stray `find_cos.cpp` scratch file in the repo root.
 6. **Unguided debugging stalls.** Trial 6 timed out twice with just "tests fail, find the bug". It succeeded once told where the code lives
    and to build with `make -j8 test`. Most of its time goes to slow single-threaded builds and reading.
-7. **Non-interactive quirk:** `omp -p` without a terminal hangs at `readPipedInput` unless stdin is closed (`< /dev/null`).
+7. **Reviews must be small.** A review of a ~1,800-line, 20-file diff timed out at 15 minutes with no output, and even a single 223-line parser file
+   timed out at 10 minutes (later trials, 2026-09-20). Give it a few dozen lines, one area per run, or expect nothing back. It stayed read-only both times.
+8. **Non-interactive quirk:** `omp -p` without a terminal hangs at `readPipedInput` unless stdin is closed (`< /dev/null`).
 
 ## How to use it
 **Give Qwen:** code review / rule-lint of a diff (a great cheap second opinion on Claude's work), data and JSON content, docs generated from
