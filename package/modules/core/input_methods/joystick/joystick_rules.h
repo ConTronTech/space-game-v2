@@ -146,9 +146,9 @@ struct Contribution { std::string action; float value = 0; };
 class Mapper {
 public:
     void reset() { toggles_.clear(); prev_.clear(); first_.clear(); moved_.clear(); }
-    // Real devices only: a steering wheel / stick axis reports a WRONG first value on some hardware (the PXN V10 read +32767 = full right until its first motion
-    // event), which the game turned into constant yaw. With this on, a Stick / Steering axis outputs 0 until its raw value has moved by kFirstMoveDelta from
-    // the first reading. Pedals rest at one END on purpose, so they are not affected.
+    // Real devices only: SDL reports a WRONG first value for most axes of some hardware until its first motion event (PXN V10 wheel: steering full left/right,
+    // throttle +32767 = full throttle; SideWinder twist +32767), which the game turned into constant yaw / thrust. With this on, EVERY axis (stick, steering
+    // and pedals) outputs 0 until its raw value has moved by kFirstMoveDelta from the first reading. A control genuinely held at start reads 0 until moved.
     void setWaitFirstMove(bool on) { waitFirstMove_ = on; }
     static constexpr int kFirstMoveDelta = 1500;
 
@@ -165,7 +165,7 @@ public:
                 continue;
             }
             if (a.action.empty()) continue;
-            if (waitFirstMove_ && (a.role == Role::Stick || a.role == Role::Steering)) {
+            if (waitFirstMove_) {   // every axis role: pedals too (the PXN throttle read +32767 = full throttle until touched)
                 size_t ai = (size_t)std::max(0, a.index);
                 if (first_.size() <= ai) { first_.resize(ai + 1, 0); moved_.resize(ai + 1, 2); }
                 if (moved_[ai] == 2) { first_[ai] = raw; moved_[ai] = 0; }                  // first sample: remember it

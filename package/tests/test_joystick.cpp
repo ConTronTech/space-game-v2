@@ -295,9 +295,13 @@ TEST(joystick_steering_ignores_a_wrong_first_reading_until_it_moves) {
     out.clear(); m.evaluate(p, s, t, out); CHECK(std::fabs(out[0].value) < 0.05f);
     s.axes[0] = 16000;                                    // and now it steers normally
     out.clear(); m.evaluate(p, s, t, out); CHECK(std::fabs(out[0].value) > 0.2f);
-    // a pedal (rests at one end on purpose) is not affected, and without the option nothing changes
+    // a pedal too: the PXN throttle reads +32767 (looks fully pressed) until its first motion event: 0 until it moves, then it works
     Profile q; AxisMap th; th.index = 0; th.role = Role::Throttle; th.action = "thrust"; th.rest = Rest::Min; q.axes.push_back(th);
     Mapper m2; m2.setWaitFirstMove(true); RawState ps; ps.axes.assign(1, 32767);
-    out.clear(); m2.evaluate(q, ps, t, out); CHECK(out.size() == 1); CHECK(out[0].value > 0.9f);
+    out.clear(); m2.evaluate(q, ps, t, out); CHECK(out.size() == 1); CHECK(std::fabs(out[0].value) < 1e-6f);
+    ps.axes[0] = -32768;                                  // the real rest value arrives: the pedal reads 0 (unpressed)
+    out.clear(); m2.evaluate(q, ps, t, out); CHECK(std::fabs(out[0].value) < 0.02f);
+    ps.axes[0] = 32767;                                   // now really pressed
+    out.clear(); m2.evaluate(q, ps, t, out); CHECK(out[0].value > 0.9f);
     Mapper m3; RawState s3; s3.axes.assign(1, 32767); out.clear(); m3.evaluate(p, s3, t, out); CHECK(out[0].value != 0.0f);
 }
