@@ -76,3 +76,10 @@ cd ~/Documents/Space-Game-V2/space-game-v2 && export DISPLAY=:0 LD_LIBRARY_PATH=
 ./space_game_v2 --joystick-monitor                    # turn the wheel, press each pedal, the shifter, the wheel buttons: note the numbers
 ./space_game_v2 --joystick-calibrate                  # 10 s, move everything to both ends; then: cat logs/joystick_calibration.json
 ```
+
+## The visual tester (`joytest`)
+`make joytest` builds `build/joytest` (SDL2 only, no game code, no fonts). It opens a window with every connected joystick / wheel: a live bar per axis (value, the resting value as a yellow tick,
+min/max seen as red/green ticks, the row flashes when it moves), a lit box per button (green = down, blue = pressed before, with a press count), the hat as a cross, and an event log.
+Press or move ONE control at a time and watch which one lights up. Keys: `R` resets min/max, `S` saves the summary, `Esc`/`Q` quits. It writes `logs/joytest.log` (timestamped events)
+and `logs/joytest_summary.txt` (per axis: rest, min, max, moves and whether it looks like a pedal (rests at an end) or a stick/wheel (rests near the centre); per button: presses).
+On the laptop: `cd ~/Documents/Space-Game-V2/space-game-v2 && DISPLAY=:0 LD_LIBRARY_PATH=libs ./joytest` (sync it with `package/tools/laptop_bench.sh` or rsync `build/joytest`).
