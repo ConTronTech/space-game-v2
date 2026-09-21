@@ -2,9 +2,13 @@
 // Reads state only through ship::IShip and its events. With no IShip (ship module off) it draws nothing and logs one warning.
 // Layout and thresholds live in hud_logic.h (unit-tested). See docs/HUD.md.
 #include <cstdio>
+#include <map>
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "core/data_registry/data_api.h"
+#include "gameplay/inventory/inventory_api.h"
+#include "gameplay/mining/mining_api.h"
 #include "ship/cockpit/cockpit_screens_api.h"
 #include "combat/weapons/weapons_api.h"
 #include "ship/docking/docking_api.h"
@@ -34,6 +38,11 @@ public:
         eng.events.subscribe<combat::Overheated>([this](const combat::Overheated& e) { state_.onOverheated(e.name, eng_->time()); });
         eng.events.subscribe<combat::WeaponChanged>([this](const combat::WeaponChanged& e) { state_.onWeaponChanged(e.name, eng_->time()); });
         eng.events.subscribe<world::AsteroidDestroyed>([this](const world::AsteroidDestroyed&) { state_.onEnemyKilled(eng_->time()); });
+        eng.events.subscribe<gameplay::OreMined>([this](const gameplay::OreMined& e) {
+            const OreInfo& o = oreInfo(e.ore);
+            state_.onOreMined(e.ore, o.label, o.colour, e.amount, eng_->time());
+        });
+        eng.events.subscribe<gameplay::CargoFull>([this](const gameplay::CargoFull&) { state_.onCargoFull(eng_->time()); });
         dockRange_ = eng.config.get("docking.prompt_range", 0.0f, "distance from a station centre at which the HUD shows the dock prompt, units (0 = 4 x the station's dock radius)");
         auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
@@ -66,11 +75,15 @@ private:
 
         // speed
         if (plan.speed) {
-            char buf[64];
-            std::snprintf(buf, sizeof buf, "%.1f m/s", st.speed);
+            // a live number makes a new text texture per change: refresh it 10x a second, not every frame
+            if (now - speedAt_ >= 0.1 || speedAt_ > now) {
+                char buf[64];
+                std::snprintf(buf, sizeof buf, "%.1f m/s", st.speed);
+                speedText_ = buf; speedAt_ = now;
+            }
             ui.glass(L.speed.x, L.speed.y, L.speed.w, L.speed.h);
-            ui.text(L.speed.x + 16 * s, L.speed.y + 6 * s, "SPEED", fSmall, ui.theme.textDim);
-            ui.text(L.speed.x + 16 * s, L.speed.y + 22 * s, buf, fBig, ui.theme.accent);
+            ui.text(L.speed.x + 16 * s, L.speed.y + 6 * s, kSpeedLabel, fSmall, ui.theme.textDim);
+            ui.text(L.speed.x + 16 * s, L.speed.y + 22 * s, speedText_, fBig, ui.theme.accent);
         }
 
         // bars
@@ -126,6 +139,12 @@ private:
             drawBanner(ui, L, by, state_.orbitStatus(), kCalm, 1.0f);
             by += L.bannerH + L.bannerGap;
         }
+        // "+6 CRYSTAL" pickup banners (merged per ore, fade over ~1.5 s), stacked under the other top banners
+        if (plan.banners && st.alive)
+            state_.forEachPickup(now, [&](const std::string& text, const hud::RGB& c, float a) {
+                drawBanner(ui, L, by, text, c, a);
+                by += L.bannerH + L.bannerGap;
+            });
         // docked line, or the station prompt while flying near one (both optional: no ship/docking = nothing)
         if (plan.banners && st.alive) {
             if (state_.docked()) {
@@ -145,16 +164,20 @@ private:
             }
         }
 
-        if (plan.banners && st.alive && combat) drawWeaponBlock(ui, L, *combat, now, busy);
+        // bottom-left block: cargo row and weapon rows in one panel (each optional)
+        if (plan.banners && st.alive) drawLeftBlock(ui, L, combat, eng_->services.get<gameplay::IInventory>(), now, busy);
 
         // controls hint (kept from the old demo HUD, plus V camera)
-        const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
         float ha = plan.hint ? hud::hintAlpha(now, hintSeconds_) : 0.0f;
         if (ha > 0) {
-            int hf = hud::fitHint(L, W, [&](const std::string& t, int sz) { return ui.textWidth(t, sz); }, hint);
+            if (hintW_ != W || hintH_ != H) {                       // the fit only changes with the window size
+                hintFont_ = hud::fitHint(L, W, [&](const std::string& t, int sz) { return ui.textWidth(t, sz); }, kHint);
+                hintW_ = W; hintH_ = H; hintX_ = L.hint.x; hintWidth_ = L.hint.w;
+            }
+            L.hint.x = hintX_; L.hint.w = hintWidth_;
             ui.glass(L.hint.x, L.hint.y, L.hint.w, L.hint.h, 0.9f * ha, false, 10 * s);
             core::Color hc = ui.theme.textDim; hc.a *= ha;
-            ui.textCentered(W / 2.0f, L.hint.y + (L.hint.h - hf * 1.3f) / 2, hint, hf, hc);
+            ui.textCentered(W / 2.0f, L.hint.y + (L.hint.h - hintFont_ * 1.3f) / 2, kHint, hintFont_, hc);
         }
 
         // destroyed
@@ -202,35 +225,50 @@ private:
     }
 
     // bottom-left block, one row per weapon: "BLASTER  [1]" + mini heat bar; the selected row is bright, the others dim
-    void drawWeaponBlock(core::UIHandler& ui, const hud::Layout& L, combat::ICombat& cb, double now, bool busy) {
+    // Bottom-left block above the hint, ONE glass panel for everything it shows: an optional cargo row ("CARGO 45 / 100" + thin bar; amber above
+    // 80 %, red when full) and, with combat/weapons, one row per weapon ("BLASTER  [1]" + mini heat bar; the selected one bright, the others dim).
+    void drawLeftBlock(core::UIHandler& ui, const hud::Layout& L, combat::ICombat* cb, gameplay::IInventory* inv, double now, bool busy) {
         const float s = L.scale;
-        int n = cb.weaponCount();
-        if (n <= 0) return;
-        if ((int)labels_.size() != n) {                                   // names never change at runtime: build the labels once
+        int n = cb ? cb->weaponCount() : 0;
+        if (cb && (int)labels_.size() != n) {                             // names never change at runtime: build the labels once
             labels_.clear();
-            for (int i = 0; i < n; i++) labels_.push_back(hud::weaponLabel(cb.weaponName(i), i));
+            for (int i = 0; i < n; i++) labels_.push_back(hud::weaponLabel(cb->weaponName(i), i));
         }
-        float rowH = 26 * s, pad = 8 * s, w = 236 * s, h = pad * 2 + rowH * n;
+        int rows = n + (inv ? 1 : 0);
+        if (rows <= 0) return;
+        float rowH = 26 * s, pad = 8 * s, w = 236 * s, h = pad * 2 + rowH * rows;
         float x = 16 * s, y = L.hint.y - 12 * s - h;
         int fs = (int)std::round(13 * s);
-        ui.glass(x, y, w, h, busy ? 0.6f : 0.9f);
-        int sel = cb.selected();
-        for (int i = 0; i < n; i++) {
-            float ry = y + pad + rowH * i;
-            hud::WeaponRow st = hud::weaponRowState(busy, cb.overheated(i), cb.heat(i));
+        float bx = x + 140 * s, bw = w - 152 * s;
+        ui.glass(x, y, w, h, busy && !inv ? 0.6f : 0.9f);
+        float ry = y + pad;
+        if (inv) {
+            float used = inv->used(), cap = inv->capacity();
+            int u = (int)std::lround(used), c = (int)std::lround(cap);
+            if (u != cargoU_ || c != cargoC_) { cargoU_ = u; cargoC_ = c; cargoText_ = hud::cargoText(used, cap); }   // rebuilt only when it changes
+            float frac = hud::cargoFraction(used, cap);
+            hud::RGB k = hud::cargoColor(frac);
+            ui.text(x + 12 * s, ry + (rowH - fs * 1.3f) / 2, cargoText_, fs, col(k));
+            float bh = 5 * s;
+            ui.bar(bx, ry + (rowH - bh) / 2, bw, bh, frac, col(k, 0.95f));
+            ry += rowH;
+        }
+        int sel = cb ? cb->selected() : -1;
+        for (int i = 0; i < n; i++, ry += rowH) {
+            hud::WeaponRow st = hud::weaponRowState(busy, cb->overheated(i), cb->heat(i));
             bool isSel = i == sel;
             float k = (isSel ? 1.0f : 0.45f) * (busy ? 0.6f : 1.0f);
             core::Color tc = isSel ? ui.theme.text : ui.theme.textDim;
             tc.a *= k;
             ui.text(x + 12 * s, ry + (rowH - fs * 1.3f) / 2, labels_[(size_t)i], fs, tc);
             const char* note = hud::weaponRowNote(st);
-            float bx = x + 140 * s, bw = w - 152 * s, bh = 8 * s;
+            float bh = 8 * s;
             if (*note) {
                 core::Color nc = st == hud::WeaponRow::Locked ? core::Color{1.0f, 0.3f, 0.25f, hud::overheatFlash(now) * k} : core::Color{0.62f, 0.70f, 0.80f, k};
                 ui.text(bx, ry + (rowH - fs * 1.3f) / 2, note, (int)std::round(11 * s), nc);
             } else {
-                hud::RGB c = hud::heatColor(cb.heat(i));
-                ui.bar(bx, ry + (rowH - bh) / 2, bw, bh, cb.heat(i), col(c, 0.95f * k));
+                hud::RGB c = hud::heatColor(cb->heat(i));
+                ui.bar(bx, ry + (rowH - bh) / 2, bw, bh, cb->heat(i), col(c, 0.95f * k));
             }
         }
     }
@@ -255,6 +293,33 @@ private:
     engine::Engine* eng_ = nullptr;
     core::UIHandler* ui_ = nullptr;
     hud::HudState state_;
+    struct OreInfo { std::string label; hud::RGB colour{0.45f, 0.85f, 1.0f}; };
+    // display name and colour of an ore from data/ores.json (optional); looked up once per ore id, then cached
+    const OreInfo& oreInfo(const std::string& id) {
+        auto it = ores_.find(id);
+        if (it != ores_.end()) return it->second;
+        OreInfo o;
+        std::string name;
+        if (auto* data = eng_->services.get<core::IData>()) {
+            const engine::Json& j = data->get("ores", id);
+            name = j["name"].str("");
+            if (j["color"].size() >= 3) o.colour = {(float)j["color"].at(0).num(0.45), (float)j["color"].at(1).num(0.85), (float)j["color"].at(2).num(1.0)};
+        }
+        o.label = hud::oreLabel(id, name);
+        if (!(o.colour.r + o.colour.g + o.colour.b > 0)) o.colour = {0.45f, 0.85f, 1.0f};
+        // ore colours are dark tints for rocks: brighten so the toast is readable on the glass
+        o.colour = hud::lerp(o.colour, hud::RGB{1, 1, 1}, 0.45f);
+        return ores_.emplace(id, std::move(o)).first->second;
+    }
+
+    static inline const std::string kHint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
+    static inline const std::string kSpeedLabel = "SPEED";
+    std::map<std::string, OreInfo> ores_;
+    std::string speedText_, cargoText_;
+    double speedAt_ = -1;
+    int cargoU_ = -1, cargoC_ = -1;
+    int hintW_ = -1, hintH_ = -1, hintFont_ = 13;
+    float hintX_ = 0, hintWidth_ = 0;
     bool warned_ = false;
     std::vector<std::string> labels_;
     float dockRange_ = 0;
