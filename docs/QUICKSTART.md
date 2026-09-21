@@ -58,6 +58,8 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | ui_right | Right or D |
 | ui_confirm | Return / Space |
 
+Joysticks, wheels and pedals: Esc > Settings > **Controllers** lists them, shows every axis / button live and has a guided SETUP that writes the device profile (docs/CONTROLLERS.md).
+
 Esc opens the pause menu (Resume, Save Game, Load Game, Settings, Exit Game).
 
 ## 4. Useful flags

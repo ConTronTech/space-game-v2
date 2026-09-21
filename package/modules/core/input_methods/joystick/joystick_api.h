@@ -29,6 +29,7 @@ public:
     virtual bool rawButton(int device, int button) const = 0;
     virtual int rawHat(int device, int hat) const = 0;           // bitmask 1 up, 2 right, 4 down, 8 left
     virtual const std::string& lastEvent() const = 0;            // "PXN-V10 axis 2 = 512" (empty until something moved)
+    virtual void reloadProfiles() {}                             // re-read config/input/devices/*.json and re-match every open device (no restart)
 };
 
 } // namespace core

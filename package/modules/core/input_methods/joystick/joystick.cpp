@@ -99,6 +99,21 @@ public:
     bool rawButton(int dev, int b) const override { auto* d = at(dev); return d && d->state.button(b); }
     int rawHat(int dev, int h) const override { auto* d = at(dev); return d ? d->state.hat(h) : 0; }
     const std::string& lastEvent() const override { return lastEvent_; }
+    void reloadProfiles() override {                                            // the in-game controller setup saved a profile: use it now
+        std::vector<std::string> was;
+        for (auto& d : devs_) was.push_back(d.profile ? d.profile->name : std::string());   // devices point into profiles_: remember by name
+        profiles_.clear();
+        loadProfiles();
+        for (size_t k = 0; k < devs_.size(); k++) {
+            Dev& d = devs_[k];
+            if (!d.open) continue;
+            const joystick::Profile* p = nullptr;
+            if (d.fake) for (auto& pr : profiles_) if (pr.name == was[k]) { p = &pr; break; }
+            if (!p) p = profileFor(d.info.vid, d.info.pid, d.fake ? std::string() : d.info.name);
+            d.profile = p; d.info.profile = p->name; d.mapper.reset();
+            logDevice(d);
+        }
+    }
 
 private:
     struct Dev {

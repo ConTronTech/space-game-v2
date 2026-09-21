@@ -18,6 +18,7 @@
 #include "core/ui_handler/ui_handler.h"
 #include "core/window/window.h"
 #include "engine/engine.h"
+#include "ui/controller_setup/controller_setup_api.h"
 
 class PauseMenu : public engine::Module {
 public:
@@ -44,6 +45,7 @@ public:
         rows_.push_back(Row::Resolution);
         quality_ = eng.services.get<core::IQuality>();       // optional: without it (or without settings) there is no Graphics row
         if (quality_ && settings_) rows_.push_back(Row::Graphics);
+        rows_.push_back(Row::Controllers);                                  // opens ui/controller_setup (looked up per use)
         rows_.push_back(Row::Back);
 
         main_ = {Main::Resume};
@@ -51,7 +53,7 @@ public:
         main_.push_back(Main::Settings);
         main_.push_back(Main::Exit);
 
-        ui_->addPanel("ui/pause_menu", 1000, [this](core::UIHandler& ui) { if (eng_->paused()) draw(ui); });
+        ui_->addPanel("ui/pause_menu", 1000, [this](core::UIHandler& ui) { if (eng_->paused() && !setupOpen()) draw(ui); });
         // dev aid: --paused (or --paused=settings|load) starts with the menu open
         if (eng.hasFlag("paused") || !eng.flagValue("paused").empty()) eng.setPaused(true);
         if (eng.flagValue("paused") == "settings") page_ = Page::Settings;
@@ -62,6 +64,7 @@ public:
     void shutdown(engine::Engine&) override { ui_->removePanel("ui/pause_menu"); }
 
     void onUpdate(engine::Engine& eng, float) override {
+        if (setupOpen()) return;                                             // the Controllers screen is on top: it has the input
         if (input_->pressed("pause")) {
             if (!eng.paused())         { page_ = Page::Main; focus_ = 0; status_.clear(); eng.setPaused(true); }
             else if (page_ != Page::Main) backToMain();
@@ -83,7 +86,7 @@ public:
 private:
     enum class Page { Main, Load, Settings };
     enum class Main { Resume, Save, Load, Settings, Exit };
-    enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Display, Mode, Resolution, Graphics, Back };   // settings rows (built in init)
+    enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Display, Mode, Resolution, Graphics, Controllers, Back };   // settings rows (built in init)
     static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 10.0f;   // mouse sensitivity slider: 0.2 .. 10 (the old cap of 3 was too slow)
     static constexpr size_t kMaxSlotsShown = 6;
 
@@ -104,6 +107,7 @@ private:
         settings_->set("video.mode", std::string(on ? "borderless" : "windowed"));   // keep video.mode in step: it wins at the next start
         settings_->set("video.fullscreen", on);
     }
+    bool setupOpen() const { auto* cs = eng_->services.get<ui::IControllerSetup>(); return cs && cs->isOpen(); }
     void setVolume(const char* key, float v) { if (settings_) settings_->set(key, std::clamp(v, 0.0f, 100.0f)); }
     void sound(const char* name, float vol) { if (audio_) audio_->play(name, vol); }
 
@@ -228,6 +232,7 @@ private:
             else if (r == Row::Display) cycleDisplay(1);
             else if (r == Row::Mode) cycleMode(1);
             else if (r == Row::Resolution) cycleResolution(1);
+            else if (r == Row::Controllers) { if (auto* cs = eng_->services.get<ui::IControllerSetup>()) cs->open(); else setStatus("Controllers screen not loaded", false); }
             else if (r == Row::Back) backToMain();
         }
     }
@@ -352,6 +357,9 @@ private:
                         break;
                     case Row::Resolution:
                         if (ui.button(resolutionLabel(), ix, iy, iw, itemH, f)) pending = i;
+                        break;
+                    case Row::Controllers:
+                        if (ui.button("Controllers", ix, iy, iw, itemH, f)) pending = i;
                         break;
                     case Row::Back:
                         if (ui.button("Back", ix, iy, iw, itemH, f)) pending = i;
