@@ -22,7 +22,10 @@ bool Window::init(engine::Engine& eng) {
     if (!win_) { LOG_E("window", "SDL_CreateWindow: %s", SDL_GetError()); return false; }
     gl_ = SDL_GL_CreateContext(win_);
     if (!gl_) { LOG_E("window", "SDL_GL_CreateContext: %s", SDL_GetError()); return false; }
-    SDL_GL_SetSwapInterval(eng.hasFlag("no-vsync") ? 0 : 1);   // --no-vsync: measure what the machine can really do (see --benchmark)
+    const int wantInterval = eng.hasFlag("no-vsync") ? 0 : 1;
+    const int setResult = SDL_GL_SetSwapInterval(wantInterval);   // --no-vsync: measure what the machine can really do (see --benchmark)
+    LOG_I("window", "swap interval: asked for %d, driver %s, now %d%s", wantInterval, setResult == 0 ? "accepted it" : "REFUSED it",
+          SDL_GL_GetSwapInterval(), wantInterval == 0 && SDL_GL_GetSwapInterval() != 0 ? " (vsync is still on: the frame rate stays capped)" : "");
     SDL_GetWindowSize(win_, &w_, &h_);
 
     // Hardware log: lets the target laptop's real renderer / GL version / texture limit be confirmed from logs/game.log.
@@ -40,7 +43,7 @@ bool Window::init(engine::Engine& eng) {
     }
 
     auto* settings = eng.services.get<ISettings>();
-    if (settings && settings->get("video.fullscreen", false)) setFullscreen(true);
+    if ((settings && settings->get("video.fullscreen", false)) || eng.hasFlag("fullscreen")) setFullscreen(true);   // --fullscreen: borderless desktop fullscreen (SDL_WINDOW_FULLSCREEN_DESKTOP), for A/B runs
     eng.events.subscribe<SettingChanged>([this, &eng](const SettingChanged& e) {
         if (e.key != "video.fullscreen") return;
         if (auto* s = eng.services.get<ISettings>()) setFullscreen(s->get("video.fullscreen", false));
@@ -69,7 +72,7 @@ void Window::onFrameBegin(engine::Engine& eng) {
         eng.events.emit(SdlEvent{e});
     }
     glClearColor(0.0f, 0.0f, 0.02f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(colorClear_ ? (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT) : GL_DEPTH_BUFFER_BIT);
 }
 
 // Dev aid: --screenshot=out.bmp [--screenshot-frame=N] saves that frame and continues.

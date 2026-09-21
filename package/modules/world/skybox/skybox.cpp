@@ -80,12 +80,13 @@ public:
         for (int i = 0; i < 6; i++) uv_[i] = world::effectiveFaceUV(i, set.uv[i]);   // sets follow the old game convention (see docs/WORLD.md)
         render_ = &eng.services.require<core::RenderEngine>();
         render_->addPass("skybox", -100, [this](core::RenderEngine& r) { draw(r); });
+        render_->setSceneCoversScreen(true);   // the sky overwrites every pixel, so the frame may skip its colour clear (render.clear_color)
         active_ = true;
         return true;
     }
 
     void shutdown(engine::Engine&) override {
-        if (active_) render_->removePass("skybox");
+        if (active_) { render_->removePass("skybox"); render_->setSceneCoversScreen(false); }
         freeTextures();
     }
 

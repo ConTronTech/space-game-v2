@@ -31,3 +31,8 @@ and is inert unless `--benchmark` is given. `--no-vsync` is handled by `core/win
 ## Finding what is slow: `--profile`
 `--benchmark` gives the totals; `--profile` (add `=gpu` to charge GPU work to the pass that caused it) prints and writes `logs/profile.txt`: average / worst ms per module hook and per render pass, and every slow frame with its three slowest parts.
 See docs/PERFORMANCE.md for how to read it, how to run it on the laptop and what the performance pass changed. The benchmark itself is unchanged.
+
+## A/B runs on the laptop (round 2)
+Every performance fix has its own tunable (table in docs/PERFORMANCE.md, "Round 2"): put the keys you want to force into the laptop's `config/game.json` (`render.scale`, `render.clear_color`, `starfield.points`, `cockpit.glass_tint`), alternate the old and new settings run by run
+(the laptop throttles: only alternating runs compare). Extra flags: `--fullscreen` (borderless desktop fullscreen) and `--no-vsync`; the startup log line `[window] swap interval: ...` says whether vsync is really off.
+The `--profile` table header shows the render scale in use; the benchmark result block does not (the startup log line `[render] render.scale ...` does).

@@ -55,6 +55,7 @@ public:
         std::string dir = c.get<std::string>("cockpit.light_dir", "0.35,0.75,0.55", "direction TOWARD the light in view space, x,y,z (x right, y up, z back); until the world has a sun");
         if (!parseVec3(dir, lightDir_)) LOG_W("cockpit", "cockpit.light_dir '%s' is not three numbers: using 0.35,0.75,0.55", dir.c_str());
         brightness_ = std::clamp(c.get("cockpit.screen_brightness", 1.0f, "brightness of the cockpit screens' content, 0.2 (dim) .. 2"), 0.2f, 2.0f);
+        glassTint_ = c.get("cockpit.glass_tint", true, "draw the see-through canopy tint (one extra blended draw). false skips it; the low quality preset turns it off");
         glassScale_ = std::clamp(c.get("cockpit.glass_opacity", 1.0f, "canopy glass opacity multiplier: 0 = invisible glass, 1 = as modelled (30%), 3 = heavy tint"), 0.0f, 3.0f);
         screenHz_ = std::clamp(c.get("cockpit.screen_hz", 30.0f, "how often the cockpit screens redraw, per second (they are cached between redraws); 0 = every frame. Quality presets: low 15, medium 30, high 120, ultra 240 (= every frame)"), 0.0f, 240.0f);
         cam_ = eng.services.get<core::ICamera>();
@@ -215,7 +216,7 @@ private:
 
         { Sub t(*this, idScreens_); drawScreens(); }   // right after the opaque model, before the see-through glass
 
-        { Sub t(*this, idGlass_);
+        if (glassTint_ && (glass_.vertexCount() > 0)) { Sub t(*this, idGlass_);
             if (listsOk_) glCallList(glassList_);
             else { glEnable(GL_LIGHTING); glEnable(GL_COLOR_MATERIAL); emitGlass(); }
         }
@@ -295,7 +296,7 @@ private:
     std::vector<core::TaggedQuad> tagged_;
     std::vector<ScreenDef> screens_;
     std::string empty_;
-    bool enabled_ = true, ready_ = false, showDefaultUI_ = true;
+    bool enabled_ = true, ready_ = false, showDefaultUI_ = true, glassTint_ = true;
     float ambient_ = 0.25f, intensity_ = 1.0f, brightness_ = 1.0f, glassScale_ = 1.0f;
     engine::Vec3 lightDir_{0.35f, 0.75f, 0.55f};
 };

@@ -74,6 +74,7 @@ std::string Profiler::report() const {
     std::snprintf(b, sizeof b, "PROFILE: %lu frames after a %lu-frame warm-up, average frame %.2f ms (%.1f fps), worst %.2f ms\n",
                   counted_, kWarmupFrames, avgFrameMs(), avgFrameMs() > 0 ? 1000.0 / avgFrameMs() : 0.0, worstFrameMs_);
     o += b;
+    if (!note_.empty()) o += "settings: " + note_ + "\n";
     o += "(phases are 'module:hook', passes are 'pass:name'; a pass runs inside render:core/render_engine, so do not add the two)\n";
     std::snprintf(b, sizeof b, "%-46s %9s %9s %7s\n", "name", "avg ms", "worst ms", "% frame");
     o += b;

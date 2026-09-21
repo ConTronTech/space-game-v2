@@ -24,6 +24,7 @@ public:
         unsigned seed = (unsigned)c.get("starfield.seed", 1234.0f, "random seed for the star positions");
         pointSize_ = c.get("starfield.point_size", 1.5f, "star size in pixels");
         brightness_ = c.get("starfield.brightness", 1.0f, "star brightness multiplier (1 = normal)");
+        usePoints_ = c.get("starfield.points", true, "true: stars are GL_POINTS. false: small camera-facing quads (triangles), for old Intel graphics where non-1px points are slow. Presets: low false");
         streak_ = c.get("starfield.warp_streak_length", 300.0f, "length of warp streaks at full warp speed, world units (0 = no streaks)");
         refSpeed_ = c.get("starfield.warp_ref_speed", 5000.0f, "speed (m/s) at which streaks reach full length, used only when there is no warp drive (it normally follows the drive's max speed)");
 
@@ -76,7 +77,7 @@ private:
             if (sp < 1e-3f) len = 0; else { vx = -v.x / sp; vy = -v.y / sp; vz = -v.z / sp; }   // trails point away from travel
         }
 
-        glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_POINT_BIT | GL_LINE_BIT);
+        glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | (len > 0.0f ? GL_LINE_BIT : (usePoints_ ? GL_POINT_BIT : 0)));
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_LIGHTING);
         glDisable(GL_TEXTURE_2D);
@@ -94,6 +95,18 @@ private:
             glVertexPointer(3, GL_FLOAT, 0, lines_.data());
             glDrawArrays(GL_LINES, 0, (GLsizei)(lines_.size() / 3));
             glDisableClientState(GL_COLOR_ARRAY);
+        } else if (!usePoints_) {
+            // stars as tiny camera-facing squares: plain triangles, one draw, no point-size state (rebuilt only if the view size or fov changes)
+            GLint vp[4] = {0, 0, 1, 1};
+            glGetIntegerv(GL_VIEWPORT, vp);
+            if (vp[3] != quadViewH_ || r.camera.fovDeg != quadFov_) {
+                quadViewH_ = vp[3]; quadFov_ = r.camera.fovDeg;
+                world::buildStarQuads(dirs_, kRadius, world::starQuadHalfSize(pointSize_, kRadius, quadFov_, (float)quadViewH_), quads_);
+            }
+            float b = std::clamp(brightness_, 0.0f, 4.0f);
+            glColor3f(0.9f * b, 0.9f * b, 1.0f * b);
+            glVertexPointer(3, GL_FLOAT, 0, quads_.data());
+            glDrawArrays(GL_QUADS, 0, (GLsizei)(quads_.size() / 3));
         } else {
             float b = std::clamp(brightness_, 0.0f, 4.0f);
             glPointSize(pointSize_);
@@ -109,7 +122,10 @@ private:
     core::RenderEngine* render_ = nullptr;
     bool active_ = false;
     float pointSize_ = 1.5f, brightness_ = 1.0f, streak_ = 300.0f, refSpeed_ = 5000.0f;
-    std::vector<float> dirs_, points_, lines_, colors_;
+    bool usePoints_ = true;
+    int quadViewH_ = -1;
+    float quadFov_ = -1;
+    std::vector<float> dirs_, points_, lines_, colors_, quads_;
 };
 
 REGISTER_MODULE(Starfield);

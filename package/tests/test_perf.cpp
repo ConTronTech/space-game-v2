@@ -1,6 +1,8 @@
 // Tests for the performance pass: profiler, cockpit screen scheduler, screen canvas meshes, skybox face culling, preset row.
 #include <cmath>
 #include "core/quality/quality_rules.h"
+#include "core/render_engine/render_scale.h"
+#include "world/starfield/starfield_rules.h"
 #include "core/ui_handler/text_cache.h"
 #include "engine/profiler.h"
 #include "ship/cockpit/screen_canvas.h"
@@ -303,4 +305,84 @@ TEST(text_cache_evicts_only_stale_entries) {
     c.clear([&](int) { released++; });
     CHECK_EQ(released, 4);
     CHECK_EQ(c.size(), (size_t)0);
+}
+
+// ---- render scale ----
+TEST(render_scale_clamps_and_survives_nan) {
+    CHECK(nearp(core::clampRenderScale(0.7f), 0.7));
+    CHECK(nearp(core::clampRenderScale(0.1f), 0.5));
+    CHECK(nearp(core::clampRenderScale(3.0f), 1.0));
+    CHECK(nearp(core::clampRenderScale(-1.0f), 0.5));
+    CHECK(nearp(core::clampRenderScale(std::nanf("")), 1.0));
+}
+TEST(render_scale_sizes) {
+    auto a = core::scaledSize(1280, 720, 0.7f, true);
+    CHECK(a.scaled && a.w == 896 && a.h == 504);
+    auto b = core::scaledSize(1366, 768, 0.5f, true);
+    CHECK(b.scaled && b.w == 683 && b.h == 384);
+    auto full = core::scaledSize(1280, 720, 1.0f, true);
+    CHECK(!full.scaled && full.w == 1280 && full.h == 720);               // scale 1: the untouched path
+    auto nearOne = core::scaledSize(1280, 720, 0.996f, true);
+    CHECK(!nearOne.scaled);
+    auto noFbo = core::scaledSize(1280, 720, 0.5f, false);
+    CHECK(!noFbo.scaled && noFbo.w == 1280);                              // no framebuffer objects: fall back cleanly
+    auto tiny = core::scaledSize(20, 10, 0.5f, true);
+    CHECK(tiny.w >= 16 && tiny.h >= 16);                                  // never a zero-size buffer
+    auto zero = core::scaledSize(0, 0, 0.5f, true);
+    CHECK(!zero.scaled);                                                  // a minimised window
+    auto tall = core::scaledSize(720, 1280, 0.7f, true);
+    CHECK(nearp((double)tall.w / tall.h, 720.0 / 1280.0, 0.01));          // the aspect ratio is kept
+}
+TEST(colour_clear_policy) {
+    CHECK(core::colorClearNeeded(true, true, true));                      // the tunable says clear: always
+    CHECK(core::colorClearNeeded(true, false, false));
+    CHECK(core::colorClearNeeded(false, false, false));                   // nothing overwrites the frame: clear
+    CHECK(!core::colorClearNeeded(false, true, false));                   // the sky covers everything
+    CHECK(!core::colorClearNeeded(false, false, true));                   // the stretched world buffer covers everything
+}
+
+// ---- starfield quads ----
+TEST(star_quad_size_follows_pixels_fov_and_viewport) {
+    float h720 = world::starQuadHalfSize(2.0f, 5000.0f, 90.0f, 720.0f);
+    CHECK(nearp(h720, 2.0 * 0.5 * (2.0 * 1.0 * 5000.0 / 720.0), 1e-3));   // fov 90: tan(45) = 1
+    CHECK(nearp(world::starQuadHalfSize(2.0f, 5000.0f, 90.0f, 1440.0f), h720 / 2, 1e-3));   // twice the pixels: half the world size
+    CHECK(world::starQuadHalfSize(2.0f, 5000.0f, 60.0f, 720.0f) < h720);                     // narrower fov: smaller
+    CHECK(nearp(world::starQuadHalfSize(0.2f, 5000.0f, 90.0f, 720.0f), world::starQuadHalfSize(1.0f, 5000.0f, 90.0f, 720.0f)));   // at least one pixel
+    CHECK(nearp(world::starQuadHalfSize(2.0f, 5000.0f, 90.0f, 0.0f), 0.0));                  // no viewport: no NaN
+}
+TEST(star_quads_face_the_origin_and_have_the_right_size) {
+    std::vector<float> dirs = {0, 0, -1,  1, 0, 0,  0, 1, 0,  0.577f, 0.577f, 0.577f};   // includes a pole (+Y)
+    std::vector<float> q;
+    world::buildStarQuads(dirs, 100.0f, 2.0f, q);
+    CHECK_EQ(q.size(), (size_t)(4 * 3 * 4));
+    for (size_t s = 0; s < 4; s++) {
+        float cx = 0, cy = 0, cz = 0;
+        for (int k = 0; k < 4; k++) { cx += q[s * 12 + k * 3] / 4; cy += q[s * 12 + k * 3 + 1] / 4; cz += q[s * 12 + k * 3 + 2] / 4; }
+        CHECK(nearp(cx, dirs[s * 3] * 100.0, 1e-2) && nearp(cy, dirs[s * 3 + 1] * 100.0, 1e-2) && nearp(cz, dirs[s * 3 + 2] * 100.0, 1e-2));   // centred on the star
+        float ex = q[s * 12 + 3] - q[s * 12], ey = q[s * 12 + 4] - q[s * 12 + 1], ez = q[s * 12 + 5] - q[s * 12 + 2];
+        CHECK(nearp(std::sqrt(ex * ex + ey * ey + ez * ez), 4.0, 1e-2));                // side = 2 * halfSize
+        CHECK(nearp(ex * dirs[s * 3] + ey * dirs[s * 3 + 1] + ez * dirs[s * 3 + 2], 0.0, 0.05));   // the edge is perpendicular to the view direction
+        for (int k = 0; k < 12; k++) CHECK(std::isfinite(q[s * 12 + k]));
+    }
+    world::buildStarQuads({}, 100.0f, 2.0f, q);
+    CHECK(q.empty());
+}
+
+// ---- preset rows added in round 2 ----
+TEST(quality_table_has_the_round_two_rows) {
+    auto find = [](const char* key) -> const quality::Entry* {
+        for (auto& e : quality::presetTable()) if (std::string(e.key) == key) return &e;
+        return nullptr;
+    };
+    auto* scale = find("render.scale");
+    CHECK(scale != nullptr);
+    if (scale) {
+        CHECK(nearp(scale->low, 0.7) && nearp(scale->medium, 0.85) && nearp(scale->high, 1.0) && nearp(scale->ultra, 1.0));
+        CHECK(quality::valueFor(*scale, quality::Preset::High) >= 0.995);          // no visual change on High / Ultra
+    }
+    for (const char* k : {"render.clear_color", "starfield.points", "cockpit.glass_tint"}) {
+        auto* e = find(k);
+        CHECK(e != nullptr);
+        if (e) CHECK(e->low == 0.0 && e->medium == 1.0 && e->high == 1.0 && e->ultra == 1.0);   // only Low changes
+    }
 }

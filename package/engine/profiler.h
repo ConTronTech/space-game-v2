@@ -29,6 +29,7 @@ public:
     const std::vector<SlowFrame>& slowFrames() const { return slow_; }
     unsigned long frames() const { return counted_; } // frames counted in the averages (after the warm-up)
     double avgFrameMs() const { return counted_ ? totalFrameMs_ / (double)counted_ : 0; }
+    void setNote(std::string note) { note_ = std::move(note); }   // one line printed in the report header (e.g. the render scale in use)
     std::string report() const;                       // the table + slow-frame list as text
 
 private:
@@ -41,6 +42,7 @@ private:
     std::vector<SlowFrame> slow_;
     size_t slowDropped_ = 0;
     double slowMs_ = kSlowFrameMs;
+    std::string note_;
 };
 
 // RAII sample: times its own lifetime into the profiler; does nothing when p is null.

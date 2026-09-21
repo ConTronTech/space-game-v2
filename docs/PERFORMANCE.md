@@ -56,3 +56,63 @@ side (the laptop's CPU is ~5x slower than the dev PC's and Mesa's Ironlake drive
   Ideas for the owner of `core/window`: skip the colour clear (the skybox overwrites every pixel), request no stencil/alpha, try `SDL_GL_SwapWindow` with vsync on to see whether the compositor paces it.
 * **Skybox fill**: a full-screen textured quad per frame at 1366x768. Options if the next benchmark still shows ~4 ms: draw the sky last with depth test (only where nothing else was drawn; needs the star/blend passes reordered),
   or a 256 px `skybox.max_size` on Low. Not done because either changes how the frame looks.
+
+# Round 2: GPU / fill-rate work
+
+Round 1 did nothing on the laptop (A/B: 33.8/35.6/35.6 fps before, 36.0/35.7/35.5 after), so the laptop is GPU / fill-rate bound. Laptop `--profile=gpu` (Low, 1280x706): skybox 11.7 ms, cockpit 10.2 (solid 3.1 + glass 2.9 + screens 2.9),
+starfield 6.2, star_system 1.7, everything else < 0.3; the same ~55 ms stall appears inside whichever pass blocks.
+
+## What each fix is, and how to switch it off (for A/B runs)
+All are tunables in `config/game.json` (the laptop's `~/space-game-v2-test/config/game.json`, which `laptop_bench.sh` never overwrites) and **Low-preset defaults**; High/Ultra are unchanged.
+Precedence: game.json > preset > code default, so a value in game.json switches one fix on or off on its own, whatever `--quality` says.
+
+| Fix | Tunable (game.json section `key`) | Low default | "off" (= round-1 behaviour) | What it does |
+|---|---|---|---|---|
+| Render scale | `render` `scale` | 0.7 (medium 0.85) | `1.0` | the 3D world is drawn into an offscreen buffer (EXT_framebuffer_object, RGBA8 + 24-bit depth) at `scale` x the window size and stretched over the window with one `GL_LINEAR` quad; UI/HUD/text stay native. No FBO extension, or scale >= 1: not created at all |
+| Colour clear | `render` `clear_color` | false | `true` | skips the per-frame colour clear when the skybox (draws every pixel) or the stretched world buffer covers the whole window; depth is still cleared |
+| Starfield style | `starfield` `points` | false | `true` | false = stars as tiny camera-facing quads (triangles, one draw, no point-size state) instead of `GL_POINTS` size 1.5. Also `starfield` `point_size` (1.5) and `count` |
+| Canopy tint | `cockpit` `glass_tint` | false | `true` | false skips the see-through canopy draw. The canopy dome covers most of the upper screen, so it is a large blended full-screen-ish layer |
+| Skybox size | `skybox` `max_size` | 512 | `1024` | (unchanged; 256 tested, see below) |
+| Windowed vs fullscreen | flag `--fullscreen` | | (no flag) | borderless desktop fullscreen (`SDL_WINDOW_FULLSCREEN_DESKTOP`) at startup; the pause-menu / `video.fullscreen` setting uses the same mode |
+| Vsync | flag `--no-vsync`; env `vblank_mode=0` | | | the log now says what the driver did (see below) |
+
+Example laptop `config/game.json` for one A/B leg (only the keys you list change; delete a line to go back to the preset):
+```json
+{ "render": { "scale": 1.0, "clear_color": true }, "starfield": { "points": true }, "cockpit": { "glass_tint": true } }
+```
+Whole-preset comparison: `--quality=low` / `--quality=medium` / `--quality=high` (each sets all keys above at once, unless game.json overrides them).
+Round 1 equivalent: `render.scale 1.0, render.clear_color true, starfield.points true, cockpit.glass_tint true`.
+`--profile` / `--profile=gpu` print a `settings:` line in the table header with the render scale and clear policy in use, and a `pass:render.scale composite` row when scaling is on.
+
+## Dev-PC numbers (llvmpipe, 2 pinned cores, `--quality=low`, 3 runs of 6 s, ms per frame; noise about +-0.7)
+| Config | runs | ms |
+|---|---|---|
+| A: round-1 behaviour (scale 1.0, clear on, points, glass on) | 13.9 13.7 13.3 (again 14.2 15.2 13.8) | ~14.0 |
+| B: + `clear_color` false | 14.9 13.5 15.0 | ~14.5 (no gain on this renderer) |
+| C: + starfield quads | 15.1 13.6 13.2 | ~14.0 (no change; the stars cost 0.15 ms here) |
+| D: + `glass_tint` false | 11.6 11.0 11.8 | **~11.5 (-2.5 ms)** |
+| E: + `render.scale` 0.7 | 13.1 13.6 13.6 | ~13.4 (-0.6; a separate run pair gave 14.0 -> 12.2) |
+| F: all Low defaults | 11.2 11.2 11.4 | **~11.2 (-2.8 ms)** |
+| G: F with scale 0.5 | 9.9 9.7 9.9 | **~9.8 (-4.2 ms)** |
+| skybox.max_size 512 / 256 / 128 | 13.8 / 14.6 / 13.8 | no effect on this renderer |
+
+llvmpipe is not the laptop's GPU: it is raster-bound but has large fixed costs per pass (which is why scale 0.7 shows only ~-1 ms), and starfield points are cheap in it. So these numbers show the direction, the laptop A/B decides.
+The big finding is the **canopy glass**: my round-1 pixel estimate said "4% of the screen" because it ignored triangles that cross the near plane; the dome actually covers most of the upper view (the blue tint in the sky), and removing it saves as much as anything.
+
+## Findings, item by item
+1. **Render scale**: `RenderEngine` owns the offscreen buffer (`render_scale.h` has the pure size maths). Recreated when the window or scale changes (resize, fullscreen toggle: tested with `--fullscreen`, buffer 1344x756 in a 1920x1080 window).
+   The world passes and the cockpit run in the buffer (the cockpit's own depth clear works on it); `onRenderUI` panels draw afterwards on the window at native resolution. The screenshot flag reads the window, so screenshots show the composed frame.
+   Cost when off: none. Cost when on: one full-screen textured quad (`pass:render.scale composite` in the profile), against the sky/world/cockpit shrinking to `scale^2` of their pixels.
+2. **Starfield 6.2 ms**: probable cause is `glPointSize(1.5)` (a non-1 point size is a slow path on some old Intel drivers) plus a state push of point+line state; **not proven on the laptop**. Fix: quads path (`starfield.points=false`) - one `glDrawArrays(GL_QUADS)`, static vertex array rebuilt only when the viewport height or fov changes,
+   size in pixels kept (`starfield.point_size`), no point/line state. The warp-streak line pass only runs while streaking (it already did). Laptop test: A/B `starfield.points`.
+3. **Cockpit glass / solid**: glass is now optional (`cockpit.glass_tint`, off at Low). The hull is 166 triangles (log line `[cockpit] N triangles`), so there is nothing to LOD; its 3.1 ms on the laptop is fill (the hull covers a large part of the view, overdraw ~1.35) which render.scale reduces.
+   The screens (2.9 ms there) are ~15% of the screen area; they are not blended more than once each.
+4. **Skybox 11.7 ms**: 1 to 3 visible full-screen textured faces. Skipping the colour clear (item above) and render.scale are the levers; face size does not matter on llvmpipe (512/256/128 identical), so Low stays at 512. Still not tried: GL_RGB5 textures, drawing the sky last with depth test.
+5. **Present / compositor**: window.cpp now logs the swap interval the driver actually has (`[window] swap interval: asked for 0, driver accepted it, now 0`; llvmpipe answers "REFUSED, now 0" for vsync). If the laptop says `(vsync is still on ...)` that is the ~60 fps cap.
+   Otherwise the cap is the compositor (Cinnamon/Muffin): try `vblank_mode=0` in the environment (Mesa's own override), `--fullscreen` (borderless desktop fullscreen lets the compositor unredirect the window; the old fullscreen setting already used `SDL_WINDOW_FULLSCREEN_DESKTOP`), and windowed vs fullscreen A/B. SDL already asks the window manager to bypass the compositor for fullscreen windows by default.
+6. **Profiler** prints the render scale and clear policy in a `settings:` header line.
+
+## Not done
+* A generic `--set key=value` flag would make one-off A/B legs easier than editing `config/game.json` on the laptop; it needs a small change in `package/engine` (not in this task's ownership).
+* GL_RGB5 sky textures, and drawing the sky last with the depth test (only fills pixels nothing else covered): both change how the frame is built or looks; wait for the laptop numbers.
+* The fixed ~55 ms stall inside whichever pass blocks is still unexplained; a driver/compositor stall is the best guess. If `render.scale` and the clear changes do not remove it, run `--profile=gpu --profile-slow=40` and `vblank_mode=0`.

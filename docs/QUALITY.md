@@ -52,6 +52,10 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `asteroids.draw_distance` | 3500 | 6000 | 8000 | 10000 |
 | `asteroids.triangle_budget` | 6000 | 15000 | 30000 | 60000 |
 | `asteroids.lod_edge_px` | 16 | 10 | 8 | 6 |
+| `render.scale` | 0.7 | 0.85 | 1.0 | 1.0 |
+| `render.clear_color` | false | true | true | true |
+| `starfield.points` | false | true | true | true |
+| `cockpit.glass_tint` | false | true | true | true |
 | `cockpit.screen_hz` | 15 | 30 | 120 | 240 |
 
 (The skybox source faces are 1024 px today, so High/Ultra only pay off with larger face images.) Not tied to a preset: vsync (the window sets it; `--no-vsync` for benchmarks), `world.terrain_height`, gameplay tunables.
@@ -64,3 +68,5 @@ Init order: settings (-1500) < window (-1000, creates the GL context whose strin
 ## Service and safety net
 `core::IQuality` (`quality_api.h`): `selectedName()`, `activeName()`, `detectedName()`, `reason()`. The benchmark prints `quality preset:` and the pause menu shows `Graphics: Auto (Ultra)`.
 With Auto, if the average over the first ~10 s of play is under 25 fps the log warns to try a lower preset; it never changes settings by itself.
+
+Round 2 rows (`render.scale`, `render.clear_color`, `starfield.points`, `cockpit.glass_tint`) are described in docs/PERFORMANCE.md; the on/off ones are 0/1 switches (only Low changes).
