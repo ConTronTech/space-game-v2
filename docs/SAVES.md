@@ -32,3 +32,13 @@ class Inventory : public engine::Module, public core::ISaveable {
 - Events: `core::GameSaved{slot}`, `core::GameLoaded{slot}` (after every module has loaded) - use `GameLoaded` to rebuild anything derived.
 - Procedural worlds should save their **seed**, not their contents, and regenerate on load.
 - When restoring position-like state, reset any interpolation history so nothing smears across the jump (see flight's `load`).
+
+## What is saved today
+| Save id | Content |
+|---|---|
+| `gameplay/flight` | ship pose and stats (docs/SHIP.md) |
+| `ship/warp_drive` | upgrade level |
+| `world/star_system` | seed and simulation time |
+| `gameplay/inventory` | `{"level": n, "stacks": [{"id": "iron", "amount": 50}, ...]}`: the cargo hold in stack order and its capacity level; a missing `stacks` key = an empty hold (docs/INVENTORY.md) |
+
+Known gaps (Phase 4.3 / later): ore chunks in flight and destroyed asteroids are **not** saved (the asteroid field regenerates on load).

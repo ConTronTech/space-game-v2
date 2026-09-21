@@ -128,6 +128,7 @@ inline const std::vector<Entry>& presetTable() {
         {"starfield.points",                1,     1,      1,      1},    // 1 = GL_POINTS stars, 0 = small camera-facing quads (points are slow on some old Intel GPUs)
         {"window.fullscreen",               1,     0,      0,      0},    // 1 = start in borderless fullscreen (skips the desktop compositor: laptop 56 -> 80 fps); a Settings choice wins
         {"cockpit.glass_tint",              0,     1,      1,      1},    // 0 = no canopy tint (skips the blended glass draw)
+        {"mining.max_chunks",               48,    96,     128,    192},  // ore chunks alive at once
         {"combat.max_projectiles",          64,    128,    192,    256},  // blaster bolts alive at once
         {"combat.beam_particles",           0.5,   1,      1.5,    2},    // rate multiplier of the mining beam's sparks
         {"fx.enabled",                      1,     1,      1,      1},    // particle effects on/off (docs/FX.md); laptop A/B switch
