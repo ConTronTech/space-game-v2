@@ -18,7 +18,8 @@ inline float fraction(float cur, float max) { return max > 0 ? clamp01(cur / max
 inline RGB lerp(const RGB& a, const RGB& b, float t) { t = clamp01(t); return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t}; }
 
 constexpr float kLowHp = 0.25f, kLowFuel = 0.15f;
-constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f, kDockBannerSeconds = 2.5f;
+constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f, kDockBannerSeconds = 2.5f, kWeaponBannerSeconds = 2.0f, kHitMarkerSeconds = 0.25f, kKillMarkerSeconds = 0.45f;
+constexpr int kHeatSegments = 8;
 
 enum class Bar { Hp, Shield, Fuel };
 
@@ -79,7 +80,7 @@ inline int fitHint(Layout& L, int screenW, const std::function<int(const std::st
 }
 
 // ---- warnings ----
-enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased, Docked, Undocked };
+enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased, Docked, Undocked, WeaponOverheated, WeaponChanged };
 struct Banner { Warn kind; std::string text; float alpha; };   // alpha: flashing 0.55..1, times the fade-out of timed ones
 
 struct Snapshot { float hp = 100, maxHp = 100, warpFuel = 100, maxWarpFuel = 100; bool alive = true; };
@@ -91,6 +92,41 @@ inline std::string orbitStatusText(const std::string& body) {
     for (auto& c : up) c = (char)std::toupper((unsigned char)c);
     return "ORBIT LOCKED: " + up;
 }
+
+// ---- weapons (combat::ICombat) ----
+// heat 0..1: calm cyan -> amber (60%) -> red (100%)
+inline RGB heatColor(float heat) {
+    const RGB cyan{0.45f, 0.85f, 1.0f}, amber{1.0f, 0.75f, 0.2f}, red{1.0f, 0.25f, 0.22f};
+    heat = clamp01(heat);
+    return heat < 0.6f ? lerp(cyan, amber, heat / 0.6f) : lerp(amber, red, (heat - 0.6f) / 0.4f);
+}
+// how many of the crosshair heat-bar segments are lit: 0 for no heat, otherwise at least one
+inline int heatSegments(float heat, int total = kHeatSegments) {
+    heat = clamp01(heat);
+    return heat <= 0.001f ? 0 : std::min(total, (int)std::ceil(heat * total - 1e-4f));
+}
+// flashing while locked out: 0.35 .. 1
+inline float overheatFlash(double now) { return 0.675f + 0.325f * std::sin((float)now * 16.0f); }
+// hit marker: fades linearly over 0.25 s after a hit (0.45 s after a kill); a kill also changes the colour
+struct HitMarker { float alpha = 0; bool kill = false; };
+inline HitMarker hitMarker(float hitAge, float killAge) {
+    HitMarker m;
+    if (killAge >= 0 && killAge < kKillMarkerSeconds) { m.alpha = 1.0f - killAge / kKillMarkerSeconds; m.kill = true; }
+    if (hitAge >= 0 && hitAge < kHitMarkerSeconds) { float a = 1.0f - hitAge / kHitMarkerSeconds; if (a > m.alpha) { m.alpha = a; m.kill = false; } }
+    return m;
+}
+inline std::string weaponLabel(const std::string& name, int index) {
+    std::string up = name;
+    for (auto& c : up) c = (char)std::toupper((unsigned char)c);
+    return up + "  [" + std::to_string(index + 1) + "]";
+}
+enum class WeaponRow { Ready, Hot, Locked, Docked };   // how one weapon row of the weapon block looks
+inline WeaponRow weaponRowState(bool busy, bool overheated, float heat) {
+    if (busy) return WeaponRow::Docked;
+    if (overheated) return WeaponRow::Locked;
+    return heat >= 0.6f ? WeaponRow::Hot : WeaponRow::Ready;
+}
+inline const char* weaponRowNote(WeaponRow r) { return r == WeaponRow::Locked ? "OVERHEATED" : r == WeaponRow::Docked ? "DOCKED" : ""; }
 
 // ---- station docking prompt (ship::IDocking) ----
 constexpr float kDockPromptFactor = 4.0f;       // prompt shows within this many dock radii (docking.prompt_range overrides, in units)
@@ -165,6 +201,11 @@ public:
     void onUndocked(double now) { if (docked_) { undockedAt_ = now; dockedAt_ = kNever; } docked_ = false; }
     bool docked() const { return docked_; }
     std::string dockedStatus() const { return docked_ ? dockedText(dockedName_) : ""; }
+    // combat::Overheated / WeaponChanged
+    void onOverheated(const std::string& name, double now) { overheatedAt_ = now; overheatedName_ = name; }
+    void onWeaponChanged(const std::string& name, double now) { weaponChangedAt_ = now; weaponName_ = name; }
+    void onEnemyKilled(double now) { killAt_ = now; }       // world::AsteroidDestroyed
+    float killAge(double now) const { return killAt_ < -1e8 ? -1.0f : (float)(now - killAt_); }
     void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }   // the orbit lock announces its own release
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
@@ -187,6 +228,8 @@ public:
         if (float a = timedAlpha(orbitReleasedAt_, now, kOrbitReleasedSeconds); a > 0) out.push_back({Warn::OrbitReleased, "ORBIT RELEASED", std::min(1.0f, a * 3)});
         if (float a = timedAlpha(dockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Docked, "DOCKED", std::min(1.0f, a * 3)});
         if (float a = timedAlpha(undockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Undocked, "UNDOCKED", std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(overheatedAt_, now, kEventBannerSeconds - 0.5f); a > 0) out.push_back({Warn::WeaponOverheated, upper(overheatedName_) + " OVERHEATED", flash * std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(weaponChangedAt_, now, kWeaponBannerSeconds); a > 0) out.push_back({Warn::WeaponChanged, "WEAPON: " + upper(weaponName_), std::min(1.0f, a * 3)});
         return out;
     }
 
@@ -196,7 +239,8 @@ private:
         double age = now - at;
         return (age < 0 || age >= dur) ? 0.0f : (float)(1.0 - age / dur);
     }
-    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever;
+    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever, overheatedAt_ = kNever, weaponChangedAt_ = kNever, killAt_ = kNever;
+    std::string overheatedName_, weaponName_;
     bool docked_ = false;
     std::string dockedName_;
     bool orbitLocked_ = false;

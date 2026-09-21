@@ -6,11 +6,13 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "ship/cockpit/cockpit_screens_api.h"
+#include "combat/weapons/weapons_api.h"
 #include "ship/docking/docking_api.h"
 #include "ship/orbit_lock/orbit_lock_api.h"
 #include "ship/respawn/respawn_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/ship_hud/hud_logic.h"
+#include "world/asteroids/asteroids_api.h"
 #include "world/stations/stations_api.h"
 
 class ShipHud : public engine::Module {
@@ -29,6 +31,9 @@ public:
         eng.events.subscribe<ship::OrbitLockChanged>([this](const ship::OrbitLockChanged& e) { state_.onOrbitLock(e.locked, e.bodyName, eng_->time()); });
         eng.events.subscribe<ship::Docked>([this](const ship::Docked& e) { state_.onDocked(e.stationName, eng_->time()); });
         eng.events.subscribe<ship::Undocked>([this](const ship::Undocked&) { state_.onUndocked(eng_->time()); });
+        eng.events.subscribe<combat::Overheated>([this](const combat::Overheated& e) { state_.onOverheated(e.name, eng_->time()); });
+        eng.events.subscribe<combat::WeaponChanged>([this](const combat::WeaponChanged& e) { state_.onWeaponChanged(e.name, eng_->time()); });
+        eng.events.subscribe<world::AsteroidDestroyed>([this](const world::AsteroidDestroyed&) { state_.onEnemyKilled(eng_->time()); });
         dockRange_ = eng.config.get("docking.prompt_range", 0.0f, "distance from a station centre at which the HUD shows the dock prompt, units (0 = 4 x the station's dock radius)");
         auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
@@ -84,6 +89,10 @@ private:
             row("WARP", st.warpFuel, st.maxWarpFuel, hud::Bar::Fuel);
         }
 
+        auto* combat = eng_->services.get<combat::ICombat>();          // optional: no weapons module = no weapon HUD
+        auto* dockSvc = eng_->services.get<ship::IDocking>();
+        const bool busy = dockSvc && dockSvc->busy();
+
         // crosshair (gap in the middle, thin arms)
         if (st.alive && plan.crosshair) {
             float g = 4 * s, r = L.crossR, t = std::max(1.0f, s);
@@ -92,6 +101,7 @@ private:
             ui.rect(L.cx + g, L.cy - t / 2, r, t, c.r, c.g, c.b, c.a);
             ui.rect(L.cx - t / 2, L.cy - g - r, t, r, c.r, c.g, c.b, c.a);
             ui.rect(L.cx - t / 2, L.cy + g, t, r, c.r, c.g, c.b, c.a);
+            if (combat) drawWeaponCrosshair(ui, L, now, busy);
         }
 
         // hit flash: a faint red edge plus the IMPACT banner, fading over ~0.7 s
@@ -107,7 +117,7 @@ private:
         hud::Snapshot snap{st.hp, st.maxHp, st.warpFuel, st.maxWarpFuel, st.alive};
         if (plan.banners) for (auto& b : state_.banners(snap, now)) {
             hud::RGB c = (b.kind == hud::Warn::LowHp || b.kind == hud::Warn::FuelEmpty) ? hud::RGB{1.0f, 0.35f, 0.3f}
-                       : (b.kind == hud::Warn::OrbitReleased || b.kind == hud::Warn::Docked || b.kind == hud::Warn::Undocked) ? kCalm : hud::RGB{1.0f, 0.75f, 0.25f};
+                       : (b.kind == hud::Warn::OrbitReleased || b.kind == hud::Warn::Docked || b.kind == hud::Warn::Undocked || b.kind == hud::Warn::WeaponChanged) ? kCalm : hud::RGB{1.0f, 0.75f, 0.25f};
             drawBanner(ui, L, by, b.text, c, b.alpha);
             by += L.bannerH + L.bannerGap;
         }
@@ -121,7 +131,7 @@ private:
             if (state_.docked()) {
                 drawBanner(ui, L, by, state_.dockedStatus(), kCalm, 1.0f);
                 by += L.bannerH + L.bannerGap;
-            } else if (auto* dock = eng_->services.get<ship::IDocking>()) {
+            } else if (auto* dock = busy ? nullptr : dockSvc) {      // approaching the pad (busy, not yet docked): no prompt
                 dq_.has = dock->nearestDockable(dq_.name, dq_.distance, dq_.ok, dq_.reason);
                 if (dq_.has) {
                     hud::DockPrompt p = hud::dockPrompt(dq_, stationRadius(dq_.name), dockRange_, false);
@@ -134,6 +144,8 @@ private:
                 }
             }
         }
+
+        if (plan.banners && st.alive && combat) drawWeaponBlock(ui, L, *combat, now, busy);
 
         // controls hint (kept from the old demo HUD, plus V camera)
         const char* hint = "W/S thrust   A/D strafe   Space/C up/down   mouse look   Q/E roll   X brake   Tab free mouse   V camera   Esc pause";
@@ -153,6 +165,73 @@ private:
             auto* rs = eng_->services.get<ship::IRespawn>();
             std::string rt = rs && rs->counting() ? hud::respawnText(rs->secondsLeft()) : "";
             if (!rt.empty()) ui.textCentered(W / 2.0f, H * 0.42f + 60 * s, rt, (int)std::round(22 * s), ui.theme.text);
+        }
+    }
+
+    // heat bars either side of the crosshair (a few small quads), hit marker ticks around it
+    void drawWeaponCrosshair(core::UIHandler& ui, const hud::Layout& L, double now, bool busy) {
+        auto& cb = *eng_->services.get<combat::ICombat>();
+        const float s = L.scale;
+        int sel = cb.selected();
+        float heat = hud::clamp01(cb.heat(sel));
+        bool hot = cb.overheated(sel);
+        float dim = busy ? 0.35f : 1.0f;
+        float segH = 3 * s, gap = 1.5f * s, w = std::max(2.0f, 2 * s), x0 = L.crossR + 16 * s;
+        int lit = hot ? hud::kHeatSegments : hud::heatSegments(heat);
+        hud::RGB c = hot ? hud::RGB{1.0f, 0.25f, 0.22f} : hud::heatColor(heat);
+        float a = hot ? hud::overheatFlash(now) : 0.9f;
+        for (int i = 0; i < hud::kHeatSegments; i++) {
+            float y = L.cy + (hud::kHeatSegments / 2.0f - 1 - i) * (segH + gap);        // bottom segment fills first
+            bool on = i < lit;
+            float al = (on ? a : 0.18f) * dim;
+            hud::RGB k = on ? c : hud::RGB{0.6f, 0.7f, 0.8f};
+            ui.rect(L.cx - x0 - w, y, w, segH, k.r, k.g, k.b, al);
+            ui.rect(L.cx + x0, y, w, segH, k.r, k.g, k.b, al);
+        }
+        hud::HitMarker m = hud::hitMarker(cb.hitMarkerAge(), state_.killAge(now));
+        if (m.alpha > 0) {
+            hud::RGB k = m.kill ? hud::RGB{1.0f, 0.35f, 0.3f} : hud::RGB{1.0f, 1.0f, 1.0f};
+            float d = 9 * s, len = 5 * s, t = std::max(1.5f, 1.5f * s);
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2) {           // an L-shaped tick in each diagonal corner
+                    float cx = L.cx + sx * d, cy = L.cy + sy * d;
+                    ui.rect(sx > 0 ? cx : cx - len, cy - t / 2, len, t, k.r, k.g, k.b, m.alpha);
+                    ui.rect(cx - t / 2, sy > 0 ? cy : cy - len, t, len, k.r, k.g, k.b, m.alpha);
+                }
+        }
+    }
+
+    // bottom-left block, one row per weapon: "BLASTER  [1]" + mini heat bar; the selected row is bright, the others dim
+    void drawWeaponBlock(core::UIHandler& ui, const hud::Layout& L, combat::ICombat& cb, double now, bool busy) {
+        const float s = L.scale;
+        int n = cb.weaponCount();
+        if (n <= 0) return;
+        if ((int)labels_.size() != n) {                                   // names never change at runtime: build the labels once
+            labels_.clear();
+            for (int i = 0; i < n; i++) labels_.push_back(hud::weaponLabel(cb.weaponName(i), i));
+        }
+        float rowH = 26 * s, pad = 8 * s, w = 236 * s, h = pad * 2 + rowH * n;
+        float x = 16 * s, y = L.hint.y - 12 * s - h;
+        int fs = (int)std::round(13 * s);
+        ui.glass(x, y, w, h, busy ? 0.6f : 0.9f);
+        int sel = cb.selected();
+        for (int i = 0; i < n; i++) {
+            float ry = y + pad + rowH * i;
+            hud::WeaponRow st = hud::weaponRowState(busy, cb.overheated(i), cb.heat(i));
+            bool isSel = i == sel;
+            float k = (isSel ? 1.0f : 0.45f) * (busy ? 0.6f : 1.0f);
+            core::Color tc = isSel ? ui.theme.text : ui.theme.textDim;
+            tc.a *= k;
+            ui.text(x + 12 * s, ry + (rowH - fs * 1.3f) / 2, labels_[(size_t)i], fs, tc);
+            const char* note = hud::weaponRowNote(st);
+            float bx = x + 140 * s, bw = w - 152 * s, bh = 8 * s;
+            if (*note) {
+                core::Color nc = st == hud::WeaponRow::Locked ? core::Color{1.0f, 0.3f, 0.25f, hud::overheatFlash(now) * k} : core::Color{0.62f, 0.70f, 0.80f, k};
+                ui.text(bx, ry + (rowH - fs * 1.3f) / 2, note, (int)std::round(11 * s), nc);
+            } else {
+                hud::RGB c = hud::heatColor(cb.heat(i));
+                ui.bar(bx, ry + (rowH - bh) / 2, bw, bh, cb.heat(i), col(c, 0.95f * k));
+            }
         }
     }
 
@@ -177,6 +256,7 @@ private:
     core::UIHandler* ui_ = nullptr;
     hud::HudState state_;
     bool warned_ = false;
+    std::vector<std::string> labels_;
     float dockRange_ = 0;
     hud::DockQuery dq_;
     std::string radiusName_;

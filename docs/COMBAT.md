@@ -68,3 +68,6 @@ At debug log level the module prints heat, live bolts, ship speed and CPU per st
 ## Cost
 Pure geometry, measured on the dev machine (`test_weapons`): 100 live bolts against 256 nearby asteroids = **0.05 ms per fixed step** (about 3 ms per second); in the game a step with a handful of bolts costs about 0.01 ms.
 Drawing is one line call and one quad call, no texture, no full-screen layer.
+
+## HUD
+`ui/ship_hud` shows the selected weapon's heat beside the crosshair, a hit marker (`hitMarkerAge()`, red on `AsteroidDestroyed`), a bottom-left weapon block with heat bars, and "BLASTER OVERHEATED" / "WEAPON: ..." banners: see docs/HUD.md. It only reads `ICombat` and the events; nothing changes in this module.

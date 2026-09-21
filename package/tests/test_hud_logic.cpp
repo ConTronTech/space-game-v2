@@ -308,3 +308,75 @@ TEST(hud_dock_banners_replace_each_other) {
     CHECK_EQ(b.size(), 1u);
     CHECK(b[0].kind == Warn::Undocked);
 }
+
+TEST(hud_heat_colour_ramp) {
+    RGB cool = heatColor(0.0f), warm = heatColor(0.6f), hot = heatColor(1.0f);
+    CHECK(cool.b > cool.r);                              // cyan
+    CHECK(warm.r > 0.9f && warm.g > 0.6f && warm.b < 0.4f);   // amber
+    CHECK(hot.r > 0.9f && hot.g < 0.3f);                 // red
+    CHECK(std::fabs(heatColor(5.0f).g - hot.g) < 1e-4f); // clamped
+}
+
+TEST(hud_heat_segments) {
+    CHECK_EQ(heatSegments(0.0f), 0);
+    CHECK_EQ(heatSegments(0.01f), 1);
+    CHECK_EQ(heatSegments(0.5f), 4);
+    CHECK_EQ(heatSegments(1.0f), kHeatSegments);
+    CHECK_EQ(heatSegments(2.0f), kHeatSegments);
+    CHECK_EQ(heatSegments(-1.0f), 0);
+    CHECK_EQ(heatSegments(0.5f, 10), 5);
+}
+
+TEST(hud_overheat_flash_stays_visible) {
+    for (double t = 0; t < 3.0; t += 0.05) { float f = overheatFlash(t); CHECK(f >= 0.3f && f <= 1.01f); }
+}
+
+TEST(hud_hit_marker_fade) {
+    HitMarker none = hitMarker(5.0f, -1.0f);
+    CHECK(none.alpha <= 0.0f);
+    HitMarker fresh = hitMarker(0.0f, -1.0f);
+    CHECK(fresh.alpha > 0.99f && !fresh.kill);
+    HitMarker half = hitMarker(kHitMarkerSeconds / 2, -1.0f);
+    CHECK(half.alpha > 0.45f && half.alpha < 0.55f);
+    CHECK(hitMarker(kHitMarkerSeconds + 0.01f, -1.0f).alpha <= 0.0f);
+    HitMarker kill = hitMarker(0.3f, 0.1f);              // the plain hit has faded, the kill flash has not
+    CHECK(kill.kill && kill.alpha > 0.5f);
+    CHECK(hitMarker(0.0f, kKillMarkerSeconds + 0.1f).alpha > 0.99f);   // only the plain hit remains
+}
+
+TEST(hud_weapon_labels_and_row_state) {
+    CHECK_EQ(weaponLabel("Blaster", 0), std::string("BLASTER  [1]"));
+    CHECK_EQ(weaponLabel("Mining Beam", 1), std::string("MINING BEAM  [2]"));
+    CHECK(weaponRowState(false, false, 0.1f) == WeaponRow::Ready);
+    CHECK(weaponRowState(false, false, 0.8f) == WeaponRow::Hot);
+    CHECK(weaponRowState(false, true, 1.0f) == WeaponRow::Locked);
+    CHECK(weaponRowState(true, true, 1.0f) == WeaponRow::Docked);   // docked wins
+    CHECK_EQ(std::string(weaponRowNote(WeaponRow::Locked)), std::string("OVERHEATED"));
+    CHECK_EQ(std::string(weaponRowNote(WeaponRow::Docked)), std::string("DOCKED"));
+    CHECK_EQ(std::string(weaponRowNote(WeaponRow::Ready)), std::string(""));
+}
+
+TEST(hud_weapon_banners) {
+    HudState h;
+    Snapshot s;
+    h.onOverheated("Blaster", 10.0);
+    h.onWeaponChanged("Mining Beam", 10.0);
+    auto b = h.banners(s, 10.3);
+    CHECK_EQ(b.size(), 2u);
+    bool sawHeat = false, sawChange = false;
+    for (auto& x : b) {
+        if (x.kind == Warn::WeaponOverheated) { sawHeat = true; CHECK_EQ(x.text, std::string("BLASTER OVERHEATED")); }
+        if (x.kind == Warn::WeaponChanged) { sawChange = true; CHECK_EQ(x.text, std::string("WEAPON: MINING BEAM")); }
+    }
+    CHECK(sawHeat && sawChange);
+    CHECK(h.banners(s, 10.0 + 5.0).empty());              // both expired
+    s.alive = false;
+    CHECK(h.banners(s, 10.1).empty());                    // dead: none
+}
+
+TEST(hud_kill_age) {
+    HudState h;
+    CHECK(h.killAge(5.0) < 0);                            // never
+    h.onEnemyKilled(5.0);
+    CHECK(std::fabs(h.killAge(5.2) - 0.2f) < 1e-4f);
+}
