@@ -190,3 +190,17 @@ TEST(inventory_shipped_data_is_consistent_with_the_rules_and_cannot_softlock) {
     // total capacity at level 0 with the shipped numbers: 100+80+60+50+50+10+10+10 + 30 = 400
     CHECK(close(c.totalCapacity(), 400));
 }
+
+TEST(inventory_perks_set_once_and_round_trip) {
+    gameplay::Perks p;
+    CHECK(!p.has("ore_scanner"));
+    CHECK(p.add("ore_scanner")); CHECK(p.has("ore_scanner"));
+    CHECK(!p.add("ore_scanner"));                                       // a second USE is refused
+    CHECK(!p.add(""));
+    engine::Json arr = engine::Json::array();                         // the save format: "perks": ["ore_scanner"]
+    for (auto& id : p.ids) arr.push(id);
+    engine::Json back = engine::Json::parse(engine::Json::object().set("perks", arr).dump());
+    gameplay::Perks q;
+    for (size_t k = 0; k < back["perks"].size(); k++) q.add(back["perks"].at(k).str());
+    CHECK(q.has("ore_scanner")); CHECK_EQ((int)q.ids.size(), 1);
+}

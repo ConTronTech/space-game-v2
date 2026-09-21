@@ -16,7 +16,7 @@ combat::WeaponDef beam() { return combat::defaultWeapons()[1]; }
 
 TEST(weapons_default_definitions) {
     auto w = combat::defaultWeapons();
-    CHECK_EQ((int)w.size(), 2);
+    CHECK_EQ((int)w.size(), 3);
     CHECK(w[0].kind == combat::Kind::Projectile); CHECK(w[1].kind == combat::Kind::Beam);
     CHECK(close(w[0].speed, 600.0));                                   // clearly faster than the ship (5 km/s warp aside), not instant
     CHECK(w[0].lifetime > 1.0f && w[0].rateOfFire > 1.0f && w[0].recoil > 0.0f);

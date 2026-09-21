@@ -39,11 +39,11 @@ struct Effect {
     float warpFuel = 0;              // +warp fuel
     float hp = 0;                    // +hull points
     bool hpFull = false;             // heal to maximum
-    int missiles = 0;                // not implemented yet
+    int missiles = 0;                // missiles added to the rack (combat::IAmmo)
     float maxHp = 0;                 // permanent +max HP ...
     float maxHpCap = 200;            // ... up to this cap
     bool shieldEnabled = false;      // installs the shield generator
-    bool hudOreLabels = false;       // not implemented yet
+    bool hudOreLabels = false;       // the "ore_scanner" perk (IInventory::hasPerk); the HUD labels themselves come later
     bool permanent = false;
     bool any() const { return warpFuel != 0 || hp != 0 || hpFull || missiles != 0 || maxHp != 0 || shieldEnabled || hudOreLabels; }
 };
@@ -53,6 +53,8 @@ struct ShipState {
     float hp = 100, maxHp = 100;
     float warpFuel = 100, maxWarpFuel = 100;
     bool shieldInstalled = false;
+    int missiles = 0, maxMissiles = 0;   // the missile rack; maxMissiles 0 = no rack (combat off)
+    bool oreScanner = false;             // the perk is already set
 };
 
 // What using the item does: the ship changes to make (the caller applies them through IShip), or a refusal. A refused item is NOT consumed.
@@ -61,6 +63,8 @@ struct UsePlan {
     std::string reason;              // the refusal, or a short description of what happened when ok
     float addFuel = 0, heal = 0, addMaxHp = 0;
     bool installShield = false;
+    int addMissiles = 0;             // through combat::IAmmo::addMissiles
+    bool setOreScanner = false;      // through IInventory::addPerk("ore_scanner")
 };
 
 inline UsePlan decideUse(const Effect& e, const ShipState& s) {
@@ -91,10 +95,19 @@ inline UsePlan decideUse(const Effect& e, const ShipState& s) {
         if (s.shieldInstalled) refuse("shield generator already installed");
         else { p.installShield = true; note("shield installed"); }
     }
-    if (e.missiles != 0 || e.hudOreLabels) refuse("not available yet");           // nothing implements missiles or ore labels yet
+    if (e.missiles > 0) {
+        int fit = std::clamp(std::min(e.missiles, s.maxMissiles - s.missiles), 0, e.missiles);
+        if (s.maxMissiles <= 0) refuse("no missile rack");
+        else if (fit <= 0) refuse("missile rack full");
+        else { p.addMissiles = fit; note("+" + std::to_string(fit) + " missiles"); }
+    }
+    if (e.hudOreLabels) {
+        if (s.oreScanner) refuse("ore scanner already installed");
+        else { p.setOreScanner = true; note("ore scanner installed"); }
+    }
     if (!e.any()) refuse("this item has no effect");
 
-    bool did = p.addFuel > 0 || p.heal > 0 || p.addMaxHp > 0 || p.installShield;
+    bool did = p.addFuel > 0 || p.heal > 0 || p.addMaxHp > 0 || p.installShield || p.addMissiles > 0 || p.setOreScanner;
     p.ok = did;
     p.reason = did ? done : (firstRefusal.empty() ? "nothing to do" : firstRefusal);
     return p;

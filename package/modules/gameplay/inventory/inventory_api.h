@@ -42,6 +42,9 @@ public:
     virtual int level() const = 0;
     virtual int levelCount() const = 0;
     virtual void setLevel(int level) = 0;                        // clamped; takes effect immediately
+    // perks: permanent flags bought with items (saved). "ore_scanner" = the Ore Scanner is installed (the HUD / radar shows ore labels).
+    virtual bool hasPerk(const std::string& id) const { (void)id; return false; }
+    virtual bool addPerk(const std::string& id) { (void)id; return false; }   // false if it was already set
 };
 
 } // namespace gameplay

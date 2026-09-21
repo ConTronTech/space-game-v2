@@ -27,7 +27,7 @@ safe in both.
 A third device type, `core/input_methods/joystick` (docs/CONTROLLERS.md): raw SDL joystick axes / buttons / hats, one profile per device in `config/input/devices/`, values ADDED to the keyboard's and the mouse's (the same action names, through `contribute`). A wheel base with pedals and a shifter is ONE device with many controls. Nothing to bind in the keyboard profile.
 
 ## Ship actions in the default profile
-`thrust strafe lift pitch yaw roll brake`, `toggle_warp` (Z), `toggle_orbit_lock` (O), **`fire` (left mouse), `weapon_1` / `weapon_2` (keys 1 / 2), `weapon_next` (mouse wheel)** (docs/COMBAT.md), **`toggle_menu` (I): the game menu (docs/GAME_MENU.md)**, **`dock` (G)**: docks at / undocks from the nearest station (docs/STATIONS.md), `camera_next` (V), **`toggle_profiler` (F3), `toggle_profiler_gpu` (F4), `dump_profile` (F5)**: the live profiler (docs/PERFORMANCE.md), `mouse_capture_toggle` (Tab), `pause` (Esc). The full list with keys is in docs/QUICKSTART.md.
+`thrust strafe lift pitch yaw roll brake`, `toggle_warp` (Z), `toggle_orbit_lock` (O), **`fire` (left mouse), `weapon_1` / `weapon_2` / `weapon_3` (keys 1 / 2 / 3), `weapon_next` (mouse wheel), `lock_target` (T), `lock_clear` (Y)** (docs/COMBAT.md), **`toggle_menu` (I): the game menu (docs/GAME_MENU.md)**, **`dock` (G)**: docks at / undocks from the nearest station (docs/STATIONS.md), `camera_next` (V), **`toggle_profiler` (F3), `toggle_profiler_gpu` (F4), `dump_profile` (F5)**: the live profiler (docs/PERFORMANCE.md), `mouse_capture_toggle` (Tab), `pause` (Esc). The full list with keys is in docs/QUICKSTART.md.
 
 ## Profile format
 ```json

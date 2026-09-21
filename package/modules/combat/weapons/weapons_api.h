@@ -2,7 +2,8 @@
 // combat/weapons: events and a read-only service for the HUD (crosshair heat bar, hit marker) and for later NPC / ship-damage code.
 //
 //     eng.events.subscribe<combat::ProjectileHit>([](const combat::ProjectileHit& e) { /* e.targetKind, e.id, e.damage, e.shooter */ });
-//     auto* c = eng.services.get<combat::ICombat>();  c->heat(c->selected());
+//     auto* c = eng.services.get<combat::ICombat>();  c->heat(c->selected());  c->lockState();  c->ammo(2);
+//     auto* a = eng.services.get<combat::IAmmo>();    a->addMissiles(3);      // Missile Pack
 #include <string>
 #include "world/star_system/star_system_api.h"   // world::Vec3d
 
@@ -18,6 +19,11 @@ struct ProjectileHit {
 };
 struct WeaponChanged { int index = 0; std::string name; };
 struct Overheated    { int index = 0; std::string name; };
+// A missile exploded (impact, proximity fuse, or its lifetime ran out). Asteroids within `radius` took area damage (one ProjectileHit each).
+struct MissileExploded { world::Vec3d position; float radius = 0; std::string reason; int shooter = 0; };
+
+// Lock-on state (the T key): idle -> acquiring (target inside the cone for lock_time) -> locked -> lost (target died / out of range / left the cone).
+enum class LockStateId { Idle = 0, Acquiring = 1, Locked = 2, Lost = 3 };
 
 class ICombat {
 public:
@@ -29,6 +35,24 @@ public:
     virtual bool overheated(int i) const = 0;               // locked out until it recovers
     virtual bool firing() const = 0;                        // the trigger is held and the weapon is able to fire
     virtual float hitMarkerAge() const = 0;                 // seconds since one of our bolts / the beam last hit something (large = long ago)
+    // ---- missiles and lock-on (4.2b; non-pure so older implementations keep working) ----
+    virtual int ammo(int i) const { (void)i; return -1; }   // missiles left for a missile weapon; -1 = unlimited (blaster, beam)
+    virtual bool noAmmo() const { return false; }           // the selected weapon is out of ammo: the HUD shows "NO MISSILES"
+    virtual int missileCount() const { return 0; }          // missiles in flight
+    virtual LockStateId lockState() const { return LockStateId::Idle; }
+    virtual std::string lockTargetName() const { return {}; }   // e.g. "asteroid 412 (iron)"; empty without a target
+    virtual float lockTargetDistance() const { return 0; }  // units, ship to target centre
+    virtual float lockTargetAngle() const { return 0; }     // degrees off the ship's nose
+    virtual float lockProgress() const { return 0; }        // 0..1 while acquiring, 1 when locked
+};
+
+// The missile rack. Crafting's Missile Pack goes through this (a full rack refuses and the pack is not consumed).
+class IAmmo {
+public:
+    virtual ~IAmmo() = default;
+    virtual int addMissiles(int n) = 0;                     // returns how many were accepted (0 = rack full)
+    virtual int missiles() const = 0;
+    virtual int maxMissiles() const = 0;
 };
 
 } // namespace combat

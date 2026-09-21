@@ -131,6 +131,7 @@ inline const std::vector<Entry>& presetTable() {
         {"cockpit.glass_tint",              0,     1,      1,      1},    // 0 = no canopy tint (skips the blended glass draw)
         {"mining.max_chunks",               48,    96,     128,    192},  // ore chunks alive at once
         {"combat.max_projectiles",          64,    128,    192,    256},  // blaster bolts alive at once
+        {"combat.max_missiles_alive",       4,     8,      8,      12},   // missiles in flight at once
         {"combat.beam_particles",           0.5,   1,      1.5,    2},    // rate multiplier of the mining beam's sparks
         {"fx.enabled",                      1,     1,      1,      1},    // particle effects on/off (docs/FX.md); laptop A/B switch
         {"fx.max_particles",                300,    800,    1500,   3000},

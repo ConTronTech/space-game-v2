@@ -59,6 +59,7 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `cockpit.screen_hz` | 15 | 30 | 120 | 240 |
 | `mining.max_chunks` | 48 | 96 | 128 | 192 |
 | `combat.max_projectiles` | 64 | 128 | 192 | 256 |
+| `combat.max_missiles_alive` | 4 | 8 | 8 | 12 |
 | `combat.beam_particles` (x sparks at the beam contact) | 0.5 | 1 | 1.5 | 2 |
 | `fx.enabled` | true | true | true | true |
 | `fx.max_particles` | 300 | 800 | 1500 | 3000 |

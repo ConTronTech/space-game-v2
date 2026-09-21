@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <cstdio>
+#include "combat/weapons/weapons_api.h"
 #include "core/audio/audio_api.h"
 #include "core/data_registry/data_api.h"
 #include "core/ui_handler/ui_handler.h"
@@ -102,6 +103,9 @@ public:
         const auto& st = ship->status();
         gameplay::ShipState ss;
         ss.alive = st.alive; ss.hp = st.hp; ss.maxHp = st.maxHp; ss.warpFuel = st.warpFuel; ss.maxWarpFuel = st.maxWarpFuel; ss.shieldInstalled = st.shieldInstalled;
+        auto* ammo = eng_->services.get<combat::IAmmo>();
+        if (ammo) { ss.missiles = ammo->missiles(); ss.maxMissiles = ammo->maxMissiles(); }
+        ss.oreScanner = i->hasPerk("ore_scanner");
         gameplay::UsePlan plan = gameplay::decideUse(it->second, ss);
         if (!plan.ok) return fail(plan.reason);                                 // refused: the item stays in the hold
         float fuelBefore = st.warpFuel, hpBefore = st.hp;
@@ -109,6 +113,9 @@ public:
         if (plan.heal > 0) ship->heal(plan.heal);
         if (plan.addMaxHp > 0) ship->addMaxHp(plan.addMaxHp);
         if (plan.installShield) ship->installShield(true);
+        if (plan.addMissiles > 0 && ammo && ammo->addMissiles(plan.addMissiles) <= 0 && !(plan.addFuel > 0 || plan.heal > 0 || plan.addMaxHp > 0 || plan.installShield))
+            return fail("missile rack full");
+        if (plan.setOreScanner) i->addPerk("ore_scanner");
         i->remove(itemId, 1);                                                    // consumed only after the effect was applied
         reason = plan.reason;
         setMessage("Used " + nm + ": " + plan.reason, true);

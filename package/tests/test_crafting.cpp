@@ -124,13 +124,17 @@ TEST(crafting_permanent_items_apply_once_or_refuse) {
     h.maxHp = 200; p = decideUse(plating, h); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("hull plating already at the maximum"));
 }
 
-TEST(crafting_unimplemented_effects_are_refused_honestly) {
+TEST(crafting_missile_pack_and_ore_scanner) {
     Effect missiles = effectOf(R"({"effect":{"missiles":3}})"), scanner = effectOf(R"({"permanent":true,"effect":{"hud_ore_labels":true}})");
     ShipState s;
-    UsePlan p = decideUse(missiles, s); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("not available yet"));
-    p = decideUse(scanner, s); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("not available yet"));
+    UsePlan p = decideUse(missiles, s); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("no missile rack"));   // combat off: no rack
+    s.maxMissiles = 12; s.missiles = 0; p = decideUse(missiles, s); CHECK(p.ok); CHECK_EQ(p.addMissiles, 3);
+    s.missiles = 11; p = decideUse(missiles, s); CHECK(p.ok); CHECK_EQ(p.addMissiles, 1);                 // the last one that fits
+    s.missiles = 12; p = decideUse(missiles, s); CHECK(!p.ok); CHECK_EQ(p.addMissiles, 0); CHECK_EQ(p.reason, std::string("missile rack full"));
+    p = decideUse(scanner, s); CHECK(p.ok); CHECK(p.setOreScanner);
+    s.oreScanner = true; p = decideUse(scanner, s); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("ore scanner already installed"));
     Effect none = effectOf("{}"); p = decideUse(none, s); CHECK(!p.ok); CHECK_EQ(p.reason, std::string("this item has no effect"));
-    // an item with an implemented and an unimplemented effect applies the implemented one
+    // an item with an applicable and a refused effect applies the applicable one
     Effect mixed = effectOf(R"({"effect":{"hp":30,"missiles":2}})"); s.hp = 10; p = decideUse(mixed, s);
-    CHECK(p.ok); CHECK(close(p.heal, 30));
+    CHECK(p.ok); CHECK(close(p.heal, 30)); CHECK_EQ(p.addMissiles, 0);
 }

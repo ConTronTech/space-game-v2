@@ -19,6 +19,11 @@ Like the warp drive's levels: entries in order (level 0 first), each with `capac
 Events: `gameplay::InventoryChanged{id, delta}` (positive = added, negative = removed) and `gameplay::CargoFull{id, refused}` (an add did not fully fit; `refused` units were turned away). Mining also emits `gameplay::OreMined{ore, amount}` (docs/MINING.md).
 The HUD shows nothing yet: a cargo line comes with the HUD worker; everything it needs is above.
 
+## Perks
+Permanent flags bought with items, kept in the inventory's save (`"perks": ["ore_scanner"]`; an older save without the key = no perks):
+`IInventory::hasPerk(id)` and `addPerk(id)` (false if already set). The only perk so far is **`ore_scanner`** (set by using the Ore Scanner item, gameplay/crafting);
+the HUD / radar reads `hasPerk("ore_scanner")` to show ore labels (not implemented yet). The set is pure (`gameplay::Perks` in `inventory_rules.h`).
+
 ## Saving
 Save id `gameplay/inventory`: `{"level": 0, "stacks": [{"id": "iron", "amount": 50}, {"id": "copper", "amount": 20}]}`. Loading replaces the hold; bad entries (empty id, amount <= 0) are dropped, duplicates merged; a missing `stacks` key gives an empty hold.
 

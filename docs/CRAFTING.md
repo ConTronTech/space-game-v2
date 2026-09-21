@@ -17,11 +17,11 @@ Code: `package/modules/gameplay/crafting/` (`crafting_rules.h` is pure and unit-
 | `hp_full` | heal to maximum | hull already at maximum |
 | `max_hp` + `max_hp_cap` | `IShip::addMaxHp` (permanent, up to the cap, 200) | max HP already at the cap |
 | `shield_enabled` | `IShip::installShield(true)` (permanent) | a shield is already installed |
-| `missiles` | nothing yet | **"not available yet"** (missiles come with 4.2b) |
-| `hud_ore_labels` | nothing yet | **"not available yet"** (the ore scanner has no feature behind it) |
+| `missiles` | `combat::IAmmo::addMissiles(n)` (rack cap `combat.max_missiles`, 12; a nearly full rack takes what fits) | **missile rack full** (the pack is not consumed); `no missile rack` when `combat.enabled` is false |
+| `hud_ore_labels` | sets the inventory perk `ore_scanner` (`IInventory::addPerk`, saved; permanent) | **ore scanner already installed**. The ore labels themselves are the HUD's job (it reads `IInventory::hasPerk("ore_scanner")`) |
 
-Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no ship`. An item with an implemented and an unimplemented effect applies the implemented one. Permanent items apply one at a time (the shield generator refuses a second one; hull plating keeps working until the cap).
-The two "not available yet" items can be crafted and carried but not used: the simplest honest behaviour, without inventing state in the inventory module (an "ore scanner owned" flag would need a small addition there; see docs/QUESTIONS.md).
+Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no ship`. An item with an applicable and a refused effect applies the applicable one. Permanent items apply one at a time (the shield generator refuses a second one; hull plating keeps working until the cap).
+The Missile Pack (+3 missiles, docs/COMBAT.md) and the Ore Scanner work since 4.2b; `decideUse` gets the rack (`ShipState::missiles/maxMissiles`) and the perk (`ShipState::oreScanner`) and returns `UsePlan::addMissiles` / `setOreScanner`.
 
 ## The hard-game switch
 `crafting.require_dock` (default **false**): craft anywhere. `true`: crafting works only while `ship::IDocking::docked()`; the tab shows "Dock at a station to craft" and every button is greyed with that reason. Whether the real game should need a workbench is an open question for the user (docs/QUESTIONS.md).

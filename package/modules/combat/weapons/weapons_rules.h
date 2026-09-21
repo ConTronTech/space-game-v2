@@ -15,7 +15,22 @@ namespace combat {
 
 using world::Vec3d;
 
-enum class Kind { Projectile, Beam };
+enum class Kind { Projectile, Beam, Missile };
+
+// The tunables of one missile (data/weapons.json, kind "missile"; logic in missile_rules.h).
+struct MissileParams {
+    double thrust = 60.0;           // m/s^2 along the nose while fuel lasts
+    double turnRateDeg = 90.0;      // how fast the nose can turn, degrees per second
+    float fuel = 8.0f;              // seconds of burn
+    float lifetime = 14.0f;         // seconds until it self-destructs (explodes) even when coasting
+    double armDistance = 30.0;      // travelled distance before it can detonate
+    double fuseRadius = 8.0;        // proximity fuse: explodes this close to the locked target's surface
+    double navGain = 4.0;           // proportional navigation constant N
+    double launchKick = 40.0;       // m/s added along the nose at launch (on top of the ship's velocity)
+    double blastRadius = 60.0;      // area damage reaches this far from the explosion (measured to the rock's surface)
+    float maxDamage = 400.0f;       // damage at the centre of the blast, falling off linearly to 0 at blastRadius
+};
+
 
 struct WeaponDef {
     std::string name = "blaster";
@@ -34,6 +49,7 @@ struct WeaponDef {
     float muzzle[3] = {0.0f, -0.3f, 3.6f};   // offset in the ship frame: x right, y up, z forward
     float colour[3] = {0.4f, 0.9f, 1.0f};
     float beamDps = 0.0f;               // damage per second on asteroids
+    MissileParams missile;              // kind Missile only
 };
 
 inline std::vector<WeaponDef> defaultWeapons() {
@@ -45,6 +61,11 @@ inline std::vector<WeaponDef> defaultWeapons() {
     m.heatPerShot = 0; m.heatPerSecond = 0.15f; m.cooldownRate = 0.3f; m.lockoutSeconds = 2.5f; m.recoil = 0; m.spread = 0;
     m.colour[0] = 1.0f; m.colour[1] = 0.6f; m.colour[2] = 0.2f; m.beamDps = 30.0f;
     v.push_back(m);
+    WeaponDef ms;                                   // missiles: ammo, not heat; one every 1.5 s
+    ms.name = "missile"; ms.kind = Kind::Missile; ms.damage = 400; ms.speed = 0; ms.lifetime = 14; ms.rateOfFire = 1.0f / 1.5f;
+    ms.heatPerShot = 0; ms.cooldownRate = 1; ms.lockoutSeconds = 0; ms.recoil = 0; ms.spread = 0;
+    ms.colour[0] = 1.0f; ms.colour[1] = 0.45f; ms.colour[2] = 0.3f;
+    v.push_back(ms);
     return v;
 }
 
@@ -56,6 +77,12 @@ inline void sanitize(WeaponDef& w) {
     w.cooldownRate = std::max(0.0f, w.cooldownRate); w.lockoutSeconds = std::max(0.0f, w.lockoutSeconds);
     w.recoil = std::max(0.0f, w.recoil); w.spread = std::clamp(w.spread, 0.0f, 45.0f); w.beamDps = std::max(0.0f, w.beamDps);
     for (float& c : w.colour) c = std::clamp(c, 0.0f, 1.0f);
+    MissileParams& m = w.missile;
+    m.thrust = std::max(0.0, m.thrust); m.turnRateDeg = std::clamp(m.turnRateDeg, 0.0, 720.0); m.fuel = std::max(0.0f, m.fuel);
+    m.lifetime = std::max(0.1f, m.lifetime); m.armDistance = std::max(0.0, m.armDistance); m.fuseRadius = std::max(0.0, m.fuseRadius);
+    m.navGain = std::clamp(m.navGain, 0.0, 10.0); m.launchKick = std::max(0.0, m.launchKick); m.blastRadius = std::max(0.0, m.blastRadius);
+    m.maxDamage = std::max(0.0f, m.maxDamage);
+    if (w.kind == Kind::Missile) w.heatPerShot = w.heatPerSecond = 0.0f;          // missiles are limited by ammo and rate of fire, not heat
 }
 
 // ---- heat, rate of fire, lockout ----

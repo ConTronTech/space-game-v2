@@ -149,4 +149,11 @@ inline std::vector<Stack> parseGive(const std::string& text) {
 
 constexpr int kSaveVersion = 2;              // 1 = the single-pool format (no "version" key), 2 = per-resource pools (same stack list, loaded through the pools)
 
+// ---- perks: a small ordered set of ids (saved as a list) ----
+struct Perks {
+    std::vector<std::string> ids;
+    bool has(const std::string& id) const { return std::find(ids.begin(), ids.end(), id) != ids.end(); }
+    bool add(const std::string& id) { if (id.empty() || has(id)) return false; ids.push_back(id); return true; }
+};
+
 } // namespace gameplay

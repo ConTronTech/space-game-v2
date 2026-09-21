@@ -98,6 +98,12 @@ public:
     void stacks(std::vector<gameplay::Stack>& out) const override { out = cargo_.stacks(); }
     int level() const override { return level_; }
     int levelCount() const override { return (int)levels_.size(); }
+    bool hasPerk(const std::string& id) const override { return perks_.has(id); }
+    bool addPerk(const std::string& id) override {
+        if (!perks_.add(id)) return false;
+        LOG_I("inventory", "perk '%s' installed", id.c_str());
+        return true;
+    }
     void setLevel(int level) override { level_ = gameplay::clampLevel(level, (int)levels_.size()); refresh(); LOG_I("inventory", "hold level %d: %.0f units in total", level_, cargo_.totalCapacity()); }
 
     // ---- saving: the stacks (in order) and the capacity level. Version 2 = per-resource pools; version 1 (no "version" key) = the old single pool.
@@ -106,7 +112,9 @@ public:
     engine::Json save() const override {
         engine::Json arr = engine::Json::array();
         for (auto& s : cargo_.stacks()) arr.push(engine::Json::object().set("id", s.id).set("amount", s.amount));
-        return engine::Json::object().set("version", gameplay::kSaveVersion).set("level", level_).set("stacks", arr);
+        engine::Json perks = engine::Json::array();
+        for (auto& p : perks_.ids) perks.push(p);
+        return engine::Json::object().set("version", gameplay::kSaveVersion).set("level", level_).set("stacks", arr).set("perks", perks);
     }
     void load(const engine::Json& j) override {
         int version = (int)j["version"].num(1);
@@ -116,6 +124,9 @@ public:
         const engine::Json& arr = j["stacks"];
         for (size_t i = 0; i < arr.size(); i++) in.push_back({arr.at(i)["id"].str(), (int)arr.at(i)["amount"].num(0)});
         cargo_.assign(in, &clipped);
+        perks_ = gameplay::Perks{};                                       // a save without "perks" (older) = none
+        const engine::Json& pk = j["perks"];
+        for (size_t k = 0; k < pk.size(); k++) perks_.add(pk.at(k).str());
         for (auto& c : clipped) LOG_W("inventory", "loading a version %d save: %d %s did not fit its hold and was dropped", version, c.amount, c.id.c_str());
         LOG_I("inventory", "loaded cargo (save version %d): %zu stacks, %.0f / %.0f used", version, cargo_.stacks().size(), cargo_.totalUsed(), cargo_.totalCapacity());
     }
@@ -126,6 +137,7 @@ private:
     engine::Engine* eng_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
     gameplay::Cargo cargo_;
+    gameplay::Perks perks_;
     std::vector<gameplay::CargoLevel> levels_;
     float generalBase_ = 30.0f, summaryTimer_ = 0;
     int level_ = 0;
