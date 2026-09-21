@@ -6,6 +6,7 @@
 #include "ship/cockpit/cockpit_light.h"
 #include "ship/cockpit/hud_layout.h"
 #include "ship/cockpit/radar_map.h"
+#include "ship/cockpit/screen_canvas.h"
 #include "ship/cockpit/ship_registry.h"
 #include "ship/cockpit/stroke_font.h"
 #include "tests/test.h"
@@ -329,4 +330,79 @@ TEST(radar_height_text) {
     CHECK_EQ(cockpit::radarHeightText(-25, 10300), std::string(""));            // 25 units off at 10K distance: ~0.1 degree, level
     CHECK(cockpit::radarIsLevel(200, 10300) && !cockpit::radarIsLevel(300, 10300));
     CHECK(cockpit::radarIsLevel(std::nanf(""), 100));
+}
+
+// ---- radar markers: stations and asteroids ----
+TEST(radar_asteroid_tiers_sizes_and_range_gate) {
+    CHECK_EQ(cockpit::asteroidSizeTier(0.5f), 0);
+    CHECK_EQ(cockpit::asteroidSizeTier(1.99f), 0);
+    CHECK_EQ(cockpit::asteroidSizeTier(2.0f), 1);
+    CHECK_EQ(cockpit::asteroidSizeTier(3.9f), 1);
+    CHECK_EQ(cockpit::asteroidSizeTier(4.0f), 2);
+    CHECK_EQ(cockpit::asteroidSizeTier(10.0f), 2);
+    CHECK_EQ(cockpit::asteroidSizeTier(-1.0f), 0);                            // bad radius: smallest tier
+    CHECK(cockpit::asteroidDotSize(0) < cockpit::asteroidDotSize(1) && cockpit::asteroidDotSize(1) < cockpit::asteroidDotSize(2));
+    CHECK(nearf(cockpit::asteroidDotSize(-5), cockpit::asteroidDotSize(0)) && nearf(cockpit::asteroidDotSize(9), cockpit::asteroidDotSize(2)));
+    CHECK(cockpit::asteroidDotSize(2) < 0.03f);                               // always smaller than a planet dot
+    CHECK(cockpit::asteroidInRange(0, 3000) && cockpit::asteroidInRange(2999, 3000) && cockpit::asteroidInRange(3000, 3000));
+    CHECK(!cockpit::asteroidInRange(3000.5f, 3000) && !cockpit::asteroidInRange(-1, 3000) && !cockpit::asteroidInRange(std::nanf(""), 3000));
+}
+TEST(radar_station_marker_filled_only_for_the_dockable_station) {
+    auto hollow = cockpit::stationMarker("Station 1", true, "Station 1", false, false);   // nearest but docking not possible
+    CHECK(!hollow.filled);
+    auto filled = cockpit::stationMarker("Station 1", true, "Station 1", true, false);
+    CHECK(filled.filled);
+    auto other = cockpit::stationMarker("Station 2", true, "Station 1", true, false);     // docking works, but for another station
+    CHECK(!other.filled);
+    auto noDock = cockpit::stationMarker("Station 1", false, "Station 1", true, false);   // no ship::IDocking / no station: never filled
+    CHECK(!noDock.filled);
+    auto rim = cockpit::stationMarker("Station 1", true, "Station 1", true, true);
+    CHECK(rim.size < filled.size && rim.size > 0);                                          // clamped to the rim: smaller
+    CHECK(!cockpit::stationMarker("", false, "", false, false).filled);
+}
+TEST(radar_marker_lists_are_fixed_size_and_keep_the_nearest) {
+    CHECK_EQ(cockpit::kMaxRadarMarkers, cockpit::kMaxRadarContacts + cockpit::kMaxRadarStations + cockpit::kMaxRadarAsteroids);
+    CHECK(cockpit::kMaxRadarMarkers <= 48);                                                  // small: the scope stays cheap
+    cockpit::RadarStations st;
+    for (int i = 0; i < 20; i++) { cockpit::RadarContact c; c.body = i; c.plot.dist = 1000.0f + (float)((i * 7) % 20) * 100.0f; st.offer(c); }
+    CHECK_EQ(st.count, cockpit::kMaxRadarStations);
+    float worst = 0;
+    for (int i = 0; i < st.count; i++) worst = std::max(worst, st.items[i].plot.dist);
+    CHECK(worst <= 1000.0f + 5 * 100.0f + 0.5f);                                            // the 6 nearest survive
+    cockpit::RadarAsteroids rocks;
+    for (int i = 0; i < 40; i++) { cockpit::RadarContact c; c.body = i; c.plot.dist = 50.0f + (float)i; rocks.offer(c); }
+    CHECK_EQ(rocks.count, cockpit::kMaxRadarAsteroids);
+    cockpit::RadarContacts bodies;                                                          // the body list keeps its old behaviour and size
+    for (int i = 0; i < 30; i++) { cockpit::RadarContact c; c.body = i; c.plot.dist = 100.0f * (float)(30 - i); bodies.offer(c); }
+    CHECK_EQ(bodies.count, cockpit::kMaxRadarContacts);
+}
+TEST(radar_station_and_asteroid_plots_share_the_body_mapping) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    auto station = cockpit::radarPlot({0, 600, -1500}, f, 400000.0f);         // ahead and above: same maths as any body
+    CHECK(station.y > 0 && station.stem > 0 && nearf(station.height, 600.0f));
+    auto rock = cockpit::radarPlot({0, 0, -2500}, f, 400000.0f);
+    CHECK(cockpit::asteroidInRange(rock.dist, 3000) && rock.y > 0.3f);
+    auto farRock = cockpit::radarPlot({0, 0, -5000}, f, 400000.0f);
+    CHECK(!cockpit::asteroidInRange(farRock.dist, 3000));
+}
+TEST(canvas_diamond_is_one_quad_filled_and_four_strips_hollow) {
+    core::TaggedQuad q;
+    q.corners[0] = {0, 0, -1}; q.corners[1] = {2, 0, -1}; q.corners[2] = {2, 1, -1}; q.corners[3] = {0, 1, -1};
+    q.compute();
+    cockpit::ScreenMesh m;
+    cockpit::ScreenCanvas c(q, 1, m);
+    c.diamond(1, 0.5f, 0.1f, 0.01f, {1, 1, 1, 1}, true);
+    CHECK_EQ(m.vertexCount(), (size_t)4);
+    c.diamond(1, 0.5f, 0.1f, 0.01f, {1, 1, 1, 1}, false);
+    CHECK_EQ(m.vertexCount(), (size_t)(4 + 16));
+    for (float v : m.positions) CHECK(std::isfinite(v));
+    // the filled diamond's tip is r above the centre: quad y at cy - r (v from the top) = 0.4 of the height above the bottom -> y = 0.6
+    CHECK(nearf(m.positions[1], 0.6f, 1e-3f) && nearf(m.positions[0], 1.0f, 1e-3f));
+}
+TEST(radar_short_station_names) {
+    CHECK_EQ(cockpit::radarShortName("Station 1 (Planet 1, orbital)"), std::string("Station 1"));
+    CHECK_EQ(cockpit::radarShortName("Station 2"), std::string("Station 2"));
+    CHECK_EQ(cockpit::radarShortName(""), std::string(""));
+    CHECK_EQ(cockpit::radarShortName(" (odd)"), std::string(""));
+    CHECK_EQ(cockpit::radarShortName("A very long station name indeed"), std::string("A very long statio"));   // capped at 18
 }

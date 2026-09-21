@@ -38,3 +38,7 @@ Pure rules (generation, analytic positions, docking checks, steering, undock vel
 
 ## HUD
 `ui/ship_hud` shows "STATION 1  420 m" plus a green "DOCK [G]" (or the short reason) near a station, and "DOCKED: STATION 1 - [G] UNDOCK" plus DOCKED/UNDOCKED banners while docked: see docs/HUD.md. Tunable `docking.prompt_range` (0 = 4 x the dock radius).
+
+## Radar
+The cockpit's PROXIMITY_RADAR (docs/COCKPIT.md, "Radar contacts") shows every station as a cyan diamond on the scope, with the same logarithmic range and height stems as planets: hollow normally, **filled for the station you can dock at right now**
+(the same condition as the HUD's `DOCK [G]`, from `ship::IDocking::nearestDockable`). The nearest station and its surface distance are printed under the scope (`STATION 1  96`). It reads `world::IStations` per draw, so it needs no station-side code and simply shows nothing without the module.

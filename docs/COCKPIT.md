@@ -110,7 +110,11 @@ The frame's forward and up come from `core::ITransformSource` (the published pos
 * Range is **logarithmic** (`radarFraction` in `radar_map.h`, scale 200 units): with the default rim of 400,000 units a body 400 units away lands at ~0.14 of the radius, one 40,000 away at ~0.70. Bodies beyond `cockpit.radar_range` sit on the rim as a smaller dot.
 * Dots: sun orange and big, planets in their body colour (brightened to stay visible), moons dim and small. At most the 20 nearest contacts are drawn (fixed array, no allocation).
 * Under the scope: the nearest body and its distance from the **surface**, e.g. `PLANET 1  1.5K` (`850`, `1.5K`, `41.9K`, `250K`, `1.2M`).
-* Asteroids are not on the radar yet: `world::IAsteroids` (docs/WORLD.md) exposes `count/position/radius/ore/nearest`, so a radar layer needs only `nearest(shipPos, N, out)` each frame. The old demo rocks (`flight.demo_rocks`, off by default) are never on it.
+* **Stations** (`world::IStations`, optional): a cyan diamond with the same log range, rim clamp and height stems as bodies; **hollow** normally, **filled** when `ship::IDocking::nearestDockable` says docking works now for THAT station
+  (the HUD's `DOCK [G]` state; other stations stay hollow). A second label line under the body label gives the nearest station and its distance from the surface: `STATION 1  96` (the "(Planet 1, orbital)" part of the name is dropped).
+* **Asteroids** (`world::IAsteroids`, optional): the 12 nearest within `cockpit.radar_asteroid_range` (default 3000 units) as tiny dim tan dots, size by radius (under 2 / under 4 / larger), same plot as bodies, no stems, no labels, drawn under bodies and stations.
+  The "nearest" query is O(rock count), so it is repeated 4 times a second, not every frame. Nothing is drawn when the module is absent or nothing is in range. The old demo rocks (`flight.demo_rocks`) are never on the radar.
+* Everything on the scope is capped: 20 bodies + 6 stations + 12 asteroids (`kMaxRadarMarkers`), fixed arrays, no allocation in the plotting (the screen is cached at `cockpit.screen_hz` anyway).
 Pure maths (frame, mapping, height offset/level test, nearest-N list, distance and height text) is in `radar_map.h`, unit-tested in `tests/test_cockpit.cpp`.
 
 ## Tunables (`config/game.json`)
@@ -125,6 +129,7 @@ Pure maths (frame, mapping, height offset/level test, nearest-N list, distance a
 | `cockpit.screen_brightness` | 1.0 | brightness of the content on the screens (0.2 - 2) |
 | `cockpit.screen_hz` | 30 (by preset: low 15, medium 30, high 120, ultra 240) | how often the screens are redrawn per second; between redraws the cached geometry is drawn. At or above the frame rate = every frame; 0 = every frame |
 | `cockpit.radar_range` | 400000 | radar rim distance in units (logarithmic scale) |
+| `cockpit.radar_asteroid_range` | 3000 | asteroids closer than this are shown on the radar |
 
 The light source lives in one function (`CockpitModule::light()` in cockpit.cpp). When the world module exists and provides the star direction through a service, that function
 is the only place to change (rotate the world direction into view space).
@@ -144,6 +149,6 @@ per-vertex RGBA from the MTL (`Kd`, `d`/`Tr`; CANOPY forced to 30% alpha), a neu
 `core::Mesh` gained `colors` (rgba per vertex, empty for custom loaders) and `tagged`; `positions`/`normals` and `ImportHandler::load<Mesh>` are unchanged.
 
 ## Not done / later
-* Radar shows bodies only (no asteroids/stations/ships yet); heading shows only `forward()` (no roll indicator).
+* Radar shows bodies, stations and nearby asteroids (no ships yet); heading shows only `forward()` (no roll indicator).
 * The light is a fixed direction until the world module supplies a sun direction.
 * Screens are drawn in the pass, not to a texture: text is a stroke font, sharp at any distance but plain.

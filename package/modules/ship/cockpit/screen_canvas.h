@@ -53,6 +53,12 @@ public:
             strip(cx + std::cos(a1) * r, cy + std::sin(a1) * r, cx + std::cos(a2) * r, cy + std::sin(a2) * r, t, c);
         }
     }
+    // A diamond centred on (cx, cy) with half-diagonal r: outline, or a solid quad.
+    void diamond(float cx, float cy, float r, float t, const ScreenColor& c, bool filled) {
+        if (filled) { push(at(cx, cy - r), c); push(at(cx + r, cy), c); push(at(cx, cy + r), c); push(at(cx - r, cy), c); return; }
+        strip(cx, cy - r, cx + r, cy, t, c); strip(cx + r, cy, cx, cy + r, t, c);
+        strip(cx, cy + r, cx - r, cy, t, c); strip(cx - r, cy, cx, cy - r, t, c);
+    }
     void bar(float x, float y, float w, float h, float frac, const ScreenColor& fillColor) {   // dark trough + coloured fill + border
         rect(x, y, w, h, {0.06f, 0.08f, 0.09f, 1});
         if (frac > 0) rect(x, y, w * std::min(frac, 1.0f), h, fillColor);

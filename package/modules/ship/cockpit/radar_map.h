@@ -82,21 +82,54 @@ inline RadarPlot radarPlot(const engine::Vec3& rel, const RadarFrame& f, float r
 }
 
 struct RadarContact {
-    int body = -1;
+    int body = -1;           // index into whatever list the contact came from (body id, station index, asteroid id)
     RadarPlot plot;
 };
 
-// The nearest kMaxRadarContacts offered contacts. Fixed storage: no allocation.
-struct RadarContacts {
-    RadarContact items[kMaxRadarContacts];
+// The N nearest offered contacts. Fixed storage: no allocation.
+template <int N>
+struct ContactList {
+    RadarContact items[N];
     int count = 0;
     void offer(const RadarContact& c) {
-        if (count < kMaxRadarContacts) { items[count++] = c; return; }
+        if (count < N) { items[count++] = c; return; }
         int far = 0;
         for (int i = 1; i < count; i++) if (items[i].plot.dist > items[far].plot.dist) far = i;
         if (c.plot.dist < items[far].plot.dist) items[far] = c;
     }
 };
+using RadarContacts = ContactList<kMaxRadarContacts>;          // bodies (sun, planets, moons)
+constexpr int kMaxRadarStations = 6;
+constexpr int kMaxRadarAsteroids = 12;
+using RadarStations = ContactList<kMaxRadarStations>;
+using RadarAsteroids = ContactList<kMaxRadarAsteroids>;
+constexpr int kMaxRadarMarkers = kMaxRadarContacts + kMaxRadarStations + kMaxRadarAsteroids;   // hard cap on everything drawn on the scope
+
+// ---- asteroids: tiny dim dots, only close by ----
+constexpr float kDefaultAsteroidRange = 3000.0f;               // units (cockpit.radar_asteroid_range)
+inline bool asteroidInRange(float dist, float range) { return dist >= 0 && dist <= range; }   // false for NaN too
+inline int asteroidSizeTier(float radius) { return radius < 2.0f ? 0 : radius < 4.0f ? 1 : 2; }   // clusters: 0.5-4 small, 4-10 large
+inline float asteroidDotSize(int tier) { return tier <= 0 ? 0.008f : tier == 1 ? 0.011f : 0.015f; }   // scope-height fractions
+
+// ---- stations: a diamond, hollow normally, filled when the dock key would work for THIS station ----
+struct StationMarker {
+    bool filled = false;
+    float size = 0.04f;      // half-diagonal of the diamond, scope-height fractions
+};
+// dockKnown = ship::IDocking exists and reported a station; dockName / dockOk = what it said (the nearest station, and whether docking works now).
+inline StationMarker stationMarker(const std::string& stationName, bool dockKnown, const std::string& dockName, bool dockOk, bool clamped) {
+    StationMarker m;
+    m.filled = dockKnown && dockOk && stationName == dockName;
+    m.size = clamped ? 0.024f : 0.04f;                          // beyond range: a smaller diamond on the rim
+    return m;
+}
+
+// "Station 1 (Planet 1, orbital)" -> "Station 1": the scope label only has room for the part before the parenthesis.
+inline std::string radarShortName(const std::string& name) {
+    size_t p = name.find(" (");
+    std::string s = p == std::string::npos ? name : name.substr(0, p);
+    return s.size() > 18 ? s.substr(0, 18) : s;
+}
 
 // "850", "1.5K", "41.9K", "250K", "1.2M". Never negative.
 inline std::string radarDistanceText(float d) {

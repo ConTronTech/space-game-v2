@@ -2,7 +2,10 @@
 #include <cmath>
 #include "core/camera/camera_api.h"
 #include "engine/log.h"
+#include "ship/docking/docking_api.h"
+#include "world/asteroids/asteroids_api.h"
 #include "world/star_system/star_system_api.h"
+#include "world/stations/stations_api.h"
 #include "ship/cockpit/hud_layout.h"
 #include "ship/cockpit/radar_map.h"
 
@@ -15,6 +18,8 @@ ScreenColor col(Rgb c) { return {c.r, c.g, c.b, 1}; }
 } // namespace
 
 HudScreens::HudScreens(engine::Engine& eng) : eng_(eng) {
+    asteroidRange_ = std::max(100.0f, eng.config.get("cockpit.radar_asteroid_range", kDefaultAsteroidRange, "radar: asteroids closer than this many units are shown as tiny dots (the 12 nearest)"));
+    rockRate_.setHz(4.0f);
     range_ = std::max(1000.0f, eng.config.get("cockpit.radar_range", 400000.0f, "radar rim distance in units (logarithmic scale: near bodies stay readable, far ones clamp to the rim)"));
 }
 
@@ -142,6 +147,21 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
         contacts.offer(k);
     }
 
+    // asteroids first, so bodies and stations draw over them: the 12 nearest within cockpit.radar_asteroid_range, tiny dim dots, no stems
+    if (const world::IAsteroids* ast = eng_.services.get<world::IAsteroids>()) {
+        if (rockRate_.tick(eng_.time())) { rockIds_.clear(); ast->nearest({sx, sy, sz}, kMaxRadarAsteroids, rockIds_); }
+        int drawn = 0;
+        for (int id : rockIds_) {
+            if (drawn >= kMaxRadarAsteroids) break;
+            world::Vec3d p = ast->position(id);
+            RadarPlot pl = radarPlot({(float)(p.x - sx), (float)(p.y - sy), (float)(p.z - sz)}, frame, range_);
+            if (!asteroidInRange(pl.dist, asteroidRange_)) continue;
+            float size = asteroidDotSize(asteroidSizeTier(ast->radius(id)));
+            c.rect(cx + pl.x * r - size * 0.5f, cy - pl.y * r - size * 0.5f, size, size, {0.5f, 0.45f, 0.35f, 1});
+            drawn++;
+        }
+    }
+
     for (int i = 0; i < contacts.count; i++) {
         const RadarContact& k = contacts.items[i];
         const world::Body& b = bodies[(size_t)k.body];
@@ -165,12 +185,54 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
         c.rect(px - size * 0.5f, py - size * 0.5f, size, size, col);
     }
 
+    // stations: cyan diamonds with the same log range and height stems; filled when docking works for that station (the HUD's DOCK [G])
+    if (const world::IStations* st = eng_.services.get<world::IStations>()) {
+        std::string dockName, why;
+        float dockDist = 0;
+        bool dockOk = false;
+        const ship::IDocking* dock = eng_.services.get<ship::IDocking>();
+        const bool dockKnown = dock && dock->nearestDockable(dockName, dockDist, dockOk, why);
+        RadarStations list;
+        const int n = st->count();
+        for (int i = 0; i < n; i++) {
+            world::Vec3d p = st->info(i).position;
+            RadarContact k;
+            k.body = i;
+            k.plot = radarPlot({(float)(p.x - sx), (float)(p.y - sy), (float)(p.z - sz)}, frame, range_);
+            list.offer(k);
+        }
+        const ScreenColor cyan{0.2f, 0.9f, 1.0f, 1};
+        int nearestStation = -1;
+        float nearestStationDist = 0;
+        for (int i = 0; i < list.count; i++) {
+            const RadarContact& k = list.items[i];
+            world::StationInfo info = st->info(k.body);
+            StationMarker m = stationMarker(info.name, dockKnown, dockName, dockOk, k.plot.clamped);
+            float px = cx + k.plot.x * r, py = cy - k.plot.y * r;
+            if (k.plot.stem != 0) {
+                const float bright = k.plot.stem > 0 ? 1.0f : 0.45f;
+                float dy = py - k.plot.stem * r;
+                c.line(px, py, px, dy, 0.009f, {cyan.r * bright, cyan.g * bright, cyan.b * bright, 1});
+                c.frame(px - 0.010f, py - 0.010f, 0.020f, 0.020f, 0.005f, {0.0f, 0.6f, 0.4f, 1});
+                py = dy;
+            }
+            c.diamond(px, py, m.size, 0.008f, cyan, m.filled);
+            if (nearestStation < 0 || k.plot.dist < nearestStationDist) { nearestStation = k.body; nearestStationDist = k.plot.dist; }
+        }
+        if (nearestStation >= 0) {   // second label line under the body label: "STATION 1  420"
+            world::StationInfo info = st->info(nearestStation);
+            std::string line = radarShortName(info.name) + "  " + radarDistanceText(std::max(0.0f, nearestStationDist - info.half));
+            float th = std::min(0.042f, (c.aspect() - 0.12f) / ((float)line.size() * kCellAspect * (1.0f + kGapRatio)));
+            c.textCentered(cx, 0.925f, line, th, {0.2f, 0.8f, 0.9f, 1});
+        }
+    }
+
     if (nearest >= 0) {
         std::string label = bodies[(size_t)nearest].name + "  " + radarDistanceText(nearestSurface);
         std::string h = radarHeightText(nearestHeight, nearestDist);
         if (!h.empty()) label += "  " + h;
         float th = std::min(0.07f, (c.aspect() - 0.12f) / (label.size() * kCellAspect * (1.0f + kGapRatio)));   // shrink to fit long names
-        c.textCentered(cx, 0.86f, label, th, {0.0f, 0.8f, 0.55f, 1});
+        c.textCentered(cx, 0.835f, label, th, {0.0f, 0.8f, 0.55f, 1});
     }
 }
 
