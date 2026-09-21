@@ -21,6 +21,14 @@ struct StationInfo {
     float half = 20.0f;          // half extent of the model, units (also what the physics sphere is based on)
     Vec3d up;                    // unit vector: the surface normal (planetary) or the spin axis (orbital)
     int parent = -1;             // id of the planet in IStarSystem::bodies()
+    // ---- orientation (added for landing-pad docking) ----
+    // The model is a cube of half extent `half` centred on `position`, with a flat landing pad on its top face (along `up`).
+    // Local axes: up (given above), forward (below), right = cross(up, forward). An orbital station spins about `up`; `forward` is the spin reference axis
+    // at the CURRENT spin angle (it turns at spinRate). Planetary stations do not spin: spinRate = 0 and forward is fixed.
+    Vec3d forward{0, 0, 1};
+    double spinRate = 0;         // rad/s about `up` (right-hand rule), 0 for planetary stations
+    float padTop = 23.2f;        // distance from `position` to the pad's top surface along `up`, units (1.16 x half)
+    float padRadius = 30.0f;     // pad disc radius, units (1.5 x half): wider than the cube
 };
 
 class IStations {

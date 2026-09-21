@@ -107,6 +107,86 @@ inline Vec3d stationUp(const Station& s) {
 
 inline double spinAngle(const Station& s, double t) { return s.kind == StationKind::Orbital ? std::fmod(s.spinRate * t, 2.0 * sdetail::kPi) : 0.0; }
 
+// ---- station frame and landing pad ----
+namespace sdetail {
+inline Vec3d cross(const Vec3d& a, const Vec3d& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
+// Rodrigues: v rotated about the unit axis by angle (right-hand rule).
+inline Vec3d rotateAbout(const Vec3d& v, const Vec3d& axis, double angle) {
+    double c = std::cos(angle), s = std::sin(angle);
+    return add(add(mul(v, c), mul(cross(axis, v), s)), mul(axis, dot(axis, v) * (1.0 - c)));
+}
+} // namespace sdetail
+
+// The station's reference axes when it has not spun: forward is a fixed function of `up` (the same basis the model is drawn with).
+// (right, up, forward) is right-handed: cross(right, up) = forward, cross(up, forward) = right.
+inline Vec3d referenceForward(const Vec3d& up) {
+    using namespace sdetail;
+    Vec3d ref = std::fabs(up.z) < 0.9 ? Vec3d{0, 0, 1} : Vec3d{1, 0, 0};
+    Vec3d r = normalized(cross(up, ref));
+    return normalized(cross(r, up));
+}
+// forward at spin angle `angle` (orbital stations spin about up; planetary ones pass 0).
+inline Vec3d spunForward(const Vec3d& up, double angle) { return sdetail::rotateAbout(referenceForward(up), up, angle); }
+
+// Everything the docking code needs to know about a station at one instant.
+struct StationPose {
+    Vec3d pos, vel, up, forward;
+    double spinRate = 0;
+    double padTop = 23.2;
+};
+inline Vec3d poseRight(const StationPose& p) { return sdetail::normalized(sdetail::cross(p.up, p.forward)); }
+
+// The ship's heading on the pad, kept in the STATION frame: components along the pad's right and forward axes (unit length).
+struct PadHeading { double right = 0, forward = 1; };
+
+// Capture at dock start: the ship's forward projected onto the pad plane (its component along `up` removed). A heading that points along up
+// (no usable projection) falls back to the station's forward.
+inline PadHeading captureHeading(const StationPose& p, const Vec3d& shipForward) {
+    using namespace sdetail;
+    Vec3d flat = sub(shipForward, mul(p.up, dot(shipForward, p.up)));
+    double l = length(flat);
+    if (l < 1e-6) return {0, 1};
+    flat = mul(flat, 1.0 / l);
+    return {dot(flat, poseRight(p)), dot(flat, normalized(p.forward))};
+}
+
+struct PadPose { Vec3d pos, forward, up; };
+
+// The pose of a ship resting on the pad, at the station's CURRENT pose: pad centre + up * (pad top + restHeight), belly toward the pad
+// (ship up = station up), heading fixed in the station frame. This is the whole trick: no integration, so nothing drifts.
+inline PadPose padPose(const StationPose& p, const PadHeading& h, double restHeight) {
+    using namespace sdetail;
+    PadPose out;
+    out.up = normalized(p.up);
+    out.pos = add(p.pos, mul(out.up, p.padTop + restHeight));
+    Vec3d f = add(mul(poseRight(p), h.right), mul(normalized(p.forward), h.forward));
+    f = sub(f, mul(out.up, dot(f, out.up)));               // stay exactly in the pad plane
+    out.forward = normalized(f);
+    return out;
+}
+
+// True velocity of a point fixed to the (moving, spinning) station: v + spinRate * up x r.
+inline Vec3d padPointVelocity(const StationPose& p, const Vec3d& worldPoint) {
+    using namespace sdetail;
+    return add(p.vel, mul(cross(p.up, sub(worldPoint, p.pos)), p.spinRate));
+}
+
+// ---- the approach ----
+inline double smoothstep(double t) { t = std::clamp(t, 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+// 0..1 progress of an approach that takes `seconds` (<= 0: instant).
+inline double approachProgress(double elapsed, double seconds) { return seconds <= 0 ? 1.0 : std::clamp(elapsed / seconds, 0.0, 1.0); }
+
+// Normalised linear blend of two orientations, returned orthonormal (forward is made perpendicular to up). s = 0 gives from, s = 1 gives to.
+inline void blendOrientation(const Vec3d& f0, const Vec3d& u0, const Vec3d& f1, const Vec3d& u1, double s, Vec3d& fOut, Vec3d& uOut) {
+    using namespace sdetail;
+    Vec3d u = normalized(add(mul(u0, 1.0 - s), mul(u1, s)));
+    Vec3d f = add(mul(f0, 1.0 - s), mul(f1, s));
+    f = sub(f, mul(u, dot(f, u)));
+    if (length(f) < 1e-6) f = sub(f1, mul(u, dot(f1, u)));      // opposite headings: any perpendicular one is better than none
+    fOut = normalized(f);
+    uOut = u;
+}
+
 // ---- docking ----
 enum class DockCheck { Ok, NoStation, Dead, Warping, OrbitLocked, AlreadyDocked, TooFar, TooFast };
 

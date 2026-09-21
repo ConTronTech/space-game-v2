@@ -47,6 +47,12 @@ public:
     virtual void addMaxHp(float amount) = 0;                                  // hull plating (permanent)
     virtual void installShield(bool enabled) = 0;                             // shield generator: fills the shield
     virtual void setVelocity(const engine::Vec3& v) = 0;                      // e.g. warp drive, docking
+    // ---- held pose (docking): additive, non-pure, so other IShip implementations (fake_ship) need not change ----
+    // setHeld(true): the ship ignores the player's rotation/thrust input and its own integration; the holder (ship/docking) places it every fixed
+    // step with setPose and sets its velocity with setVelocity. Collisions with "station" bodies are ignored while held. setHeld(false) gives control back.
+    // setPose(pos, fwd, up): put the ship exactly there (fwd/up are orthonormalised; angular rates are zeroed). Interpolation for the camera is kept smooth.
+    virtual void setHeld(bool) {}
+    virtual void setPose(const engine::Vec3& /*pos*/, const engine::Vec3& /*fwd*/, const engine::Vec3& /*up*/) {}
     virtual void setWarping(bool) {}                                          // the warp drive tells the ship it is engaged (ShipStatus::warping); default: ignored
     virtual void kill(const std::string& cause) = 0;                          // instant death (sun, ...): emits Died
     virtual void respawn() = 0;                                               // full reset at the spawn point: emits Respawned

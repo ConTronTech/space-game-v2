@@ -117,6 +117,12 @@ public:
         // Controls don't snap: each axis eases toward what the player is asking for, so engines
         // spool up/down and the ship keeps turning for a moment after you let go.
         prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; // for render interpolation
+        if (held_) {   // docking holds the ship: the holder places it with setPose every step; no input, no integration
+            rules::regen(vit_, hpRegen_, dt);
+            pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
+            sync();
+            return;
+        }
         const float thrust = thrust_, turn = turnRate_, turnTau = turnTau_, engineTau = engineTau_;
 
         rules::regen(vit_, hpRegen_, dt);   // frozen while paused: fixed updates do not run then
@@ -228,6 +234,21 @@ public:
     }
     void addMaxHp(float amount) override { rules::addMaxHp(vit_, amount, maxHpCap_); sync(); }
     void installShield(bool enabled) override { rules::installShield(vit_, enabled); sync(); }
+    void setHeld(bool h) override {
+        if (h && !held_) { prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0; }
+        held_ = h;
+    }
+    void setPose(const Vec3& p, const Vec3& f, const Vec3& u) override {
+        Vec3 nf = engine::normalize(f);
+        if (engine::length(nf) < 0.5f) return;                          // bad direction: keep the current orientation
+        Vec3 r = engine::normalize(engine::cross(nf, u));
+        if (engine::length(r) < 0.5f) return;                           // up parallel to forward
+        pos_ = p; fwd_ = nf; right_ = r; up_ = engine::cross(r, nf);
+        pitchRate_ = yawRate_ = rollRate_ = 0;
+        sync();
+        // prev* is left alone: onFixedUpdate copied the previous pose into it at the start of this step, so the camera blends smoothly from there
+        if (physics_ && shipBody_ != core::kNoBody) physics_->setBody(shipBody_, pos_, vel_);
+    }
     void setWarping(bool w) override { status_.warping = w; }   // sync() leaves it alone
     void setVelocity(const Vec3& v) override {
         vel_ = v;
@@ -258,6 +279,7 @@ private:
     void onCollided(const core::Collided& c) {
         bool shipIsA = c.a == shipBody_;
         if (!shipIsA && c.b != shipBody_) return;
+        if (held_ && (shipIsA ? c.kindB : c.kindA) == "station") return;   // docking: the ship rides ON the station, touching it is the point
         Vec3 n = shipIsA ? c.normal : c.normal * -1.0f;             // pointing from the ship to the other body
         Vec3 otherPos = shipIsA ? c.posB : c.posA;
         float otherR = shipIsA ? c.radiusB : c.radiusA;
@@ -364,6 +386,7 @@ private:
     Vec3 prevPos_{0, 0, 0}, prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
     std::vector<Rock> rocks_;
     bool demoRocks_ = false;
+    bool held_ = false;                                       // setHeld(): placed by the docking module
 };
 
 REGISTER_MODULE(ShipCore);

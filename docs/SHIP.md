@@ -24,6 +24,7 @@ Events (`engine.events`): `DamageTaken{amount (reached the hull), absorbedByShie
 | `addMaxHp(a)` | permanent, capped at `ship.max_hp_cap` (200); current hp is not topped up (old game) |
 | `installShield(true/false)` | generator: fills the shield to `maxShield`; `false` removes it |
 | `setVelocity(v)` | e.g. warp drive, docking |
+| `setHeld(bool)` / `setPose(pos, fwd, up)` | **docking only** (non-pure, no-op defaults): while held the ship ignores rotation/thrust input and its own integration, and ignores collisions with `station` bodies; the holder places it every fixed step with `setPose` (orthonormalised, angular rates zeroed, physics body synced, the camera keeps interpolating from the previous step's pose) and sets its velocity with `setVelocity`. `setHeld(false)` gives control back. See docs/STATIONS.md |
 | `kill(cause)` | instant death, `Died{cause}` |
 | `respawn()` | instant reset at the spawn point (origin) facing -Z: velocity 0, full hull and fuel (shield not restored, like the old game), `Respawned` |
 

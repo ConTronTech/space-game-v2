@@ -134,3 +134,153 @@ TEST(stations_dock_steering_follows_a_moving_station_and_undock_pushes_out) {
     CHECK(world::shouldUndock(0.5, 0, 0)); CHECK(world::shouldUndock(0, -0.5, 0)); CHECK(world::shouldUndock(0, 0, 0.5));
     CHECK(!world::shouldUndock(0.05, 0, 0)); CHECK(!world::shouldUndock(0, 0, 0));
 }
+
+// ---------------- landing pad: station frame, pad pose, approach ----------------
+namespace {
+double dotv(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+Vec3d addv(const Vec3d& a, const Vec3d& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+Vec3d mulv(const Vec3d& a, double k) { return {a.x * k, a.y * k, a.z * k}; }
+
+// A station on a planet that itself moves in a straight line at 200 m/s; velocities are backward differences, exactly as world/stations computes them.
+struct Sim {
+    world::Station s;
+    Vec3d parentAt(double t) const { return {1000.0 + 200.0 * t, 50.0 - 30.0 * t, -40000.0 + 120.0 * t}; }
+    world::StationPose poseAt(double t, double dt) const {
+        world::StationPose p;
+        p.pos = addv(parentAt(t), world::stationOffset(s, t));
+        Vec3d before = addv(parentAt(t - dt), world::stationOffset(s, t - dt));
+        p.vel = mulv(sub(p.pos, before), 1.0 / dt);
+        p.up = world::stationUp(s);
+        p.forward = world::spunForward(p.up, world::spinAngle(s, t));
+        p.spinRate = s.kind == world::StationKind::Orbital ? s.spinRate : 0.0;
+        p.padTop = s.half * 1.16;
+        return p;
+    }
+};
+Sim orbitalSim() {
+    Sim m;
+    m.s.kind = world::StationKind::Orbital; m.s.half = 20; m.s.orbitRadius = 5000; m.s.omega = 0.005; m.s.phase = 0.7; m.s.tilt = 0.15; m.s.spinRate = 0.04;
+    return m;
+}
+Sim planetarySim() {
+    Sim m;
+    m.s.kind = world::StationKind::Planetary; m.s.half = 30; m.s.lat = 0.4; m.s.lon = 2.0; m.s.surfaceRadius = 1500;
+    return m;
+}
+} // namespace
+
+TEST(station_frame_is_orthonormal_right_handed_and_spins_about_up) {
+    for (Vec3d up : {Vec3d{0, 1, 0}, Vec3d{0, 0, 1}, Vec3d{1, 0, 0}, Vec3d{0.3, 0.5, 0.81}}) {
+        double l = len(up); up = mulv(up, 1.0 / l);
+        Vec3d f = world::referenceForward(up);
+        CHECK(close(len(f), 1.0, 1e-9) && std::fabs(dotv(f, up)) < 1e-9);
+        Vec3d r = world::sdetail::cross(up, f);
+        Vec3d back = world::sdetail::cross(r, up);                                  // (right, up, forward) is right-handed: right x up = forward
+        CHECK(len(sub(back, f)) < 1e-9);
+        Vec3d quarter = world::spunForward(up, 3.14159265358979 / 2);               // a quarter turn about up moves forward onto +right
+        CHECK(len(sub(quarter, r)) < 1e-9);
+        CHECK(len(sub(world::spunForward(up, 0), f)) < 1e-12);
+    }
+}
+
+TEST(pad_heading_is_captured_flat_and_kept_in_the_station_frame) {
+    Sim m = orbitalSim();
+    world::StationPose p0 = m.poseAt(10.0, 1.0 / 60);
+    Vec3d shipFwd = {0.6, 0.2, -0.77};                                              // pitched: has a component along up
+    world::PadHeading h = world::captureHeading(p0, shipFwd);
+    CHECK(close(h.right * h.right + h.forward * h.forward, 1.0, 1e-9));             // unit
+    world::PadPose a = world::padPose(p0, h, 0.6);
+    CHECK(std::fabs(dotv(a.forward, a.up)) < 1e-9 && close(len(a.forward), 1.0, 1e-9));   // flat on the pad
+    Vec3d flat = sub(shipFwd, mulv(p0.up, dotv(shipFwd, p0.up)));
+    flat = mulv(flat, 1.0 / len(flat));
+    CHECK(len(sub(a.forward, flat)) < 1e-9);                                        // == the heading projected onto the pad plane
+    // a quarter of the spin period later the world heading has turned with the station: still the same angle to the station's forward
+    world::StationPose p1 = m.poseAt(10.0 + (3.14159265358979 / 2) / m.s.spinRate, 1.0 / 60);
+    world::PadPose b = world::padPose(p1, h, 0.6);
+    CHECK(close(dotv(a.forward, p0.forward), dotv(b.forward, p1.forward), 1e-6));
+    CHECK(len(sub(b.forward, world::sdetail::rotateAbout(a.forward, p1.up, 3.14159265358979 / 2))) < 1e-4);
+    // straight up: falls back to the station forward
+    world::PadHeading g = world::captureHeading(p0, p0.up);
+    CHECK(close(g.forward, 1.0) && std::fabs(g.right) < 1e-12);
+}
+
+TEST(pad_pose_sits_on_the_pad_and_pad_point_velocity_includes_the_spin) {
+    Sim m = orbitalSim();
+    world::StationPose p = m.poseAt(5.0, 1.0 / 60);
+    world::PadPose pad = world::padPose(p, {0, 1}, 0.6);
+    CHECK(close(dotv(sub(pad.pos, p.pos), p.up), 20 * 1.16 + 0.6, 1e-9));           // pad top + rest height along up
+    CHECK(len(sub(sub(pad.pos, p.pos), mulv(p.up, dotv(sub(pad.pos, p.pos), p.up)))) < 1e-9);   // and on the axis: the pad centre
+    CHECK(len(sub(pad.up, p.up)) < 1e-12);                                          // belly to the pad
+    Vec3d centreV = world::padPointVelocity(p, pad.pos);
+    CHECK(len(sub(centreV, p.vel)) < 1e-9);                                         // on the spin axis: only the station's own velocity
+    Vec3d point = addv(pad.pos, mulv(world::sdetail::cross(p.up, p.forward), 10.0));   // 10 units off-axis
+    Vec3d v = world::padPointVelocity(p, point);
+    CHECK(close(len(sub(v, p.vel)), m.s.spinRate * 10.0, 1e-9));                    // omega x r: 0.04 * 10 m/s
+    CHECK(std::fabs(dotv(sub(v, p.vel), p.up)) < 1e-12);                            // tangential
+    world::StationPose planetary = planetarySim().poseAt(5.0, 1.0 / 60);
+    CHECK(len(sub(world::padPointVelocity(planetary, addv(planetary.pos, {5, 5, 5})), planetary.vel)) < 1e-12);   // no spin on a planetary station
+}
+
+TEST(pad_approach_easing_and_orientation_blend) {
+    CHECK(close(world::smoothstep(0.0), 0.0) && close(world::smoothstep(1.0), 1.0) && close(world::smoothstep(0.5), 0.5));
+    CHECK(world::smoothstep(0.1) < 0.1 && world::smoothstep(0.9) > 0.9);            // slow start, slow finish
+    CHECK(close(world::smoothstep(-3), 0.0) && close(world::smoothstep(7), 1.0));   // clamped
+    double prev = -1;
+    for (double t = 0; t <= 1.0001; t += 0.05) { double v = world::smoothstep(t); CHECK(v >= prev - 1e-12); prev = v; }
+    CHECK(close(world::approachProgress(0.75, 1.5), 0.5) && close(world::approachProgress(9, 1.5), 1.0) && close(world::approachProgress(-1, 1.5), 0.0));
+    CHECK(close(world::approachProgress(0, 0), 1.0));                               // approach_seconds 0 = instant
+    Vec3d f0{0, 0, -1}, u0{0, 1, 0}, f1{1, 0, 0}, u1{0, 0, 1};
+    for (double s : {0.0, 0.1, 0.5, 0.9, 1.0}) {
+        Vec3d f, u;
+        world::blendOrientation(f0, u0, f1, u1, s, f, u);
+        CHECK(close(len(f), 1.0, 1e-9) && close(len(u), 1.0, 1e-9) && std::fabs(dotv(f, u)) < 1e-9);   // stays orthonormal
+    }
+    Vec3d f, u;
+    world::blendOrientation(f0, u0, f1, u1, 0.0, f, u);
+    CHECK(len(sub(f, f0)) < 1e-9 && len(sub(u, u0)) < 1e-9);
+    world::blendOrientation(f0, u0, f1, u1, 1.0, f, u);
+    CHECK(len(sub(f, f1)) < 1e-9 && len(sub(u, u1)) < 1e-9);
+    world::blendOrientation({0, 0, -1}, {0, 1, 0}, {0, 0, 1}, {0, 1, 0}, 0.5, f, u);   // exactly opposite headings: still a valid frame
+    CHECK(close(len(f), 1.0, 1e-9) && std::fabs(dotv(f, u)) < 1e-9);
+}
+
+TEST(pad_follows_a_moving_spinning_station_without_drift) {
+    for (int kind = 0; kind < 2; kind++) {
+        Sim m = kind == 0 ? orbitalSim() : planetarySim();
+        const double dt = 1.0 / 60;
+        double t = 3.0;
+        world::PadHeading h = world::captureHeading(m.poseAt(t, dt), {0.3, 0.1, -0.9});
+        Vec3d prevShip = world::padPose(m.poseAt(t, dt), h, 0.6).pos;
+        double worstDist = 0, worstUp = 0, worstRel = 0, worstFlat = 0;
+        for (int step = 0; step < 3600; step++) {                                   // one simulated minute
+            t += dt;
+            world::StationPose p = m.poseAt(t, dt);
+            world::PadPose pad = world::padPose(p, h, 0.6);
+            // "distance to the pad point": the ship is placed analytically, so compare with an independent computation of the pad point
+            Vec3d padPoint = addv(p.pos, mulv(p.up, p.padTop + 0.6));
+            worstDist = std::max(worstDist, len(sub(pad.pos, padPoint)));
+            worstUp = std::max(worstUp, len(sub(pad.up, p.up)));
+            worstFlat = std::max(worstFlat, std::fabs(dotv(pad.forward, p.up)));
+            // speed relative to the station: the ship's real motion between steps vs the pad point velocity
+            Vec3d shipV = mulv(sub(pad.pos, prevShip), 1.0 / dt);
+            worstRel = std::max(worstRel, len(sub(shipV, world::padPointVelocity(p, pad.pos))));
+            prevShip = pad.pos;
+        }
+        CHECK(worstDist < 1e-6);                                                    // no drift: analytic
+        CHECK(worstUp < 1e-4);                                                      // up stays the station's up
+        CHECK(worstFlat < 1e-9);                                                    // heading stays in the pad plane
+        CHECK(worstRel < 0.01);                                                     // relative speed ~0 (finite-difference noise only)
+    }
+}
+
+TEST(undock_leaves_with_the_pad_point_velocity_plus_the_push) {
+    Sim m = orbitalSim();
+    world::StationPose p = m.poseAt(20.0, 1.0 / 60);
+    world::PadPose pad = world::padPose(p, {1, 0}, 0.6);
+    Vec3d off = addv(pad.pos, mulv(world::sdetail::cross(p.up, p.forward), 12.0));   // a ship parked 12 units off the spin axis
+    Vec3d padV = world::padPointVelocity(p, off);
+    Vec3d v = world::undockVelocity(padV, off, p.pos, 3.0);
+    CHECK(close(len(sub(v, padV)), 3.0, 1e-9));                                     // exactly the push on top of the pad point velocity
+    CHECK(dotv(sub(v, padV), sub(off, p.pos)) > 0);                                 // pointing away from the station
+    CHECK(len(sub(v, p.vel)) > m.s.spinRate * 12.0 - 3.0 - 1e-6);                   // and the spin's contribution is in there, not just the centre velocity
+}

@@ -1,4 +1,4 @@
-// world/stations - a few space stations (orbital and planetary), drawn as a placeholder cube + cylinder, solid for the physics world.
+// world/stations - a few space stations (orbital and planetary): a cube base with a flat landing pad on top (a flattened cylinder), solid for the physics world.
 // Provides world::IStations. Rules in stations_rules.h; behaviour and tunables in docs/STATIONS.md.
 #include <GL/gl.h>
 #include <algorithm>
@@ -13,6 +13,9 @@
 #include "world/stations/stations_rules.h"
 
 namespace {
+constexpr float kPadThickness = 0.16f;   // pad thickness = 0.08 x the cube size (2 x half)... i.e. 0.16 x half
+constexpr float kPadTop = 1.0f + kPadThickness;    // pad top above the cube centre, in units of half
+constexpr float kPadRadius = 1.5f;                 // pad disc radius in units of half (the cube's top corners are at 1.41)
 struct Part { std::vector<float> verts; std::vector<unsigned short> idx; };   // interleaved position + normal
 
 Part buildCube() {   // unit cube (half extent 1), flat normals
@@ -82,7 +85,7 @@ public:
             parents.push_back(p);
         }
         stations_ = world::generateStations(seed, std::clamp(count, 1, 3), parents);
-        cube_ = buildCube(); cyl_ = buildCylinder(16);
+        cube_ = buildCube(); cyl_ = buildCylinder(16); disc_ = buildCylinder(12);
         infos_.resize(stations_.size());
         bodyIds_.assign(stations_.size(), core::kNoBody);
         physics_ = eng.services.get<core::IPhysics>();
@@ -135,6 +138,9 @@ private:
         in.name = s.name; in.kind = s.kind; in.radius = s.dockRadius; in.scale = s.scale; in.half = s.half; in.parent = s.parent;
         in.position = world::sdetail::add(parent, off);
         in.up = world::stationUp(s);
+        in.forward = world::spunForward(in.up, world::spinAngle(s, t));      // the spin reference axis at the current angle
+        in.spinRate = s.kind == world::StationKind::Orbital ? s.spinRate : 0.0;
+        in.padTop = s.half * kPadTop; in.padRadius = s.half * kPadRadius;
         world::Vec3d v = (first || dt <= 0) ? world::Vec3d{} : world::sdetail::mul(world::sdetail::sub(in.position, prev), 1.0 / dt);
         bool jump = world::sdetail::length(v) > 5000.0;                       // a loaded game moved simulation time: a jump, not a sweep
         if (jump) v = {};
@@ -151,10 +157,10 @@ private:
         glDrawElements(GL_TRIANGLES, (GLsizei)p.idx.size(), GL_UNSIGNED_SHORT, p.idx.data());
     }
 
-    void part(const Part& p, float sx, float sy, float sz, float ty, const float* col) {
+    void part(const Part& p, float sx, float sy, float sz, float ty, const float* col, float tx = 0, float tz = 0) {
         glColor3fv(col);
         glPushMatrix();
-        glTranslatef(0, ty, 0);
+        glTranslatef(tx, ty, tz);
         glScalef(sx, sy, sz);
         drawMesh(p);
         glPopMatrix();
@@ -165,27 +171,25 @@ private:
         const world::StationInfo& in = infos_[i];
         world::Projected pr = world::projectBody(in.position, in.half, cam, clampDist);
         if (pr.dist > drawDist_) { farPts_.push_back(pr.x); farPts_.push_back(pr.y); farPts_.push_back(pr.z); return; }
-        // orientation: local +Y = up (spin axis / surface normal)
+        // orientation: local +Y = up (spin axis / surface normal); local +Z = the spin reference axis (world::referenceForward)
         world::Vec3d up = in.up;
-        world::Vec3d ref = std::fabs(up.z) < 0.9 ? world::Vec3d{0, 0, 1} : world::Vec3d{1, 0, 0};
-        world::Vec3d r{up.y * ref.z - up.z * ref.y, up.z * ref.x - up.x * ref.z, up.x * ref.y - up.y * ref.x};
-        r = world::sdetail::normalized(r);
-        world::Vec3d f{r.y * up.z - r.z * up.y, r.z * up.x - r.x * up.z, r.x * up.y - r.y * up.x};
+        world::Vec3d f = world::referenceForward(up);
+        world::Vec3d r = world::sdetail::cross(up, f);
         float m[16] = {(float)r.x, (float)r.y, (float)r.z, 0, (float)up.x, (float)up.y, (float)up.z, 0, (float)f.x, (float)f.y, (float)f.z, 0, pr.x, pr.y, pr.z, 1};
         glPushMatrix();
         glMultMatrixf(m);
         float h = s.half;
-        if (s.kind == world::StationKind::Orbital) {
-            static const float cubeCol[3] = {0.75f, 0.78f, 0.86f}, cylCol[3] = {0.95f, 0.72f, 0.2f};
-            part(cube_, h, h, h, 0, cubeCol);
-            glRotatef((float)(world::spinAngle(s, sys_->simTime()) * 180.0 / 3.14159265), 0, 1, 0);   // the hub spins slowly about the axis
-            part(cyl_, h * 0.3f, h * 1.6f, h * 0.3f, 0, cylCol);
-            glRotatef(90, 1, 0, 0);
-            part(cyl_, h * 0.3f, h * 1.6f, h * 0.3f, 0, cylCol);                                        // a second arm across: reads as a hub
-        } else {
-            static const float cubeCol[3] = {0.85f, 0.82f, 0.75f}, pillarCol[3] = {0.55f, 0.6f, 0.68f};
-            part(cube_, h, h, h, 0, cubeCol);
-            part(cyl_, h * 0.28f, h * 1.3f, h * 0.28f, -h * 2.3f, pillarCol);                           // the pillar down to the ground
+        if (s.kind == world::StationKind::Orbital) glRotatef((float)(world::spinAngle(s, sys_->simTime()) * 180.0 / 3.14159265), 0, 1, 0);   // the whole station spins about `up`
+        static const float padCol[3] = {0.28f, 0.30f, 0.34f}, markCol[3] = {0.95f, 0.78f, 0.25f}, barCol[3] = {0.12f, 0.13f, 0.15f};
+        const float* cubeCol = s.kind == world::StationKind::Orbital ? orbitalCube : surfaceCube;
+        part(cube_, h, h, h, 0, cubeCol);                                                              // the base: a cube
+        const float padHalf = h * kPadThickness * 0.5f, padY = h + padHalf;                            // flat disc on the top face, wider than the cube
+        part(cyl_, h * kPadRadius, padHalf, h * kPadRadius, padY, padCol);
+        part(disc_, h * 0.72f, padHalf * 1.08f, h * 0.72f, padY, markCol);                            // lighter inner disc: the landing mark, sticks out a hair
+        part(cube_, h * 0.07f, padHalf * 1.16f, h * 0.36f, padY, barCol, 0, h * 0.72f);            // a dark bar toward local +Z: shows the spin and the heading
+        if (s.kind == world::StationKind::Planetary) {
+            static const float pillarCol[3] = {0.55f, 0.6f, 0.68f};
+            part(cyl_, h * 0.28f, h * 1.3f, h * 0.28f, -h * 2.3f, pillarCol);                         // the pedestal down into the ground
         }
         glPopMatrix();
         drawn_++;
@@ -248,7 +252,8 @@ private:
     std::vector<world::StationInfo> infos_;
     std::vector<core::BodyId> bodyIds_;
     std::vector<float> farPts_;
-    Part cube_, cyl_;
+    Part cube_, cyl_, disc_;
+    static constexpr float orbitalCube[3] = {0.75f, 0.78f, 0.86f}, surfaceCube[3] = {0.85f, 0.82f, 0.75f};
 };
 
 REGISTER_MODULE(Stations);
