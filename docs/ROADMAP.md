@@ -37,12 +37,12 @@ Done when: settings persist across launches, a dummy module's state survives sav
 
 ## Phase 2 - Ship
 - [x] **2.1 `ship/ship_core`** (`ship::IShip`): the flight demo became the real ship - HP/regen, disposable shield, warp-fuel storage, hull plating cap, collision damage (old-game tiers), death, `kill`/`respawn`; events `DamageTaken` (hull + shield part), `ShieldBroken`, `FuelEmpty`, `Died`, `Respawned`; stats saved (old saves load; save id stays `gameplay/flight`). `ship.*` tunables. See docs/SHIP.md. *ship.h*
-- [ ] **2.2 `ship/warp_drive`**: warp toggle, fuel drain, auto-disengage. One `toggle_warp` action serves keyboard, stick and wheel (the old game duplicated this code per device). *ship.h*
+- [x] **2.2 `ship/warp_drive`**: `toggle_warp` (Z) engages a fuel-burning boost to 2000 m/s along the heading (accel 4000 m/s^2, 3.33 fuel/s), auto-disengage on empty/death, leaving warp cuts speed to `warp.exit_speed` (200, 0 = keep momentum), ignored while paused; `--auto-warp` dev flag. Verified incl. warping into a rock (fatal, drive shuts down). See docs/WARP.md. *ship.h*
 - [x] **2.3 `ui/ship_hud`**: glass HUD - speed, HULL/SHLD/WARP bars, crosshair, warning banners, IMPACT total incl. shield, hit vignette, SHIP DESTROYED screen, fading controls hint. In cockpit view the flat overlay steps back because the data lives on the ship's screens (`hud.cockpit_overlay` = minimal | full | hidden, `hud.hint_seconds`). Dev provider `ship/fake_ship` (`--fake-ship=hp:35,shield:120,fuel:10,dead`). See docs/HUD.md. *hud.h*
-- [ ] **2.4 `ship/respawn`**: death timer, red overlay, state reset.
+- [x] **2.4 `ship/respawn`** (`ship::IRespawn`): after death waits `respawn.seconds` (3) then `IShip::respawn()`; HUD shows RESPAWNING IN N; `respawn.enabled=false` for hardcore. See docs/RESPAWN.md.
 - [x] **2.5 `ship/cockpit`**: ShipV2 interior (default model, chosen by `ship.json` / `cockpit.ship`) drawn in view space in cockpit view. Custom `@GROUP-NAME` materials are extracted by the pure OBJ/MTL parser as tagged quads (not mesh); `@HUD-INFO/-SYSTEMS/-RADAR` show live FLIGHT_DATA / SHIP_SYSTEMS / PROXIMITY_RADAR from `IShip`. Other modules add screen content via `cockpit::ICockpitScreens`. See docs/COCKPIT.md. *cockpit.h, ship_loader.h*
 
-Wave 1 (2.1, 2.3, 2.5) is done and merged; Wave 2 (warp drive 2.2, respawn 2.4) is next. There is no way yet to gain shield/fuel in play (needs inventory, Phase 5) and death ends on a frozen screen until 2.4.
+**Phase 2 is complete** (waves 1 and 2 merged). There is still no way to gain shield/fuel in play (needs inventory, Phase 5).
 Done when: you can fly, burn fuel, take damage, die, respawn and save/load mid-flight.
 
 ## Phase 3 - World

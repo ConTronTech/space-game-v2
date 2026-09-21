@@ -55,6 +55,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::ICamera` / `ITransformSource` | the view: publish a pose with `ITransformSource::transform(alpha)`; camera modes (V) |
 | `core::IPhysics` | sphere bodies + `Collided` events: `addBody`, `setBody`, `teleport` - see docs/PHYSICS.md |
 | `ship::IShip` | the ship's status and actions: `status()`, `applyDamage`, `consumeWarpFuel`, `kill`, `respawn`; events `DamageTaken`, `Died`... - see docs/SHIP.md |
+| `ship::IRespawn` | `counting()` / `secondsLeft()` of the respawn countdown (HUD uses it) - see docs/RESPAWN.md |
 | `cockpit::ICockpitScreens` | put content on the cockpit model's `@` screens: `registerRenderer(group, fn)`; `showsDefaultUI()` - see docs/COCKPIT.md |
 | `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
