@@ -8,13 +8,14 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "ship/ship_core/ship_api.h"
+#include "ship/warp_drive/warp_api.h"
 #include "world/starfield/starfield_rules.h"
 
 class Starfield : public engine::Module {
 public:
     const char* name() const override { return "world/starfield"; }
     std::vector<std::string> dependencies() const override { return {"core/render_engine"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship", "ship/warp_drive"}; }
 
     bool init(engine::Engine& eng) override {
         auto& c = eng.config;
@@ -24,7 +25,7 @@ public:
         pointSize_ = c.get("starfield.point_size", 1.5f, "star size in pixels");
         brightness_ = c.get("starfield.brightness", 1.0f, "star brightness multiplier (1 = normal)");
         streak_ = c.get("starfield.warp_streak_length", 300.0f, "length of warp streaks at full warp speed, world units (0 = no streaks)");
-        refSpeed_ = c.get("starfield.warp_ref_speed", 2000.0f, "speed (m/s) at which streaks reach full length");
+        refSpeed_ = c.get("starfield.warp_ref_speed", 5000.0f, "speed (m/s) at which streaks reach full length, used only when there is no warp drive (it normally follows the drive's max speed)");
 
         std::mt19937 rng(seed);
         std::uniform_real_distribution<float> u(-1.0f, 1.0f);
@@ -67,7 +68,9 @@ private:
         float len = 0, vx = 0, vy = 0, vz = 0;
         if (auto* ship = eng_->services.get<ship::IShip>()) {
             const auto& st = ship->status();
-            len = world::warpStreakLength(st.warping, st.speed, refSpeed_, streak_);
+            float ref = refSpeed_;
+            if (auto* drive = eng_->services.get<ship::IWarpDrive>()) ref = drive->maxSpeed();   // streaks reach full length at the drive's top speed, whatever the upgrade level
+            len = world::warpStreakLength(st.warping, st.speed, ref, streak_);
             auto v = ship->velocity();
             float sp = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
             if (sp < 1e-3f) len = 0; else { vx = -v.x / sp; vy = -v.y / sp; vz = -v.z / sp; }   // trails point away from travel
@@ -105,7 +108,7 @@ private:
     engine::Engine* eng_ = nullptr;
     core::RenderEngine* render_ = nullptr;
     bool active_ = false;
-    float pointSize_ = 1.5f, brightness_ = 1.0f, streak_ = 300.0f, refSpeed_ = 2000.0f;
+    float pointSize_ = 1.5f, brightness_ = 1.0f, streak_ = 300.0f, refSpeed_ = 5000.0f;
     std::vector<float> dirs_, points_, lines_, colors_;
 };
 

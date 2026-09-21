@@ -1,0 +1,7 @@
+{
+  "_comment": "Warp drive upgrade levels, in order (the first entry is level 0). speed_mult multiplies warp.speed, accel_mult multiplies the acceleration, fuel_efficiency divides the fuel burned per second (2 = half the fuel). Phase 5 crafting raises the level (ship::IWarpDrive::setLevel).",
+  "level0": { "name": "Standard drive",  "speed_mult": 1.0, "accel_mult": 1.0, "fuel_efficiency": 1.0 },
+  "level1": { "name": "Tuned drive",     "speed_mult": 1.5, "accel_mult": 1.2, "fuel_efficiency": 1.25 },
+  "level2": { "name": "Heavy drive",     "speed_mult": 2.0, "accel_mult": 1.5, "fuel_efficiency": 1.6 },
+  "level3": { "name": "Deep-space drive", "speed_mult": 3.0, "accel_mult": 2.0, "fuel_efficiency": 2.0 }
+}
