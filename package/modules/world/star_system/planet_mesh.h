@@ -66,6 +66,15 @@ inline float terrainNoise(float x, float y, float z, uint32_t seed) {
 inline bool planetHasOcean(const PlanetParams& p) { return !p.moon && (hash32(p.seed ^ 0x5bd1e995U) % 3U) != 0U; }
 constexpr float kSeaLevel = 0.42f;
 
+// Radius of the drawn terrain at a unit direction, as a multiple of the body radius (oceans flattened at sea level): exactly what
+// buildPlanetMesh puts at a vertex in that direction. Pure, so other modules (world/stations) can sit things on the ground.
+inline float surfaceRadiusFactor(const PlanetParams& p, bool ocean, float x, float y, float z) {
+    float h = terrainNoise(x, y, z, p.seed);
+    float shown = ocean ? std::max(h, kSeaLevel) : h;             // oceans are flat
+    return 1.0f + p.terrainHeight * (shown * 2.0f - 1.0f);
+}
+inline float surfaceRadiusFactor(const PlanetParams& p, float x, float y, float z) { return surfaceRadiusFactor(p, planetHasOcean(p), x, y, z); }
+
 // ---- the mesh ----
 struct PlanetMesh {
     std::vector<float> verts;              // interleaved: position xyz, normal xyz, colour rgb (9 floats = 36 bytes per vertex)
@@ -154,8 +163,7 @@ inline PlanetMesh buildPlanetMesh(int level, const PlanetParams& p) {
     for (size_t i = 0; i < n; i++) {
         float h = terrainNoise(dir[i].x, dir[i].y, dir[i].z, p.seed);
         height[i] = h;
-        float shown = ocean ? std::max(h, kSeaLevel) : h;         // oceans are flat
-        float r = 1.0f + p.terrainHeight * (shown * 2.0f - 1.0f);
+        float r = surfaceRadiusFactor(p, ocean, dir[i].x, dir[i].y, dir[i].z);
         pos[i] = {dir[i].x * r, dir[i].y * r, dir[i].z * r};
     }
     // normals: area-weighted average of the face normals around each vertex

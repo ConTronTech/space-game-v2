@@ -72,6 +72,8 @@ public:
         auto& c = eng.config;
         if (!c.get("stations.enabled", true, "generate and draw space stations")) return true;
         unsigned seed = (unsigned)c.get("world.seed", 1234.0f, "seed of the star system (same seed = same system)");
+        const unsigned worldSeed = seed;
+        const float terrainHeight = c.get("world.terrain_height", 0.03f, "planet terrain relief as a fraction of the radius (peak displacement)");
         int count = c.get("stations.count", 2, "number of stations, 1-3");
         seed += (unsigned)c.get("stations.seed_offset", 0, "added to world.seed for the stations only (re-rolls where they are without changing the planets)");
         drawDist_ = c.get("stations.draw_distance", 15000.0f, "stations farther than this are drawn as a dot, units");
@@ -81,6 +83,9 @@ public:
         for (auto& b : sys_->bodies()) {
             if (b.kind != world::BodyKind::Planet) continue;
             world::ParentInfo p; p.bodyId = b.id; p.radius = b.radius; p.name = b.name;
+            p.terrain.seed = world::mixSeed(worldSeed, (uint32_t)b.id);    // the same terrain world/star_system draws (star_system.cpp build())
+            p.terrain.terrainHeight = terrainHeight;
+            p.terrain.moon = false;
             for (auto& m : sys_->bodies()) if (m.parent == b.id) p.moonClearance = std::max(p.moonClearance, m.orbitRadius + m.radius * 2.0);
             parents.push_back(p);
         }
@@ -187,10 +192,6 @@ private:
         part(cyl_, h * kPadRadius, padHalf, h * kPadRadius, padY, padCol);
         part(disc_, h * 0.72f, padHalf * 1.08f, h * 0.72f, padY, markCol);                            // lighter inner disc: the landing mark, sticks out a hair
         part(cube_, h * 0.07f, padHalf * 1.16f, h * 0.36f, padY, barCol, 0, h * 0.72f);            // a dark bar toward local +Z: shows the spin and the heading
-        if (s.kind == world::StationKind::Planetary) {
-            static const float pillarCol[3] = {0.55f, 0.6f, 0.68f};
-            part(cyl_, h * 0.28f, h * 1.3f, h * 0.28f, -h * 2.3f, pillarCol);                         // the pedestal down into the ground
-        }
         glPopMatrix();
         drawn_++;
     }

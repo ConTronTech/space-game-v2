@@ -102,7 +102,7 @@ Ship reaction: see docs/SHIP.md (planet/moon tiered damage + bounce, sun lethal,
 Planets and moons are terrain meshes instead of plain spheres (the sun and bodies smaller than ~2.5 px on screen keep a sphere; dots use a 96-triangle one). All of it is pure code in `world/star_system/planet_mesh.h` (no GL), tested in `package/tests/test_planet_mesh.cpp`.
 
 **Mesh:** an icosphere of subdivision level 0..4 (20, 80, 320, 1,280, 5,120 triangles; `10*4^L+2` shared vertices, `uint16` indices), built for radius 1 and drawn scaled. Heights come from our own seeded value-noise FBM
-(two blended fields, same numbers on every platform; seed = `mixSeed(world.seed, body id)`), displaced by `world.terrain_height` (default 0.03 = at most 3% of the radius; oceans are flat at sea level). Colours are biomes from height and latitude
+(two blended fields, same numbers on every platform; seed = `mixSeed(world.seed, body id)`), displaced by `world.terrain_height` (default 0.03 = at most 3% of the radius; oceans are flat at sea level; `world::surfaceRadiusFactor(params, dir)` gives that drawn radius at any unit direction, used by `world/stations` to sit surface stations on the ground). Colours are biomes from height and latitude
 (deep water, sand, grass/lowland, rock, snow at the poles and peaks), derived from the body colour; two thirds of planets have oceans, moons never. Normals are area-weighted from the displaced faces (smooth, no seams).
 Vertex format: interleaved position/normal/colour (36 bytes per vertex), drawn with client vertex arrays (`glVertexPointer/NormalPointer/ColorPointer` + `glDrawElements`; VBOs were not needed at these sizes and would add GL 1.5 entry-point handling), lit by the sun's `GL_LIGHT0` with `GL_COLOR_MATERIAL`.
 

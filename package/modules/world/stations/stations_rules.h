@@ -9,6 +9,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include "world/star_system/planet_mesh.h"   // surfaceRadiusFactor: the planet terrain the surface stations sit on
 #include "world/stations/stations_api.h"
 
 namespace world {
@@ -27,7 +28,8 @@ struct Station {
     double lat = 0, lon = 0, surfaceRadius = 0;
 };
 
-struct ParentInfo { int bodyId = -1; double radius = 0; double moonClearance = 0; std::string name; };   // a planet a station may belong to
+// A planet a station may belong to. `terrain` is its mesh description (seed, relief, ocean): terrain.terrainHeight 0 = a smooth sphere.
+struct ParentInfo { int bodyId = -1; double radius = 0; double moonClearance = 0; std::string name; PlanetParams terrain{0, 0.0f}; };
 
 namespace sdetail {
 constexpr double kPi = 3.14159265358979323846;
@@ -55,6 +57,30 @@ inline double safeOrbitMin(double parentRadius, double moonClearance) {
     return clusterOuter + parentRadius * 0.5;
 }
 
+constexpr double kStationEmbed = 0.1;   // the cube's bottom sinks this fraction of its height into the ground, so no gap shows on slopes
+
+inline Vec3d latLonDir(double lat, double lon) { return {std::cos(lat) * std::sin(lon), std::sin(lat), std::cos(lat) * std::cos(lon)}; }
+inline Vec3d referenceForward(const Vec3d& up);
+
+// Local terrain radius (units, from the planet centre) along the unit direction d: the same function the planet mesh is built from.
+inline double localSurfaceRadius(const ParentInfo& p, const Vec3d& d) {
+    return p.radius * (double)surfaceRadiusFactor(p.terrain, (float)d.x, (float)d.y, (float)d.z);
+}
+// Distance from the planet centre to the cube centre of a surface station: its bottom face (up = the radial direction, so the pad stays level
+// for docking) rests on the LOWEST terrain under its footprint (centre, 4 bottom corners, 4 edge midpoints), sunk kStationEmbed of its height.
+inline double groundedRadius(const ParentInfo& p, double lat, double lon, float half) {
+    using namespace sdetail;
+    Vec3d up = latLonDir(lat, lon), f = referenceForward(up);
+    Vec3d r{up.y * f.z - up.z * f.y, up.z * f.x - up.x * f.z, up.x * f.y - up.y * f.x};
+    double ground = 1e300;
+    for (int i = -1; i <= 1; i++) for (int k = -1; k <= 1; k++) {
+        Vec3d q = add(mul(up, p.radius), add(mul(r, i * (double)half), mul(f, k * (double)half)));
+        Vec3d d = normalized(q);
+        ground = std::min(ground, localSurfaceRadius(p, d) * dot(d, up));   // height of that ground point along up
+    }
+    return ground + (double)half * (1.0 - 2.0 * kStationEmbed);
+}
+
 // Old game's behaviour: 1-3 stations (tunable), 50/50 orbital vs planetary, on random planets; orbital ones outside the moons and the cluster on a tilted
 // orbit (+-10 degrees); planetary ones at a latitude within +-60 degrees. Same seed = same stations.
 inline std::vector<Station> generateStations(unsigned seed, int count, const std::vector<ParentInfo>& parents) {
@@ -80,7 +106,7 @@ inline std::vector<Station> generateStations(unsigned seed, int count, const std
         } else {
             s.lat = rng.range(-60.0f, 60.0f) * sdetail::kPi / 180.0;
             s.lon = rng.range(0.0f, 2.0f * (float)sdetail::kPi);
-            s.surfaceRadius = p.radius * 1.02 + s.half * 3.4;   // above the tallest terrain (3% of the radius), the pillar reaches down into it
+            s.surfaceRadius = groundedRadius(p, s.lat, s.lon, s.half);   // the cube sits on the local terrain
         }
         out.push_back(s);
     }
@@ -94,15 +120,14 @@ inline Vec3d stationOffset(const Station& s, double t) {
         double a = s.phase + s.omega * t;      // circular, analytic (a is used through sin/cos only, so no wrap needed)
         return {s.orbitRadius * std::cos(a), s.orbitRadius * std::sin(a) * std::sin(s.tilt), s.orbitRadius * std::sin(a) * std::cos(s.tilt)};
     }
-    Vec3d d{std::cos(s.lat) * std::sin(s.lon), std::sin(s.lat), std::cos(s.lat) * std::cos(s.lon)};
-    return mul(d, s.surfaceRadius);
+    return mul(latLonDir(s.lat, s.lon), s.surfaceRadius);
 }
 
 // Up axis: the surface normal for planetary stations, the orbit-plane normal (the spin axis) for orbital ones.
 inline Vec3d stationUp(const Station& s) {
     using namespace sdetail;
     if (s.kind == StationKind::Orbital) return {0.0, std::cos(s.tilt), -std::sin(s.tilt)};
-    return normalized({std::cos(s.lat) * std::sin(s.lon), std::sin(s.lat), std::cos(s.lat) * std::cos(s.lon)});
+    return normalized(latLonDir(s.lat, s.lon));
 }
 
 inline double spinAngle(const Station& s, double t) { return s.kind == StationKind::Orbital ? std::fmod(s.spinRate * t, 2.0 * sdetail::kPi) : 0.0; }

@@ -124,3 +124,18 @@ TEST(planet_lod_budget_is_respected_and_drops_the_least_important_first) {
     int tt = world::applyTriangleBudget(tight, {50, 20}, 1);            // impossible budget: bottoms out at level 0
     CHECK_EQ(tight[0], 0); CHECK_EQ(tight[1], 0); CHECK_EQ(tt, 40);
 }
+
+TEST(planet_mesh_surface_radius_factor_matches_vertices) {
+    for (uint32_t seed : {1u, 2u, 77u, 123456u}) {
+        world::PlanetParams p = params(seed); p.terrainHeight = 0.03f;
+        auto m = world::buildPlanetMesh(4, p);
+        for (int i = 0; i < m.vertexCount(); i += 7) {
+            const float* v = &m.verts[i * 9];
+            float r = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            float f = world::surfaceRadiusFactor(p, v[0] / r, v[1] / r, v[2] / r);
+            CHECK(close(f, r, 1e-4f));                                 // the same height the mesh puts at that vertex
+            CHECK(f >= 0.97f - 1e-5f && f <= 1.03f + 1e-5f);           // within the terrain amplitude
+            CHECK_EQ(f, world::surfaceRadiusFactor(p, v[0] / r, v[1] / r, v[2] / r));   // deterministic
+        }
+    }
+}

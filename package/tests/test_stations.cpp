@@ -284,3 +284,25 @@ TEST(undock_leaves_with_the_pad_point_velocity_plus_the_push) {
     CHECK(dotv(sub(v, padV), sub(off, p.pos)) > 0);                                 // pointing away from the station
     CHECK(len(sub(v, p.vel)) > m.s.spinRate * 12.0 - 3.0 - 1e-6);                   // and the spin's contribution is in there, not just the centre velocity
 }
+
+TEST(stations_planetary_cube_grounded_on_terrain) {
+    world::ParentInfo p; p.bodyId = 1; p.radius = 1100; p.name = "P";
+    p.terrain.seed = world::mixSeed(1234, 1); p.terrain.terrainHeight = 0.03f;
+    for (int k = 0; k < 40; k++) {
+        double lat = -1.0 + k * 0.05, lon = k * 0.37; float half = 30;
+        Vec3d up = world::latLonDir(lat, lon);
+        double c = world::groundedRadius(p, lat, lon, half);
+        double ground = world::localSurfaceRadius(p, up);
+        CHECK(std::fabs(ground - 1100) <= 1100 * 0.03 + 1e-6);                          // local height within the terrain amplitude
+        double bottom = c - half;
+        CHECK(bottom <= ground - half * 0.2 + 1e-6);                                      // bottom face at least 10% of the height under the ground at the centre
+        CHECK(bottom > ground - half * 2.0);                                              // but still resting on it (no pole: not sunk / floating by metres)
+        world::Station s; s.kind = world::StationKind::Planetary; s.half = half; s.lat = lat; s.lon = lon; s.surfaceRadius = c;
+        CHECK(close(len(world::stationOffset(s, 0)), c, 1e-9));                         // info().position = the cube centre at the grounded height
+        double padAbove = c + half * 1.16 - ground;                                       // pad top (centre + 1.16 half) above the local ground
+        CHECK(padAbove <= half * 1.96 + 1e-6 && padAbove > half * 0.2);
+    }
+    world::ParentInfo flat = p; flat.terrain.terrainHeight = 0;                           // smooth sphere: R + 0.8 half, less the curvature under the corners
+    double c = world::groundedRadius(flat, 0.3, 1.0, 20);
+    CHECK(c <= 1116 + 1e-9 && c > 1116 - 0.5);
+}
