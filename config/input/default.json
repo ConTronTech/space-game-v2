@@ -39,6 +39,9 @@
     "toggle_menu": [ { "device": "keyboard", "key": "I" } ],                      // the game menu (cargo, crafting, ...): I or Esc closes it
     "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
+    "toggle_profiler":     [ { "device": "keyboard", "key": "F3" } ],   // live profiler overlay (fps, frame graph, top consumers, hitches)
+    "toggle_profiler_gpu": [ { "device": "keyboard", "key": "F4" } ],   // while the overlay is open: GPU attribution (glFinish around render passes)
+    "dump_profile":        [ { "device": "keyboard", "key": "F5" } ],   // write logs/profile_live.txt (send it back after a stutter)
     "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
     "pause":  [ { "device": "keyboard", "key": "Escape" } ],
 

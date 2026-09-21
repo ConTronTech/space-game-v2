@@ -46,6 +46,9 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | toggle_menu | I (the game menu: CARGO and CRAFTING tabs; I or Esc closes it; the ship keeps flying) |
 | dock | G (dock at / undock from a station: inside its dock zone, slowly; again to undock) |
 | camera_next | V (cockpit <-> chase view) |
+| toggle_profiler | F3 (live profiler overlay: fps, frame graph, top consumers, hitches) |
+| toggle_profiler_gpu | F4 (while the overlay is open: GPU attribution, slower) |
+| dump_profile | F5 (write logs/profile_live.txt: send it back after a stutter) |
 | mouse_capture_toggle | Tab (free/capture cursor) |
 | pause | Escape |
 | ui_up | Up or W |

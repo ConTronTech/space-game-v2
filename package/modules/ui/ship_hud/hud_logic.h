@@ -18,7 +18,9 @@ inline float fraction(float cur, float max) { return max > 0 ? clamp01(cur / max
 inline RGB lerp(const RGB& a, const RGB& b, float t) { t = clamp01(t); return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t}; }
 
 constexpr float kLowHp = 0.25f, kLowFuel = 0.15f;
-constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f, kDockBannerSeconds = 2.5f, kWeaponBannerSeconds = 2.0f, kHitMarkerSeconds = 0.25f, kKillMarkerSeconds = 0.45f;
+constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f, kDockBannerSeconds = 2.5f, kWeaponBannerSeconds = 2.0f, kHitMarkerSeconds = 0.25f, kKillMarkerSeconds = 0.45f,
+                 kPickupSeconds = 1.5f, kPickupMergeSeconds = 0.5f, kCargoFullSeconds = 2.0f, kCargoFullMinGap = 2.0f;
+constexpr int kMaxPickups = 4;
 constexpr int kHeatSegments = 8;
 
 enum class Bar { Hp, Shield, Fuel };
@@ -80,7 +82,7 @@ inline int fitHint(Layout& L, int screenW, const std::function<int(const std::st
 }
 
 // ---- warnings ----
-enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased, Docked, Undocked, WeaponOverheated, WeaponChanged };
+enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased, Docked, Undocked, WeaponOverheated, WeaponChanged, CargoFull };
 struct Banner { Warn kind; std::string text; float alpha; };   // alpha: flashing 0.55..1, times the fade-out of timed ones
 
 struct Snapshot { float hp = 100, maxHp = 100, warpFuel = 100, maxWarpFuel = 100; bool alive = true; };
@@ -127,6 +129,29 @@ inline WeaponRow weaponRowState(bool busy, bool overheated, float heat) {
     return heat >= 0.6f ? WeaponRow::Hot : WeaponRow::Ready;
 }
 inline const char* weaponRowNote(WeaponRow r) { return r == WeaponRow::Locked ? "OVERHEATED" : r == WeaponRow::Docked ? "DOCKED" : ""; }
+
+// ---- cargo (gameplay::IInventory) and ore pickups (gameplay::OreMined) ----
+inline float cargoFraction(float used, float capacity) { return capacity > 0 ? clamp01(used / capacity) : 0.0f; }
+// calm cyan; amber above 80%; red when full
+inline RGB cargoColor(float frac) {
+    if (frac >= 0.999f) return {1.0f, 0.25f, 0.22f};
+    if (frac > 0.8f) return {1.0f, 0.75f, 0.2f};
+    return {0.45f, 0.85f, 1.0f};
+}
+inline std::string cargoText(float used, float capacity) {
+    char b[48];
+    std::snprintf(b, sizeof b, "CARGO %.0f / %.0f", used, capacity);
+    return b;
+}
+// "+6 CRYSTAL": the ore's display name (data/ores.json) or, without it, its id, upper-cased
+inline std::string pickupText(int amount, const std::string& label) { return "+" + std::to_string(amount) + " " + label; }
+inline std::string oreLabel(const std::string& id, const std::string& dataName) {
+    std::string n = dataName.empty() ? id : dataName;
+    for (auto& c : n) c = (char)std::toupper((unsigned char)c);
+    return n;
+}
+
+struct Pickup { std::string ore, label, text; RGB colour; int amount = 0; double at = -1e9; };   // 'at' = time of the latest addition
 
 // ---- station docking prompt (ship::IDocking) ----
 constexpr float kDockPromptFactor = 4.0f;       // prompt shows within this many dock radii (docking.prompt_range overrides, in units)
@@ -190,22 +215,46 @@ public:
     void onFuelEmpty(double now) { fuelEmptyAt_ = now; }
     // ship::OrbitLockChanged. A release with no lock before it (e.g. a duplicate event) shows nothing.
     void onOrbitLock(bool locked, const std::string& body, double now) {
-        if (locked) { orbitLocked_ = true; orbitBody_ = body; return; }
+        if (locked) { orbitLocked_ = true; orbitBody_ = body; orbitText_ = orbitStatusText(body); return; }
         if (orbitLocked_) orbitReleasedAt_ = now;
         orbitLocked_ = false;
     }
     bool orbitLocked() const { return orbitLocked_; }
-    std::string orbitStatus() const { return orbitLocked_ ? orbitStatusText(orbitBody_) : ""; }
+    const std::string& orbitStatus() const { return orbitLocked_ ? orbitText_ : empty_; }   // built once per event, not per frame
     // ship::Docked / Undocked
-    void onDocked(const std::string& station, double now) { docked_ = true; dockedAt_ = now; undockedAt_ = kNever; dockedName_ = station; }
+    void onDocked(const std::string& station, double now) { docked_ = true; dockedAt_ = now; undockedAt_ = kNever; dockedName_ = station; dockedText_ = dockedText(station); }
     void onUndocked(double now) { if (docked_) { undockedAt_ = now; dockedAt_ = kNever; } docked_ = false; }
     bool docked() const { return docked_; }
-    std::string dockedStatus() const { return docked_ ? dockedText(dockedName_) : ""; }
+    const std::string& dockedStatus() const { return docked_ ? dockedText_ : empty_; }
     // combat::Overheated / WeaponChanged
     void onOverheated(const std::string& name, double now) { overheatedAt_ = now; overheatedName_ = name; }
     void onWeaponChanged(const std::string& name, double now) { weaponChangedAt_ = now; weaponName_ = name; }
     void onEnemyKilled(double now) { killAt_ = now; }       // world::AsteroidDestroyed
     float killAge(double now) const { return killAt_ < -1e8 ? -1.0f : (float)(now - killAt_); }
+    // gameplay::OreMined: repeated pickups of the same ore within kPickupMergeSeconds become one banner with the summed amount
+    void onOreMined(const std::string& ore, const std::string& label, const RGB& colour, int amount, double now) {
+        if (amount <= 0) return;
+        Pickup* slot = nullptr;
+        for (auto& p : pickups_) if (p.ore == ore && p.amount > 0 && now - p.at <= kPickupMergeSeconds && now - p.at < kPickupSeconds) { slot = &p; break; }
+        if (slot) slot->amount += amount;
+        else {
+            slot = &pickups_[0];                                   // a free or expired slot, else the oldest
+            for (auto& p : pickups_) { if (now - p.at >= kPickupSeconds || p.amount <= 0) { slot = &p; break; } if (p.at < slot->at) slot = &p; }
+            slot->ore = ore; slot->label = label; slot->colour = colour; slot->amount = amount;
+        }
+        slot->at = now;
+        slot->text = pickupText(slot->amount, slot->label);
+    }
+    // f(text, colour, alpha) for every live pickup banner, oldest slot order; alpha fades linearly over kPickupSeconds
+    template <class F> void forEachPickup(double now, F&& f) const {
+        for (auto& p : pickups_) {
+            float a = timedAlpha(p.at, now, kPickupSeconds);
+            if (p.amount > 0 && a > 0) f(p.text, p.colour, std::min(1.0f, a * 2.5f));
+        }
+    }
+    int pickupCount(double now) const { int n = 0; forEachPickup(now, [&](const std::string&, const RGB&, float) { n++; }); return n; }
+    // gameplay::CargoFull: at most one banner per kCargoFullMinGap seconds
+    void onCargoFull(double now) { if (now - cargoFullAt_ >= kCargoFullMinGap) cargoFullAt_ = now; }
     void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }   // the orbit lock announces its own release
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
@@ -230,6 +279,7 @@ public:
         if (float a = timedAlpha(undockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Undocked, "UNDOCKED", std::min(1.0f, a * 3)});
         if (float a = timedAlpha(overheatedAt_, now, kEventBannerSeconds - 0.5f); a > 0) out.push_back({Warn::WeaponOverheated, upper(overheatedName_) + " OVERHEATED", flash * std::min(1.0f, a * 3)});
         if (float a = timedAlpha(weaponChangedAt_, now, kWeaponBannerSeconds); a > 0) out.push_back({Warn::WeaponChanged, "WEAPON: " + upper(weaponName_), std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(cargoFullAt_, now, kCargoFullSeconds); a > 0) out.push_back({Warn::CargoFull, "CARGO FULL", flash * std::min(1.0f, a * 3)});
         return out;
     }
 
@@ -239,9 +289,11 @@ private:
         double age = now - at;
         return (age < 0 || age >= dur) ? 0.0f : (float)(1.0 - age / dur);
     }
-    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever, overheatedAt_ = kNever, weaponChangedAt_ = kNever, killAt_ = kNever;
+    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever, overheatedAt_ = kNever, weaponChangedAt_ = kNever, killAt_ = kNever, cargoFullAt_ = kNever;
+    Pickup pickups_[kMaxPickups];
     std::string overheatedName_, weaponName_;
     bool docked_ = false;
+    std::string orbitText_, dockedText_, empty_;
     std::string dockedName_;
     bool orbitLocked_ = false;
     std::string orbitBody_;
