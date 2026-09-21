@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 6 - 2026-09-21 (DONE, tag `good-20260921-02`): Phase 3.4 collision wiring
+- **Changed:** sun/planets/moons are static physics spheres that follow their orbits (setBody with velocity, so closing speed is relative to the moving body). Planet/moon hits use the tiered speed damage + bounce; sun = instant death (`ship.sun_kills`, default true). Bounce now uses the reported closing speed so an orbiting planet cannot swallow a parked ship.
+- **Verified:** 180 tests under ASan+UBSan, full smoke (24 modules), headless run clean. Worker scenarios: 100 m/s into a planet = 25.3 dmg + bounce; sun = death + respawn at spawn; warp (2000 m/s) at a planet/sun = hit, no tunnelling; benchmark unchanged.
+- **Known:** float physics positions at 350,000 units have ~0.03 ulp and a few units of contact error in the swept test (fine for planets; later: double-precision physics or ship-relative rebasing). Moons not hit in the real game (same code path). Radar not wired yet (follow-up: consume IStarSystem::bodies()).
+- **Next:** 3.5 orbit lock, 3.3 planet meshes with LOD, radar contacts from the star system, then 3.6 asteroids, 3.7 stations.
+
 ## Leap 5 - 2026-09-21 (DONE, tag `good-20260921-01`): Phase 3.2 `world/star_system`
 - **Changed:** seeded system (seed 1234: sun + 6 planets + 8 moons = 15 bodies, outer orbit 352,200 units), analytic circular orbits in double, camera-relative rendering with far-body clamping, low-poly lit spheres, emissive sun + glow, saveable (seed + sim time), `IStarSystem` service. Tunables: `star_system.enabled`, `world.seed`, `planets.count`, `world.sun_distance`, `world.time_scale`, `world.sphere_detail`.
 - **Verified:** 177 tests under ASan+UBSan, full smoke (24 modules), headless run; benchmark on/off within noise (~2200 fps). Screenshots checked by the worker (sun disc, lit planet, far dot).
