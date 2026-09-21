@@ -47,6 +47,7 @@ public:
     virtual void addMaxHp(float amount) = 0;                                  // hull plating (permanent)
     virtual void installShield(bool enabled) = 0;                             // shield generator: fills the shield
     virtual void setVelocity(const engine::Vec3& v) = 0;                      // e.g. warp drive, docking
+    virtual void setWarping(bool) {}                                          // the warp drive tells the ship it is engaged (ShipStatus::warping); default: ignored
     virtual void kill(const std::string& cause) = 0;                          // instant death (sun, ...): emits Died
     virtual void respawn() = 0;                                               // full reset at the spawn point: emits Respawned
 };

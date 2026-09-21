@@ -30,6 +30,7 @@
 
     "brake":  [ { "device": "keyboard", "key": "X" },
                 { "device": "mouse",    "button": "right" } ],
+    "toggle_warp": [ { "device": "keyboard", "key": "Z" } ],         // engage / disengage the warp drive
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
     "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
     "pause":  [ { "device": "keyboard", "key": "Escape" } ],
