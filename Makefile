@@ -1,6 +1,7 @@
 CXX      = g++
 CXXFLAGS = -std=c++23 -O2 -Wall -Wno-unused-result -I package -I package/modules
-LDFLAGS  = -lSDL2 -lSDL2_ttf -lSDL2_image -lSDL2_mixer -lGL -lGLU -lm
+# -rpath $ORIGIN/libs (as DT_RPATH, inherited by the bundled libraries' own dependencies): a libs/ folder next to the binary is searched first, so a machine without the SDL2 runtime libraries just needs package/tools/bundle_libs.sh (or install_deps.sh)
+LDFLAGS  = -lSDL2 -lSDL2_ttf -lSDL2_image -lSDL2_mixer -lGL -lGLU -lm -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/libs'
 
 TARGET = space_game_v2
 BUILD  = build
@@ -56,5 +57,5 @@ clean:
 
 # Standalone visual joystick / wheel / pedal tester (SDL2 only): `make joytest`, run `build/joytest` (see docs/CONTROLLERS.md)
 joytest: package/tools/joytest/joytest.cpp
-	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $(BUILD)/joytest $< -lSDL2
+	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $(BUILD)/joytest $< -lSDL2 -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/libs'
 .PHONY: joytest

@@ -79,6 +79,8 @@ public:
         return false;
     }
 
+    static constexpr int kSettlePolls = 45;
+
     void poll(core::IInput& in) override {
         if (!enabled_ || !sdlOk_) return;
         SDL_JoystickUpdate();
@@ -88,6 +90,9 @@ public:
             contributions_.clear();
             d.mapper.setWaitFirstMove(!d.fake);                                      // real wheels / sticks can report a wrong first value: 0 until the axis moves (joystick_rules.h)
             d.mapper.evaluate(*d.profile, d.state, tuning_, contributions_);
+            // SETTLING: a real wheel / stick reports junk for the first moments (axes at an end, buttons "down"): the mapper still sees those frames (it records its
+            // baselines and button edges) but nothing reaches the game until kSettlePolls frames have passed (~0.75 s at 60 fps).
+            if (!d.fake && d.polls < kSettlePolls) { d.polls++; continue; }
             for (auto& c : contributions_) in.contribute(c.action, c.value);
         }
     }
@@ -123,6 +128,7 @@ private:
         core::ControllerInfo info;
         const joystick::Profile* profile = nullptr;
         joystick::Mapper mapper;
+        int polls = 0;                        // frames since the device opened: the first ones carry junk values on some hardware (see kSettlePolls)
         joystick::RawState state;
     };
 
