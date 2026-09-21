@@ -1,13 +1,17 @@
-// world/star_system - one seeded sun with planets and moons on analytic orbits, drawn cheaply (placeholder low-poly spheres).
+// world/star_system - one seeded sun with planets and moons on analytic orbits. Planets and moons are LOD terrain meshes (planet_mesh.h),
+// built lazily one per frame; the sun and far dots use a low-poly sphere.
 // Provides world::IStarSystem. Rules in star_system_rules.h; approach and tunables in docs/WORLD.md.
 #include <GL/gl.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <unordered_map>
 #include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "world/star_system/planet_mesh.h"
 #include "world/star_system/star_system_api.h"
 #include "world/star_system/star_system_rules.h"
 
@@ -26,6 +30,13 @@ public:
         timeScale_ = c.get("world.time_scale", 1.0f, "speed of the planets' orbits (1 = real seconds; try 100 to watch them move)");
         int detail = std::clamp(c.get("world.sphere_detail", 1, "planet mesh detail: 0 = 12x8 segments, 1 = 16x12"), 0, 1);
         sphere_ = world::buildSphere(detail ? 16 : 12, detail ? 12 : 8);
+        meshes_ = c.get("planet_mesh.enabled", true, "terrain meshes with level of detail for planets and moons (false = plain spheres)");
+        terrainHeight_ = c.get("world.terrain_height", 0.03f, "planet terrain relief as a fraction of the radius (peak displacement)");
+        maxLod_ = std::clamp(c.get("world.planet_max_lod", 3, "highest planet mesh level 0-4 (level L has 20*4^L triangles; 3 = 1,280, 4 = 5,120)"), 0, world::kMaxMeshLevel);
+        triBudget_ = std::max(100, c.get("world.planet_triangle_budget", 20000, "most planet triangles drawn per frame"));
+        edgePx_ = std::max(2.0f, c.get("world.planet_lod_edge_px", 12.0f, "target on-screen size of a mesh edge in pixels (smaller = more detail)"));
+        cacheSeconds_ = std::max(1.0f, c.get("world.planet_mesh_cache_seconds", 30.0f, "free a planet mesh level after it was unused this long"));
+        eng_ = &eng;
 
         render_ = &eng.services.require<core::RenderEngine>();
         generate();
@@ -42,6 +53,7 @@ public:
         render_->removePass("star_system");
         if (saves_) saves_->unregisterSaveable(this);
         unregisterBodies();
+        cache_.clear();
         eng.services.withdraw<world::IStarSystem>();
     }
 
@@ -99,6 +111,11 @@ private:
         if (physics_) registerBodies();
         order_.resize(sys_.bodies.size());
         proj_.resize(sys_.bodies.size());
+        lod_.assign(sys_.bodies.size(), -1);
+        meshFor_.assign(sys_.bodies.size(), nullptr);
+        px_.assign(sys_.bodies.size(), 0.0f);
+        cache_.clear();
+        meshBytes_ = 0;
         const auto& s = sys_.bodies[0];
         LOG_I("star_system", "seed %u: sun radius %.0f colour (%.2f %.2f %.2f) at (%.0f, %.0f, %.0f), %zu bodies", sys_.seed, s.radius, s.color[0], s.color[1], s.color[2], sys_.sun.x, sys_.sun.y, sys_.sun.z, sys_.bodies.size());
         for (auto& b : sys_.bodies)
@@ -121,7 +138,25 @@ private:
             glColor3fv(b.color);
         }
         glScalef(p.radius, p.radius, p.radius);
-        glDrawElements(GL_TRIANGLES, (GLsizei)sphere_.indices.size(), GL_UNSIGNED_SHORT, sphere_.indices.data());
+        const world::PlanetMesh* mesh = b.kind == world::BodyKind::Sun ? nullptr : meshFor_[b.id];
+        if (mesh) {   // terrain mesh: interleaved position / normal / colour
+            const char* base = (const char*)mesh->verts.data();
+            glVertexPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base);
+            glNormalPointer(GL_FLOAT, world::PlanetMesh::kStride, base + 3 * sizeof(float));
+            glColorPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base + 6 * sizeof(float));
+            glEnableClientState(GL_COLOR_ARRAY);
+            glDrawElements(GL_TRIANGLES, (GLsizei)mesh->indices.size(), GL_UNSIGNED_SHORT, mesh->indices.data());
+            glDisableClientState(GL_COLOR_ARRAY);
+            glVertexPointer(3, GL_FLOAT, 0, sphere_.verts.data());
+            glNormalPointer(GL_FLOAT, 0, sphere_.verts.data());
+            trisDrawn_ += mesh->triangleCount();
+        } else {   // the sun, or a body too small on screen for a mesh: a plain sphere (a very coarse one for dots)
+            const world::SphereMesh& sph = (meshes_ && b.kind != world::BodyKind::Sun) ? dot_ : sphere_;
+            if (&sph != &sphere_) { glVertexPointer(3, GL_FLOAT, 0, sph.verts.data()); glNormalPointer(GL_FLOAT, 0, sph.verts.data()); }
+            glDrawElements(GL_TRIANGLES, (GLsizei)sph.indices.size(), GL_UNSIGNED_SHORT, sph.indices.data());
+            if (&sph != &sphere_) { glVertexPointer(3, GL_FLOAT, 0, sphere_.verts.data()); glNormalPointer(GL_FLOAT, 0, sphere_.verts.data()); }
+            trisDrawn_ += (int)sph.indices.size() / 3;
+        }
         glPopMatrix();
         if (b.kind == world::BodyKind::Sun) drawGlow(b, p, view);
     }
@@ -165,6 +200,8 @@ private:
         int n = (int)sys_.bodies.size();
         for (int i = 0; i < n; i++) { proj_[i] = world::projectBody(sys_.bodies[i].position, sys_.bodies[i].radius, cam, clampDist); order_[i] = i; }
         std::sort(order_.begin(), order_.end(), [&](int a, int b) { return proj_[a].dist > proj_[b].dist; });   // far to near
+        trisDrawn_ = 0;
+        planMeshes(r);
 
         glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_POLYGON_BIT);
         glEnable(GL_LIGHT0);
@@ -192,7 +229,101 @@ private:
         glDisableClientState(GL_NORMAL_ARRAY);
         glDisableClientState(GL_VERTEX_ARRAY);
         glPopAttrib();
+        sweepCache();
+        reportStats();
     }
+
+    // ---- planet mesh LOD ----
+    static uint64_t nowMicros() { return (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+
+    static int cacheKey(int id, int level) { return id * 8 + level; }
+
+    // Decide the level of every visible planet/moon (with hysteresis and the triangle budget), build at most ONE missing mesh, and pick what to draw now:
+    // the wanted level if it exists, else the nearest level already built, else the plain sphere.
+    void planMeshes(core::RenderEngine& r) {
+        int n = (int)sys_.bodies.size();
+        for (int i = 0; i < n; i++) meshFor_[i] = nullptr;
+        if (!meshes_) return;
+        GLint vp[4] = {0, 0, 1280, 720};
+        glGetIntegerv(GL_VIEWPORT, vp);
+        std::vector<int>& ids = planIds_;      // reused buffers: no per-frame allocation once warm
+        ids.clear(); levels_.clear(); pxs_.clear();
+        for (int i = 0; i < n; i++) {
+            auto& b = sys_.bodies[i];
+            if (b.kind == world::BodyKind::Sun) continue;
+            px_[i] = world::pixelRadius(b.radius, proj_[i].dist, (float)vp[3], r.camera.fovDeg);
+            if (px_[i] < 2.5f) { lod_[i] = -1; continue; }             // a dot: the sphere is plenty
+            lod_[i] = world::chooseLod(world::wantedLevel(px_[i], edgePx_), lod_[i], maxLod_);
+            ids.push_back(i); levels_.push_back(lod_[i]); pxs_.push_back(px_[i]);
+        }
+        world::applyTriangleBudget(levels_, pxs_, triBudget_);
+        // build one missing mesh, the most important (biggest on screen) first
+        int want = -1; float bestPx = 0;
+        for (size_t k = 0; k < ids.size(); k++)
+            if (!cache_.count(cacheKey(ids[k], levels_[k])) && pxs_[k] > bestPx) { bestPx = pxs_[k]; want = (int)k; }
+        if (want >= 0) build(ids[want], levels_[want]);
+        double now = eng_ ? eng_->time() : 0.0;
+        for (size_t k = 0; k < ids.size(); k++) {
+            for (int d = 0; d <= world::kMaxMeshLevel && !meshFor_[ids[k]]; d++)      // nearest built level to the wanted one
+                for (int sgn : {-1, 1}) {
+                    int lv = levels_[k] + sgn * d;
+                    if (lv < 0 || lv > world::kMaxMeshLevel) continue;
+                    auto it = cache_.find(cacheKey(ids[k], lv));
+                    if (it != cache_.end()) { it->second.lastUsed = now; meshFor_[ids[k]] = &it->second.mesh; break; }
+                }
+        }
+    }
+
+    void build(int id, int level) {
+        const auto& b = sys_.bodies[id];
+        world::PlanetParams pp;
+        pp.seed = world::mixSeed(params_.seed, (uint32_t)id);
+        pp.terrainHeight = terrainHeight_;
+        pp.moon = b.kind == world::BodyKind::Moon;
+        for (int k = 0; k < 3; k++) pp.color[k] = b.color[k];
+        uint64_t t0 = nowMicros();
+        Entry e;
+        e.mesh = world::buildPlanetMesh(level, pp);
+        e.lastUsed = eng_ ? eng_->time() : 0.0;
+        double ms = (double)(nowMicros() - t0) / 1000.0;
+        meshBytes_ += e.mesh.bytes();
+        builds_++;
+        worstBuildMs_ = std::max(worstBuildMs_, ms);
+        cache_[cacheKey(id, level)] = std::move(e);
+        LOG_D("planet_mesh", "built %s level %d (%d vertices, %d triangles) in %.2f ms; %zu meshes, %.0f KB in memory", b.name.c_str(), level,
+              world::meshVertexCount(level), world::meshTriangleCount(level), ms, cache_.size(), (double)meshBytes_ / 1024.0);
+    }
+
+    // free mesh levels that have not been drawn for a while
+    void sweepCache() {
+        if (!eng_) return;
+        double now = eng_->time();
+        for (auto it = cache_.begin(); it != cache_.end();) {
+            if (now - it->second.lastUsed > cacheSeconds_) { meshBytes_ -= it->second.mesh.bytes(); it = cache_.erase(it); }
+            else ++it;
+        }
+    }
+
+    void reportStats() {
+        if (!eng_ || eng_->time() - lastReport_ < 2.0) return;
+        lastReport_ = eng_->time();
+        int drawn = 0;
+        for (auto* m : meshFor_) drawn += m != nullptr;
+        LOG_D("planet_mesh", "%d meshes drawn, %d triangles this frame, %zu meshes cached (%.0f KB), %d builds so far, slowest build %.2f ms", drawn, trisDrawn_,
+              cache_.size(), (double)meshBytes_ / 1024.0, builds_, worstBuildMs_);
+    }
+
+    struct Entry { world::PlanetMesh mesh; double lastUsed = 0; };
+    engine::Engine* eng_ = nullptr;
+    bool meshes_ = true;
+    float terrainHeight_ = 0.03f, edgePx_ = 12.0f, cacheSeconds_ = 30.0f;
+    int maxLod_ = 3, triBudget_ = 20000, trisDrawn_ = 0, builds_ = 0;
+    double lastReport_ = -10, worstBuildMs_ = 0;
+    size_t meshBytes_ = 0;
+    std::unordered_map<int, Entry> cache_;
+    std::vector<int> lod_, planIds_, levels_;
+    std::vector<float> px_, pxs_;
+    std::vector<const world::PlanetMesh*> meshFor_;
 
     core::RenderEngine* render_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
@@ -202,7 +333,7 @@ private:
     bool active_ = false;
     world::SystemParams params_;
     world::System sys_;
-    world::SphereMesh sphere_;
+    world::SphereMesh sphere_, dot_ = world::buildSphere(8, 6);
     std::vector<int> order_;
     std::vector<world::Projected> proj_;
     double time_ = 0;

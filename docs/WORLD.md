@@ -97,3 +97,32 @@ With `core/physics_world` loaded, every body is registered as a static sphere of
 Float precision: the physics API is `float`. At 350,000 units one float step is 0.031 units, fine for spheres of radius 2.5+; the swept test subtracts positions of magnitude 3.5e5 (squares ~1e11), giving a contact-distance error of a few units at that range.
 That is acceptable for planets (radius 200-1200) but would matter for small objects out there; a later fix is double-precision positions in the physics world or rebasing bodies relative to the ship. Nothing was changed in `core/physics_world`.
 Ship reaction: see docs/SHIP.md (planet/moon tiered damage + bounce, sun lethal, `ship.sun_kills`).
+
+## Planet meshes and LOD (3.3)
+Planets and moons are terrain meshes instead of plain spheres (the sun and bodies smaller than ~2.5 px on screen keep a sphere; dots use a 96-triangle one). All of it is pure code in `world/star_system/planet_mesh.h` (no GL), tested in `package/tests/test_planet_mesh.cpp`.
+
+**Mesh:** an icosphere of subdivision level 0..4 (20, 80, 320, 1,280, 5,120 triangles; `10*4^L+2` shared vertices, `uint16` indices), built for radius 1 and drawn scaled. Heights come from our own seeded value-noise FBM
+(two blended fields, same numbers on every platform; seed = `mixSeed(world.seed, body id)`), displaced by `world.terrain_height` (default 0.03 = at most 3% of the radius; oceans are flat at sea level). Colours are biomes from height and latitude
+(deep water, sand, grass/lowland, rock, snow at the poles and peaks), derived from the body colour; two thirds of planets have oceans, moons never. Normals are area-weighted from the displaced faces (smooth, no seams).
+Vertex format: interleaved position/normal/colour (36 bytes per vertex), drawn with client vertex arrays (`glVertexPointer/NormalPointer/ColorPointer` + `glDrawElements`; VBOs were not needed at these sizes and would add GL 1.5 entry-point handling), lit by the sun's `GL_LIGHT0` with `GL_COLOR_MATERIAL`.
+
+**LOD:** the level follows the projected radius in pixels (`pixelRadius`): an icosphere edge spans about `1.1 * px / 2^level` pixels and the target is `world.planet_lod_edge_px` (12). `chooseLod` has hysteresis (0.3 of a level) so a body at a boundary does not flicker.
+`world.planet_max_lod` (default **3**, 1,280 triangles) caps it: level 4 costs 4x the triangles and 4x the build time for a smaller visual gain at 1280x720; raise it for a beefier machine. `world.planet_triangle_budget` (default 20,000) caps the planet triangles per frame:
+`applyTriangleBudget` lowers the level of the least important body (most triangles per pixel of importance) until it fits. Typical frames draw 1,600-3,400 triangles (a few meshes plus dots).
+
+**Lazy building:** nothing is built at startup. A mesh is built the first time its level is wanted, **at most one per frame** (the biggest body on screen first); until it exists the nearest already-built level (or the sphere) is drawn. Built meshes are cached per (body, level) and freed after
+`world.planet_mesh_cache_seconds` (30) unused. Build times at `engine.log_level: debug` (this dev machine, -O2): level 0 0.01 ms, level 3 0.3 ms, level 4 1.1 ms (2,562 vertices). Estimate for the target laptop 5-10x slower: level 4 about 6-11 ms once per planet, level 3 about 2-3 ms:
+fits in the one-build-per-frame rule. Memory: level 3 = 31 KB, level 4 = 121 KB per mesh; a handful of planets is well under 1 MB.
+
+**Physics:** the collision sphere stays the base radius. With the default relief the largest mismatch is 3% of the radius (up to about 34 units on the biggest planet, radius 1,134): mountains poke that far out of the sphere and lowlands sit that far inside it.
+
+| Tunable | Default | |
+|---|---|---|
+| `planet_mesh.enabled` | true | false = the old plain spheres |
+| `world.terrain_height` | 0.03 | relief as a fraction of the radius |
+| `world.planet_max_lod` | 3 | highest level 0-4 |
+| `world.planet_triangle_budget` | 20000 | planet triangles per frame |
+| `world.planet_lod_edge_px` | 12 | target edge size in pixels |
+| `world.planet_mesh_cache_seconds` | 30 | free unused levels after this |
+
+At debug log level the module prints each build (time, memory) and, every 2 s, the meshes drawn, triangles this frame, cache size and the slowest build.
