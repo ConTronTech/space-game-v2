@@ -3,18 +3,49 @@
 // warp_drive.cpp owns the input, the IShip calls and the logging; the maths lives here.
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace warp {
 
 struct V3 { float x = 0, y = 0, z = 0; };
 
 struct Params {
-    float speed = 2000.0f;        // warp speed cap, m/s
-    float accelFactor = 2.0f;     // acceleration = speed * accelFactor (m/s^2)
+    float speed = 5000.0f;        // warp speed cap, m/s
+    float accelFactor = 0.4f;     // acceleration = speed * accelFactor (m/s^2): 2.5 s from rest to full speed
     float fuelDrain = 3.33f;      // fuel per second while engaged
     float minFuel = 1.0f;         // fuel needed to engage
     float exitSpeed = 200.0f;     // speed cap applied on disengage, m/s; 0 = keep the momentum
 };
+
+// ---- upgrade levels (data/warp_drive.json): multipliers on the base parameters ----
+struct LevelDef {
+    float speedMult = 1.0f;        // x warp.speed
+    float accelMult = 1.0f;        // x the acceleration
+    float fuelEfficiency = 1.0f;   // fuel burned per second is divided by this
+};
+
+// The built-in table (used when data/warp_drive.json is missing): 5, 7.5, 10 and 15 km/s with the base speed, rising efficiency.
+inline std::vector<LevelDef> defaultLevels() { return {{1.0f, 1.0f, 1.0f}, {1.5f, 1.2f, 1.25f}, {2.0f, 1.5f, 1.6f}, {3.0f, 2.0f, 2.0f}}; }
+
+inline int clampLevel(int level, int count) { return std::clamp(level, 0, std::max(0, count - 1)); }
+
+// The parameters in force at a level. Bad table values are clamped to something sane (a multiplier <= 0 would freeze the ship).
+inline Params effective(const Params& base, const LevelDef& l) {
+    Params p = base;
+    p.speed = base.speed * std::max(0.05f, l.speedMult);
+    p.accelFactor = base.accelFactor * std::max(0.05f, l.accelMult);
+    p.fuelDrain = base.fuelDrain / std::max(0.05f, l.fuelEfficiency);
+    return p;
+}
+
+// Seconds from rest to full speed, and the distance one tank of `fuel` covers (ramp-up included), for docs and tests.
+inline float spoolSeconds(const Params& p) { return p.accelFactor > 0.0f ? 1.0f / p.accelFactor : 0.0f; }
+inline float tankRange(float fuel, const Params& p) {
+    if (p.fuelDrain <= 0.0f || fuel <= 0.0f) return 0.0f;
+    float total = fuel / p.fuelDrain, ramp = std::min(total, spoolSeconds(p));
+    float a = p.speed * p.accelFactor;                         // m/s^2
+    return 0.5f * a * ramp * ramp + p.speed * (total - ramp);
+}
 
 inline float length(const V3& v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
 

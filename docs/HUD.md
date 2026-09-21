@@ -33,7 +33,7 @@ Keys: `hp`, `shield` (installs the shield; `0` = broken), `fuel`, `speed`, `hit:
 (`--disable=gameplay/flight` hides the old demo HUD, which draws on top of this one until ship_core replaces it.)
 
 ## On the ship: cockpit overlay modes
-The default setup is the cockpit ship model, whose own screens (INFO / SYSTEMS / RADAR) already show speed, hull/shield/fuel and a radar with the sun, planets and moons from `world::IStarSystem` (see docs/COCKPIT.md, "Radar contacts"); the flat HUD has no radar and is unchanged.
+The default setup is the cockpit ship model, whose own screens (INFO / SYSTEMS / RADAR) already show speed, hull/shield/fuel and a radar with the sun, planets and moons from `world::IStarSystem` (with height stems above/below your plane, see docs/COCKPIT.md, "Radar contacts"); the flat HUD has no radar and is unchanged.
 Each frame the HUD looks up `cockpit::ICockpitScreens` (optional; `ship/cockpit`, see `ship/cockpit/cockpit_screens_api.h`).
 - `showsDefaultUI()` **true** (chase view, ship model without screens, cockpit off) or no service: everything is drawn as described above, whatever the tunable says.
 - `showsDefaultUI()` **false** (the ship's screens are visible): the tunable `hud.cockpit_overlay` (in `config/game.json`) decides:

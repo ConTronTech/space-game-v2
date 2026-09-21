@@ -49,4 +49,4 @@ Save id is still **`gameplay/flight`** (kept from the demo so existing saves loa
 ## Star system collisions (3.4)
 Hitting a `planet` or `moon` uses the tiered speed damage (`ship.damage_planet`, default 50 at 200 m/s, minimum 1 HP) and bounces off the closing speed the physics world reports (relative to the orbiting body).
 Hitting the `sun` is instant death: `DamageTaken{source "sun"}` then `Died{"sun"}` (a full shield cannot absorb it), and the respawn module puts the ship back at the spawn point. `ship.sun_kills` (default true); set it to false and the sun only hurts like a planet.
-At warp speed (2000 m/s) the swept test does not tunnel: a warp crash into a planet reports ~2000 m/s closing and about 500 damage (fatal). At `engine.log_level: debug` every hit logs kind, radius, closing speed and damage.
+At warp speed (5000 m/s, up to 15,000 with drive upgrades; see docs/WARP.md) the swept test does not tunnel: a warp crash into a planet reports ~5000 m/s closing and about 1,250 damage (fatal). At `engine.log_level: debug` every hit logs kind, radius, closing speed and damage.
