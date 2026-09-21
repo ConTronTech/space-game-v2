@@ -218,13 +218,25 @@ inline int applyAsteroidBudget(std::vector<int>& levels, int budget) {
     return total;
 }
 
-// The n indices nearest to p, nearest first.
-inline void nearestIndices(const AsteroidField& F, const Vec3d& p, int n, std::vector<int>& out) {
+// ---- health ----
+// Hit points grow with the surface: k * radius^2 (radius 9 with the default k = 1.25: about 100 HP: ten blaster bolts of 10, or 3-4 s of mining beam at 30 per second).
+inline float asteroidMaxHp(float radius, float hpScale) { return std::max(1.0f, hpScale * radius * radius); }
+// Applies damage; returns true when this hit takes the asteroid to 0 (a destroyed one, hp <= 0, is never "destroyed" again). Non-positive damage does nothing.
+inline bool applyAsteroidDamage(float& hp, float amount) {
+    if (hp <= 0.0f || amount <= 0.0f) return false;
+    hp -= amount;
+    if (hp <= 0.0f) { hp = 0.0f; return true; }
+    return false;
+}
+
+// The n indices nearest to p, nearest first. `alive` (optional, one byte per asteroid) hides destroyed ones.
+inline void nearestIndices(const AsteroidField& F, const Vec3d& p, int n, std::vector<int>& out, const std::vector<uint8_t>* alive = nullptr) {
     out.clear();
     if (n <= 0) return;
     std::vector<std::pair<double, int>> d;
     d.reserve(F.count());
     for (int i = 0; i < F.count(); i++) {
+        if (alive && (size_t)i < alive->size() && !(*alive)[i]) continue;
         double dx = F.x[i] - p.x, dy = F.y[i] - p.y, dz = F.z[i] - p.z;
         d.push_back({dx * dx + dy * dy + dz * dz, i});
     }

@@ -160,3 +160,8 @@ The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::
 
 ## Stations
 `world/stations` adds 1-3 stations (orbital or planetary, placeholder cube + cylinder models) and `ship/docking` the dock key: see docs/STATIONS.md.
+
+## Asteroid health (4.2a)
+Asteroids have hit points `asteroids.hp_scale * radius^2` (default 1.25: a radius-9 rock has about 100 HP: ten blaster bolts of 10, or 3-4 s of mining beam at 30 per second; a radius-60 rock about 4,500). `world::IAsteroids` gained NON-PURE extensions with safe defaults:
+`alive(i)` and `damage(i, amount, hitPos)` (true when that call destroyed it). A destroyed asteroid vanishes from drawing, from the physics pool (its body is removed) and from `nearest()` (so from the radar), emits `world::AsteroidDestroyed{id, position, radius, ore}` (what mining, 4.3, will turn into ore drops)
+and a debris + spark burst through `fx::SpawnParticles`. Indices stay valid (`position(i)` and `radius(i)` still answer for a destroyed one). **Destroyed state is not saved yet**: the field regenerates on load; 4.3 will save it. Weapons: docs/COMBAT.md.
