@@ -6,7 +6,7 @@
 // Pedals: they REST at the minimum end (-32768) and go to +32767 when pressed ("rest": "min"), so an unpressed pedal reads 0 and a fully pressed one 1.
 //   axis 2 = throttle, axis 5 = brake, axis 6 = clutch. Axes 1, 3 and 4 never carried the recorded controls (axis 4 moved during the tests: unknown, left unmapped).
 // Buttons (all chosen by the user in the guided run): 0 fire, 1 next weapon (a wheel has ONE weapon switch: weapon_next cycles blaster / mining beam / missiles),
-// 3 warp, 8 camera, 9 orbit lock, 12 game menu, 13 dock. Paddles (4 left, 5 right) and the hat are free for the stick shifter / later use.
+// 3 warp, 8 camera, 9 orbit lock, 12 game menu, 13 dock. Paddles (4 left, 5 right) are free for the stick shifter / later use.
 {
   "name": "PXN V10 Wheel",
   "status": "VERIFIED 2026-09-21 (guided run); the stick shifter is not connected yet",
@@ -21,6 +21,7 @@
 
   "buttons": [
     { "index": 0,  "action": "fire" },
+    { "index": 0,  "action": "ui_confirm" },      // in menus the fire button confirms (fire does nothing while the mouse is free / a menu is open)
     { "index": 1,  "action": "weapon_next" },
     { "index": 3,  "action": "toggle_warp" },
     { "index": 8,  "action": "camera_next" },
@@ -30,5 +31,6 @@
   ],
 
   // Shifter gears (when connected): buttons will appear as extra numbers; map them with `./joytest --guided --steps=...` or add "groups" (docs/CONTROLLERS.md).
-  "hats": [ { "index": 0 } ]
+  // The wheel's D-pad navigates every menu like the arrow keys did in the old game: up / down / left / right = ui_up / ui_down / ui_left / ui_right.
+  "hats": [ { "index": 0, "up": "ui_up", "down": "ui_down", "left": "ui_left", "right": "ui_right" } ]
 }
