@@ -5,6 +5,8 @@
 //
 // - Key missing, or set to the string "DEFAULT"  => the value in code is used.
 // - Set it to your own number/bool/string        => that is used instead.
+// A quality preset (core/quality) may supply a different default for some keys (setPreset*). Order of precedence:
+//   your value in game.json  >  the preset's value  >  the default in code.
 // The game keeps config/game.json up to date: every key any module asks for is added as "DEFAULT"
 // with a comment showing the real default, and your overrides are preserved. Read at startup.
 #include <cmath>
@@ -43,7 +45,18 @@ public:
         static_assert(std::is_arithmetic_v<T> || std::is_same_v<T, std::string>, "config values: number, bool or string");
         T out = def;
         Node* n = find(key);
-        if (n && n->leaf) {
+        const Node* pv = nullptr;
+        if (auto it = preset_.find(key); it != preset_.end()) pv = &it->second;
+        if (pv && !(n && n->leaf && !(n->type == Node::Str && n->text == "DEFAULT"))) {
+            // no user value: the preset's value replaces the built-in default
+            if constexpr (std::is_same_v<T, bool>) {
+                if (pv->type == Node::Bool) out = pv->text == "true"; else if (pv->type == Node::Num) out = std::strtod(pv->text.c_str(), nullptr) != 0;
+            } else if constexpr (std::is_arithmetic_v<T>) {
+                if (pv->type == Node::Num) out = (T)std::strtod(pv->text.c_str(), nullptr); else if (pv->type == Node::Bool) out = (T)(pv->text == "true");
+            } else {
+                if (pv->type == Node::Str) out = pv->text;
+            }
+        } else if (n && n->leaf) {
             if (n->type == Node::Str && n->text == "DEFAULT") {
                 // explicitly default
             } else if constexpr (std::is_same_v<T, bool>) {
@@ -59,6 +72,13 @@ public:
         record(key, literal(def), doc);
         return out;
     }
+
+    // Preset layer (see the top of this file). Call before other modules read their tunables. Later calls replace earlier ones.
+    void setPresetNumber(const std::string& key, double v) { setPreset(key, Node::Num, fmtNum(v)); }
+    void setPresetBool(const std::string& key, bool v) { setPreset(key, Node::Bool, v ? "true" : "false"); }
+    void setPresetString(const std::string& key, const std::string& v) { setPreset(key, Node::Str, v); }
+    void clearPreset() { preset_.clear(); }
+    size_t presetSize() const { return preset_.size(); }
 
     // Writes config/game.json if any tunable was added this run (creates the file the first time).
     void save() {
@@ -80,6 +100,7 @@ private:
         std::map<std::string, Node> kids;
     };
 
+    void setPreset(const std::string& key, Node::Type t, const std::string& text) { Node n; n.leaf = true; n.type = t; n.text = text; preset_[key] = n; }
     static std::string fmtNum(double d, int digits = 10) {
         char b[48];
         std::snprintf(b, sizeof b, "%.*g", digits, d);
@@ -172,6 +193,7 @@ private:
     Node root_;
     bool dirty_ = false;
     std::set<std::string> warned_;
+    std::map<std::string, Node> preset_;   // key -> value supplied by the active quality preset
 };
 
 } // namespace engine

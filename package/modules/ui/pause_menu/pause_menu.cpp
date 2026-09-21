@@ -8,6 +8,8 @@
 #include <ctime>
 #include "core/audio/audio_api.h"
 #include "core/input_handler/input_api.h"
+#include "core/quality/quality_api.h"
+#include "core/quality/quality_rules.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
 #include "core/settings/settings_api.h"
@@ -35,6 +37,8 @@ public:
         rows_ = {Row::Fov, Row::Sens};
         if (audio_) { rows_.push_back(Row::Master); rows_.push_back(Row::Sfx); rows_.push_back(Row::EngineVol); }
         rows_.push_back(Row::Fullscreen);
+        quality_ = eng.services.get<core::IQuality>();       // optional: without it (or without settings) there is no Graphics row
+        if (quality_ && settings_) rows_.push_back(Row::Graphics);
         rows_.push_back(Row::Back);
 
         main_ = {Main::Resume};
@@ -74,7 +78,7 @@ public:
 private:
     enum class Page { Main, Load, Settings };
     enum class Main { Resume, Save, Load, Settings, Exit };
-    enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Back };   // settings rows (built in init)
+    enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Graphics, Back };   // settings rows (built in init)
     static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 3.0f;
     static constexpr size_t kMaxSlotsShown = 6;
 
@@ -109,6 +113,21 @@ private:
     }
     void setStatus(const std::string& s, bool ok) { status_ = s; statusOk_ = ok; }
 
+    // Graphics preset: the choice is saved as settings "quality.preset" and applies on the next launch (core/quality reads it at startup).
+    quality::Preset pendingQuality() const {
+        return quality::parsePreset(settings_->get("quality.preset", quality_->selectedName())).preset;
+    }
+    void cycleQuality(int dir) {
+        quality::Preset next = quality::cyclePreset(pendingQuality(), dir);
+        settings_->set("quality.preset", std::string(quality::presetName(next)));
+    }
+    std::string qualityLabel() const {
+        quality::Preset p = pendingQuality();
+        std::string name = quality::titleName(p);
+        if (p == quality::Preset::Auto) name += " (" + quality::titleName(quality::parsePreset(quality_->detectedName()).preset) + ")";
+        return "Graphics: " + name + "  (restart)";
+    }
+
     void activate(int i) {
         sound("ui_confirm", 0.8f);
         if (page_ == Page::Main) {
@@ -131,12 +150,14 @@ private:
         } else {
             Row r = rows_[(size_t)i];
             if (r == Row::Fullscreen) setFullscreen(!window_->fullscreen());
+            else if (r == Row::Graphics) cycleQuality(1);
             else if (r == Row::Back) backToMain();
         }
     }
     void adjust(int i, int dir) {
         if (page_ != Page::Settings) return;
         switch (rows_[(size_t)i]) {
+            case Row::Graphics:  cycleQuality(dir); break;
             case Row::Fov:       setFov(render_->camera.fovDeg + 5.0f * dir); break;
             case Row::Sens:      setSens(mouseSens() + 0.1f * dir); break;
             case Row::Master:    setVolume("audio.master", audio_->masterVolume() + 5.0f * dir); break;
@@ -229,6 +250,9 @@ private:
                         if (now != cur) setFullscreen(now);
                         break;
                     }
+                    case Row::Graphics:
+                        if (ui.button(qualityLabel(), ix, iy, iw, itemH, f)) pending = i;
+                        break;
                     case Row::Back:
                         if (ui.button("Back", ix, iy, iw, itemH, f)) pending = i;
                         break;
@@ -250,6 +274,7 @@ private:
     core::ISettings* settings_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
     core::IAudio* audio_ = nullptr;
+    core::IQuality* quality_ = nullptr;
     std::vector<Main> main_;
     std::vector<Row> rows_;
     std::vector<core::SlotInfo> slots_;

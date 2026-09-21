@@ -62,6 +62,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `ship::IRespawn` | `counting()` / `secondsLeft()` of the respawn countdown (HUD uses it) - see docs/RESPAWN.md |
 | `cockpit::ICockpitScreens` | put content on the cockpit model's `@` screens: `registerRenderer(group, fn)`; `showsDefaultUI()` - see docs/COCKPIT.md |
 | `core::ISettings` | player prefs: `get("video.fov", 90.0f)`, `set(...)`, `SettingChanged` event - see docs/CONFIG.md |
+| `core::IQuality` | the graphics preset in use (`activeName()`, `selectedName()`); set defaults for tunables, see docs/QUALITY.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
 

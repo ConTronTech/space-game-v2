@@ -9,6 +9,7 @@
 #include <vector>
 #include <SDL2/SDL.h>
 #include "core/benchmark/bench_stats.h"
+#include "core/quality/quality_api.h"
 #include "core/window/window.h"
 #include "engine/engine.h"
 #include "engine/log.h"
@@ -48,19 +49,22 @@ private:
         bench::Stats s = bench::compute(frameMs_);
         const char* renderer = (const char*)glGetString(GL_RENDERER);
         const char* version = (const char*)glGetString(GL_VERSION);
-        char b[1024];
+        auto* q = eng.services.get<IQuality>();
+        std::string preset = q ? q->activeName() + (q->selectedName() == "auto" ? " (auto)" : "") : "n/a (core/quality off)";
+        char b[1280];
         std::snprintf(b, sizeof b,
             "BENCHMARK RESULT\n"
             "  frames:          %d over %.1f s\n"
             "  average:         %.1f fps  (%.2f ms/frame)\n"
             "  1%% low:          %.1f fps  (99th-percentile frame %.2f ms)\n"
             "  worst frame:     %.2f ms\n"
+            "  quality preset:  %s\n"
             "  vsync:           %s\n"
             "  resolution:      %dx%d\n"
             "  renderer:        %s | OpenGL %s\n"
             "  cpu / ram:       %d threads, %d MB\n"
             "  target:          60 fps average, 30 fps floor (docs/VISION.md)\n",
-            s.frames, s.seconds, s.avgFps, s.avgMs, s.lowFps, s.p99Ms, s.worstMs,
+            s.frames, s.seconds, s.avgFps, s.avgMs, s.lowFps, s.p99Ms, s.worstMs, preset.c_str(),
             eng.hasFlag("no-vsync") ? "off" : "on", window_->width(), window_->height(),
             renderer ? renderer : "?", version ? version : "?", SDL_GetCPUCount(), SDL_GetSystemRAM());
         std::fputs(b, stdout);

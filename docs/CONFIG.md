@@ -31,9 +31,13 @@ Put every number a player might want to tune here instead of hard-coding it.
 
 Related but separate files: `config/input/*.json` (bindings), `config/ui/theme.json` (glass look).
 
+## Quality presets
+`core/quality` can supply a different *default* for graphics tunables (star count, asteroid counts, LOD budgets, skybox size...) depending on the machine or the player's Graphics choice.
+Precedence: **your game.json value > the preset's value > the default in code**. The `default ...` comment in game.json shows the code default; the log line `[quality] preset values: ...` shows what the preset applies. `quality.preset` (auto|low|medium|high|ultra) and `--quality=` select it. See docs/QUALITY.md.
+
 ## Player settings vs tunables
 - **`config/game.json`** = tunables you edit by hand (`engine.config`).
 - **`config/settings.json`** = player preferences the game writes when you change something in the menu (`core::ISettings`):
-  `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`. Only values you changed are stored; delete the file to reset.
+  `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`, `quality.preset`. Only values you changed are stored; delete the file to reset.
   The module that owns a setting reads it at startup and listens for `SettingChanged`; menus just call `set()`.
   `--settings=<file>` uses another file.
