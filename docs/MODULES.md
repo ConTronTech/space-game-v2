@@ -6,9 +6,9 @@ only knows how to find modules, order them, and call their hooks. Build: C++23, 
 ```
 package/engine/            kernel: Module interface, EventBus, Services, main loop  (rarely touched)
 package/modules/core/      window, input_handler, render_engine, ui_handler, import_handler
-package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orbit_lock, respawn, fake_ship (dev)
+package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orbit_lock, docking (IDocking), respawn, fake_ship (dev)
 package/modules/ui/        pause_menu, ship_hud
-package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids)
+package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations)
 package/template/          scaffold used by package/tools/new_module.sh
 ```
 
@@ -58,6 +58,8 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `ship::IShip` | the ship's status and actions: `status()`, `applyDamage`, `consumeWarpFuel`, `kill`, `respawn`; events `DamageTaken`, `Died`... - see docs/SHIP.md |
 | `world::IStarSystem` | the sun, planets and moons: `bodies()` (double positions), `sunPosition()`, `positionAt(id)`, `simTime()` - see docs/WORLD.md |
 | `world::IAsteroids` | the asteroid field, read-only: `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(point, n, out)` - see docs/WORLD.md |
+| `world::IStations` | the space stations: `count()`, `info(i)` (position/velocity in double, dock radius, up), `nearest(p)` - see docs/STATIONS.md |
+| `ship::IDocking` (+ events `Docked`, `Undocked`) | `docked()`, `stationName()`, `nearestDockable(...)`: what a "DOCK [G]" prompt needs - see docs/STATIONS.md |
 | `ship::OrbitLockChanged` (event) | `{locked, bodyName}` when ship/orbit_lock engages or releases - see docs/ORBIT_LOCK.md |
 | `ship::IRespawn` | `counting()` / `secondsLeft()` of the respawn countdown (HUD uses it) - see docs/RESPAWN.md |
 | `cockpit::ICockpitScreens` | put content on the cockpit model's `@` screens: `registerRenderer(group, fn)`; `showsDefaultUI()` - see docs/COCKPIT.md |

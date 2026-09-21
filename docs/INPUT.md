@@ -23,6 +23,9 @@ mouse axis can all drive `thrust` at once. Actions not in the profile just read 
 physics steps can run in one frame and the same press would count more than once. `value()` and `down()` are
 safe in both.
 
+## Ship actions in the default profile
+`thrust strafe lift pitch yaw roll brake`, `toggle_warp` (Z), `toggle_orbit_lock` (O), **`dock` (G)**: docks at / undocks from the nearest station (docs/STATIONS.md), `camera_next` (V), `mouse_capture_toggle` (Tab), `pause` (Esc). The full list with keys is in docs/QUICKSTART.md.
+
 ## Profile format
 ```json
 {
