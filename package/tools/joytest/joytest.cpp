@@ -131,6 +131,7 @@ static bool g_guided = false;
 static int g_gDev = 0;
 static size_t g_gStep = 0;
 static std::vector<int> g_gBase;   // axis values at the start of the step
+static bool g_gPending = false;    // a control was detected for the current step: ENTER confirms, BACKSPACE retries
 
 static void guidedBegin() {
     g_gBase.clear();
@@ -156,20 +157,89 @@ static void guidedAxis(int dev, int axis, int v) {
     if (!g_guided || dev != g_gDev || g_gStep >= g_steps.size() || !g_steps[g_gStep].axis) return;
     if (axis >= (int)g_gBase.size() || std::abs(v - g_gBase[(size_t)axis]) < 20000) return;
     for (auto& st : g_steps) if (st.done && st.axis && st.index == axis && std::string(st.key) != g_steps[g_gStep].key) return;   // already used by another control
-    auto& st = g_steps[g_gStep]; st.done = true; st.dev = dev; st.index = axis; st.rest = g_gBase[(size_t)axis]; st.dir = v > st.rest ? 1 : -1;
-    logEvent(std::string("GUIDED ") + st.key + " = AXIS " + num(axis) + " REST " + num(st.rest) + " PRESSED " + (st.dir > 0 ? "+" : "-"));
-    g_gStep++; guidedWrite();
+    if (g_gPending) return;
+    auto& st = g_steps[g_gStep]; st.dev = dev; st.index = axis; st.rest = g_gBase[(size_t)axis]; st.dir = v > st.rest ? 1 : -1; g_gPending = true;
+    logEvent(std::string("GUIDED CANDIDATE ") + st.key + " = AXIS " + num(axis) + " REST " + num(st.rest) + " PRESSED " + (st.dir > 0 ? "+" : "-"));
 }
 static void guidedButton(int dev, int b) {
     if (!g_guided || dev != g_gDev || g_gStep >= g_steps.size() || g_steps[g_gStep].axis) return;
     for (auto& st : g_steps) if (st.done && !st.axis && st.index == b) return;   // already assigned
-    auto& st = g_steps[g_gStep]; st.done = true; st.dev = dev; st.index = b;
-    logEvent(std::string("GUIDED ") + st.key + " = BUTTON " + num(b));
-    g_gStep++; guidedWrite();
+    if (g_gPending) return;
+    auto& st = g_steps[g_gStep]; st.dev = dev; st.index = b; g_gPending = true;
+    logEvent(std::string("GUIDED CANDIDATE ") + st.key + " = BUTTON " + num(b));
+}
+static void guidedConfirm() {
+    if (!g_guided || !g_gPending || g_gStep >= g_steps.size()) return;
+    auto& st = g_steps[g_gStep]; st.done = true; g_gPending = false;
+    logEvent(std::string("GUIDED CONFIRMED ") + st.key); g_gStep++; guidedWrite();
+}
+static void guidedBack() {
+    if (!g_guided) return;
+    if (g_gPending) { g_gPending = false; logEvent("GUIDED RETRY"); return; }
+    if (g_gStep == 0) return;
+    g_gStep--; auto& st = g_steps[g_gStep]; st.done = false; st.skipped = false; st.index = -1; logEvent(std::string("GUIDED BACK TO ") + st.key); guidedWrite();
 }
 static void guidedSkip() {
-    if (!g_guided || g_gStep >= g_steps.size() || !g_steps[g_gStep].optional) return;
+    if (!g_guided || g_gPending || g_gStep >= g_steps.size() || !g_steps[g_gStep].optional) return;
     g_steps[g_gStep].skipped = true; logEvent(std::string("GUIDED ") + g_steps[g_gStep].key + " SKIPPED"); g_gStep++; guidedWrite();
+}
+
+static void drawGuided(Uint32 now) {
+    SDL_SetRenderDrawColor(g_r, 14, 16, 20, 255); SDL_RenderClear(g_r);
+    bool done = g_gStep >= g_steps.size();
+    // header
+    rect(0, 0, 1300, 118, 22, 30, 46);
+    if (!done) {
+        text(24, 12, "STEP " + num((int)g_gStep + 1) + " OF " + num((int)g_steps.size()), 2, 255, 220, 90);
+        text(24, 40, g_steps[g_gStep].prompt, 3, 255, 255, 255);
+        if (g_gPending) {
+            auto& st = g_steps[g_gStep];
+            text(24, 78, std::string("GOT ") + (st.axis ? "AXIS " : "BUTTON ") + num(st.index) + "  -  ENTER = OK   BACKSPACE = TRY AGAIN", 3, 120, 255, 140);
+        } else text(24, 84, "MOVE OR PRESS THE CONTROL ONCE, THEN RELEASE.   SPACE = SKIP (IF OPTIONAL)   BACKSPACE = GO BACK", 2, 170, 180, 200);
+    } else text(24, 48, "ALL DONE - SAVED TO LOGS/JOYTEST_GUIDED.JSON - PRESS ESC", 3, 120, 255, 140);
+    // checklist
+    text(24, 136, "CONTROLS", 2, 140, 180, 255);
+    for (size_t i = 0; i < g_steps.size(); i++) {
+        auto& st = g_steps[i]; int y = 164 + (int)i * 34; bool cur = i == g_gStep && !done;
+        if (cur) rect(16, y - 6, 400, 30, 46, 54, 30);
+        std::string label = std::string(st.key);
+        for (auto& c : label) if (c == '_') c = ' ';
+        std::string val = st.done ? (st.axis ? "AXIS " : "BUTTON ") + num(st.index) : st.skipped ? "SKIPPED" : (cur && g_gPending ? (st.axis ? "AXIS " : "BUTTON ") + num(st.index) + " ?" : "-");
+        text(28, y, label, 2, cur ? 255 : (st.done ? 150 : 130), cur ? 230 : (st.done ? 255 : 130), cur ? 90 : (st.done ? 160 : 140));
+        text(230, y, val, 2, st.done ? 120 : 150, st.done ? 255 : 150, st.done ? 140 : 160);
+    }
+    // live view of the device
+    if (g_gDev >= (int)g_devs.size()) { text(460, 140, "DEVICE NOT FOUND", 3, 255, 120, 120); return; }
+    auto& d = g_devs[(size_t)g_gDev];
+    text(460, 136, "LIVE: " + d.name, 2, 140, 180, 255);
+    for (size_t i = 0; i < d.axes.size(); i++) {
+        auto& a = d.axes[i]; int y = 170 + (int)i * 40; bool hot = now - a.movedAt < 300;
+        text(460, y + 6, "AXIS " + num((int)i), 2, hot ? 255 : 190, hot ? 230 : 190, hot ? 90 : 190);
+        int bx = 590, bw = 460;
+        rect(bx, y, bw, 28, 36, 40, 50); rect(bx, y, bw, 28, 84, 90, 106, false);
+        int cx = bx + bw / 2, fx = bx + (int)((a.cur + 32768) / 65535.0f * bw);
+        rect(std::min(cx, fx), y + 3, std::abs(fx - cx), 22, hot ? 255 : 80, hot ? 200 : 150, hot ? 60 : 210);
+        rect(cx, y, 2, 28, 140, 140, 150);
+        text(bx + bw + 14, y + 6, num(a.cur, true), 2, 225, 225, 225);
+    }
+    int by = 170 + (int)d.axes.size() * 40 + 24;
+    text(460, by, "BUTTONS", 2, 140, 180, 255); by += 28;
+    for (size_t i = 0; i < d.buttons.size(); i++) {
+        auto& b = d.buttons[i]; int col = (int)(i % 12), row = (int)(i / 12), x = 460 + col * 68, y = by + row * 44;
+        rect(x, y, 60, 36, b.down ? 40 : 34, b.down ? 210 : 38, b.down ? 80 : 46);
+        rect(x, y, 60, 36, 90, 96, 110, false);
+        text(x + (i < 10 ? 22 : 16), y + 11, num((int)i), 2, 240, 240, 240);
+    }
+    int hy = by + (int)((d.buttons.size() + 11) / 12) * 44 + 12;
+    for (size_t i = 0; i < d.hats.size(); i++) {
+        int v = d.hats[i], hx = 460 + (int)i * 130, cxh = hx + 40, cyh = hy + 46;
+        text(hx, hy - 6, "HAT " + num((int)i), 2, 190, 190, 190);
+        rect(cxh - 26, cyh - 26, 52, 52, 36, 40, 50); rect(cxh - 26, cyh - 26, 52, 52, 90, 96, 110, false);
+        if (v & SDL_HAT_UP) rect(cxh - 8, cyh - 24, 16, 16, 90, 255, 120);
+        if (v & SDL_HAT_DOWN) rect(cxh - 8, cyh + 8, 16, 16, 90, 255, 120);
+        if (v & SDL_HAT_LEFT) rect(cxh - 24, cyh - 8, 16, 16, 90, 255, 120);
+        if (v & SDL_HAT_RIGHT) rect(cxh + 8, cyh - 8, 16, 16, 90, 255, 120);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -199,6 +269,8 @@ int main(int argc, char** argv) {
                 if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_q) quit = true;
                 else if (e.key.keysym.sym == SDLK_r) { for (auto& d : g_devs) for (auto& a : d.axes) { a.mn = 32767; a.mx = -32768; a.moves = 0; a.rest = a.cur; a.lastLogged = a.cur; } logEvent("RESET MIN/MAX"); }
                 else if (e.key.keysym.sym == SDLK_SPACE) { guidedSkip(); guidedBegin(); }
+                else if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) { guidedConfirm(); guidedBegin(); }
+                else if (e.key.keysym.sym == SDLK_BACKSPACE) { guidedBack(); guidedBegin(); }
                 else if (e.key.keysym.sym == SDLK_s) { writeSummary(); logEvent("SUMMARY SAVED TO LOGS/JOYTEST_SUMMARY.TXT"); }
             } else if (e.type == SDL_JOYDEVICEADDED) addDevice(e.jdevice.which);
             else if (e.type == SDL_JOYDEVICEREMOVED) {
@@ -223,7 +295,9 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        Uint32 now0 = SDL_GetTicks();
         { static size_t lastStep = 999; if (g_guided && g_gStep != lastStep) { lastStep = g_gStep; guidedBegin(); } }
+        if (g_guided) { drawGuided(now0); SDL_RenderPresent(g_r); continue; }
         // draw
         SDL_SetRenderDrawColor(g_r, 14, 16, 20, 255); SDL_RenderClear(g_r);
         Uint32 now = SDL_GetTicks();

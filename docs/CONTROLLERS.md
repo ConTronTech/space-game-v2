@@ -83,3 +83,7 @@ min/max seen as red/green ticks, the row flashes when it moves), a lit box per b
 Press or move ONE control at a time and watch which one lights up. Keys: `R` resets min/max, `S` saves the summary, `Esc`/`Q` quits. It writes `logs/joytest.log` (timestamped events)
 and `logs/joytest_summary.txt` (per axis: rest, min, max, moves and whether it looks like a pedal (rests at an end) or a stick/wheel (rests near the centre); per button: presses).
 On the laptop: `cd ~/Documents/Space-Game-V2/space-game-v2 && DISPLAY=:0 LD_LIBRARY_PATH=libs ./joytest` (sync it with `package/tools/laptop_bench.sh` or rsync `build/joytest`).
+
+**Guided mode:** `./joytest --guided [--dev=N]` asks for one control at a time (steering, throttle, brake, clutch, paddles, and the buttons you want for fire / dock / warp / orbit lock / menu / camera / weapons).
+It shows what it detected: **Enter** confirms, **Backspace** retries (or goes back a step), **Space** skips an optional step. The result is written to `logs/joytest_guided.json`.
+**PXN V10 note:** the wheel has a rotation-lock switch on the back (120 or 270 degrees; it was at 120): the same axis range covers a smaller turn at 120, so steering feels twice as sensitive.
