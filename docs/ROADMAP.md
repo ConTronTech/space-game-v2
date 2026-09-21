@@ -66,9 +66,9 @@ Done when: a generated system with planets, belts and stations that you can fly 
 ## Phase 5 - Inventory, crafting, menus
 - [x] **5.1 `gameplay/inventory`**: cargo capacity, stacks, ore types from `data/`. Saveable.
 - [ ] **5.2 `ui/toast`**: info / warning / urgent popups, stackable. *ui_framework.h UIPopupManager*
-- [ ] **5.3 UI tabs widget** in the UI handler (tab bar, list, grid, bar).
-- [ ] **5.4 `ui/game_menu`**: tabbed menu (Map / Cargo / Crafting). Other modules add tabs by registering them, like panels. *game_menu.h, tabs/*
-- [ ] **5.5 `gameplay/crafting`**: recipes from `data/`, item use. *recipes.h*
+- [x] **5.3 UI tabs widget** in the UI handler (tab bar, list, grid, bar).
+- [x] **5.4 `ui/game_menu`**: tabbed menu (Map / Cargo / Crafting). Other modules add tabs by registering them, like panels. *game_menu.h, tabs/*
+- [x] **5.5 `gameplay/crafting`**: recipes from `data/`, item use. *recipes.h*
 - [ ] **5.6 `ui/system_map`** tab. *map_tab.h*
 
 Done when: mine an asteroid, see the ore in Cargo, craft something, use it.
