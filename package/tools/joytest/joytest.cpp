@@ -1,5 +1,6 @@
 // joytest - a standalone visual joystick / wheel / pedal / shifter tester (SDL2 only, no game code, no fonts needed).
 //   ./joytest            open the window; press / move each control one at a time and watch it light up
+//   ./joytest --guided [--dev=N]   guided mode: asks for one control at a time, writes logs/joytest_guided.json
 //   keys: R = reset min/max, S = save the summary now, ESC or Q = quit (the summary is also written on quit)
 // Writes logs/joytest.log (timestamped events) and logs/joytest_summary.txt (per axis: rest, min, max, moves; per button: presses).
 // See docs/CONTROLLERS.md. Build: `make joytest` (SDL2 only).
@@ -71,7 +72,7 @@ static FILE* g_logFile = nullptr;
 static void logEvent(const std::string& s) {
     char stamp[24]; std::snprintf(stamp, sizeof stamp, "%7.2f ", SDL_GetTicks() / 1000.0);
     std::string line = std::string(stamp) + s;
-    g_log.push_back(line); while (g_log.size() > 14) g_log.pop_front();
+    g_log.push_back(line); while (g_log.size() > 12) g_log.pop_front();
     if (g_logFile) { std::fprintf(g_logFile, "%s\n", line.c_str()); std::fflush(g_logFile); }
 }
 
@@ -108,17 +109,86 @@ static void writeSummary() {
     std::fclose(f);
 }
 
-int main() {
+// ---- guided mode (--guided): asks for one control at a time and records which axis / button responded ----
+struct Step { const char* key; const char* prompt; bool axis; bool optional; int dev = -1, index = -1, rest = 0, dir = 0; bool done = false, skipped = false; };
+static std::vector<Step> g_steps = {
+    {"steering", "TURN THE WHEEL FULLY RIGHT AND HOLD", true, false},
+    {"throttle", "PRESS THE THROTTLE PEDAL FULLY DOWN", true, false},
+    {"brake", "PRESS THE BRAKE PEDAL FULLY DOWN", true, false},
+    {"clutch", "PRESS THE CLUTCH PEDAL FULLY DOWN (SPACE = SKIP)", true, true},
+    {"paddle_right", "PRESS THE RIGHT PADDLE (UP-SHIFT)", false, false},
+    {"paddle_left", "PRESS THE LEFT PADDLE (DOWN-SHIFT)", false, false},
+    {"fire", "PRESS THE BUTTON YOU WANT FOR FIRE", false, false},
+    {"dock", "PRESS THE BUTTON YOU WANT FOR DOCK", false, false},
+    {"warp", "PRESS THE BUTTON YOU WANT FOR WARP", false, false},
+    {"orbit_lock", "PRESS THE BUTTON YOU WANT FOR ORBIT LOCK", false, false},
+    {"menu", "PRESS THE BUTTON YOU WANT FOR THE GAME MENU (SPACE = SKIP)", false, true},
+    {"camera", "PRESS THE BUTTON YOU WANT FOR CAMERA VIEW (SPACE = SKIP)", false, true},
+    {"weapon_1", "PRESS THE BUTTON YOU WANT FOR WEAPON 1 BLASTER (SPACE = SKIP)", false, true},
+    {"weapon_2", "PRESS THE BUTTON YOU WANT FOR WEAPON 2 MINING BEAM (SPACE = SKIP)", false, true},
+};
+static bool g_guided = false;
+static int g_gDev = 0;
+static size_t g_gStep = 0;
+static std::vector<int> g_gBase;   // axis values at the start of the step
+
+static void guidedBegin() {
+    g_gBase.clear();
+    if (g_gDev < (int)g_devs.size()) for (auto& a : g_devs[(size_t)g_gDev].axes) g_gBase.push_back(a.cur);
+}
+static void guidedWrite() {
+    FILE* f = std::fopen("logs/joytest_guided.json", "w");
+    if (!f || g_gDev >= (int)g_devs.size()) { if (f) std::fclose(f); return; }
+    auto& d = g_devs[(size_t)g_gDev];
+    std::fprintf(f, "{\n  \"device\": \"%s\", \"vid\": \"%04X\", \"pid\": \"%04X\", \"axes\": %zu, \"buttons\": %zu, \"hats\": %zu,\n  \"controls\": {\n", d.name.c_str(), d.vid, d.pid, d.axes.size(), d.buttons.size(), d.hats.size());
+    bool first = true;
+    for (auto& st : g_steps) {
+        if (!st.done) continue;
+        std::fprintf(f, "%s    \"%s\": {\"type\": \"%s\", \"index\": %d", first ? "" : ",\n", st.key, st.axis ? "axis" : "button", st.index);
+        if (st.axis) std::fprintf(f, ", \"rest\": %d, \"pressed_direction\": %d", st.rest, st.dir);
+        std::fprintf(f, "}"); first = false;
+    }
+    std::fprintf(f, "\n  },\n  \"skipped\": [");
+    first = true; for (auto& st : g_steps) if (st.skipped) { std::fprintf(f, "%s\"%s\"", first ? "" : ", ", st.key); first = false; }
+    std::fprintf(f, "]\n}\n"); std::fclose(f);
+}
+static void guidedAxis(int dev, int axis, int v) {
+    if (!g_guided || dev != g_gDev || g_gStep >= g_steps.size() || !g_steps[g_gStep].axis) return;
+    if (axis >= (int)g_gBase.size() || std::abs(v - g_gBase[(size_t)axis]) < 20000) return;
+    for (auto& st : g_steps) if (st.done && st.axis && st.index == axis && std::string(st.key) != g_steps[g_gStep].key) return;   // already used by another control
+    auto& st = g_steps[g_gStep]; st.done = true; st.dev = dev; st.index = axis; st.rest = g_gBase[(size_t)axis]; st.dir = v > st.rest ? 1 : -1;
+    logEvent(std::string("GUIDED ") + st.key + " = AXIS " + num(axis) + " REST " + num(st.rest) + " PRESSED " + (st.dir > 0 ? "+" : "-"));
+    g_gStep++; guidedWrite();
+}
+static void guidedButton(int dev, int b) {
+    if (!g_guided || dev != g_gDev || g_gStep >= g_steps.size() || g_steps[g_gStep].axis) return;
+    for (auto& st : g_steps) if (st.done && !st.axis && st.index == b) return;   // already assigned
+    auto& st = g_steps[g_gStep]; st.done = true; st.dev = dev; st.index = b;
+    logEvent(std::string("GUIDED ") + st.key + " = BUTTON " + num(b));
+    g_gStep++; guidedWrite();
+}
+static void guidedSkip() {
+    if (!g_guided || g_gStep >= g_steps.size() || !g_steps[g_gStep].optional) return;
+    g_steps[g_gStep].skipped = true; logEvent(std::string("GUIDED ") + g_steps[g_gStep].key + " SKIPPED"); g_gStep++; guidedWrite();
+}
+
+int main(int argc, char** argv) {
+    for (int i = 1; i < argc; i++) {
+        if (!std::strcmp(argv[i], "--guided")) g_guided = true;
+        else if (!std::strncmp(argv[i], "--dev=", 6)) g_gDev = std::atoi(argv[i] + 6);
+    }
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
     if (std::system("mkdir -p logs") != 0) std::fprintf(stderr, "warning: could not create logs/\n");
     g_logFile = std::fopen("logs/joytest.log", "w");
     SDL_Window* win = SDL_CreateWindow("JOYTEST - move / press one control at a time (ESC quits, R resets)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1300, 720, SDL_WINDOW_SHOWN);
+    if (g_guided) SDL_SetWindowTitle(win, "JOYTEST GUIDED - follow the prompt at the top, one control at a time");
     if (!win) { std::fprintf(stderr, "window: %s\n", SDL_GetError()); return 1; }
     g_r = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!g_r) g_r = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) addDevice(i);
     if (g_devs.empty()) logEvent("NO JOYSTICK DEVICES FOUND (PLUG IN AND THEY APPEAR HERE)");
+    if (g_guided) guidedBegin();
 
     bool quit = false;
     while (!quit) {
@@ -128,6 +198,7 @@ int main() {
             else if (e.type == SDL_KEYDOWN) {
                 if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_q) quit = true;
                 else if (e.key.keysym.sym == SDLK_r) { for (auto& d : g_devs) for (auto& a : d.axes) { a.mn = 32767; a.mx = -32768; a.moves = 0; a.rest = a.cur; a.lastLogged = a.cur; } logEvent("RESET MIN/MAX"); }
+                else if (e.key.keysym.sym == SDLK_SPACE) { guidedSkip(); guidedBegin(); }
                 else if (e.key.keysym.sym == SDLK_s) { writeSummary(); logEvent("SUMMARY SAVED TO LOGS/JOYTEST_SUMMARY.TXT"); }
             } else if (e.type == SDL_JOYDEVICEADDED) addDevice(e.jdevice.which);
             else if (e.type == SDL_JOYDEVICEREMOVED) {
@@ -136,12 +207,13 @@ int main() {
                 for (size_t di = 0; di < g_devs.size(); di++) if (g_devs[di].id == e.jaxis.which && e.jaxis.axis < g_devs[di].axes.size()) {
                     auto& a = g_devs[di].axes[e.jaxis.axis]; int v = e.jaxis.value;
                     a.cur = v; a.mn = std::min(a.mn, v); a.mx = std::max(a.mx, v); a.movedAt = SDL_GetTicks();
+                    guidedAxis((int)di, e.jaxis.axis, v);
                     if (std::abs(v - a.lastLogged) > 2500) { a.lastLogged = v; a.moves++; logEvent("DEV " + num((int)di) + " AXIS " + num(e.jaxis.axis) + " = " + num(v, true)); }
                 }
             } else if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP) {
                 for (size_t di = 0; di < g_devs.size(); di++) if (g_devs[di].id == e.jbutton.which && e.jbutton.button < g_devs[di].buttons.size()) {
                     auto& b = g_devs[di].buttons[e.jbutton.button]; bool dn = e.type == SDL_JOYBUTTONDOWN;
-                    b.down = dn; b.changedAt = SDL_GetTicks(); if (dn) b.presses++;
+                    b.down = dn; b.changedAt = SDL_GetTicks(); if (dn) { b.presses++; guidedButton((int)di, e.jbutton.button); }
                     logEvent("DEV " + num((int)di) + " BUTTON " + num(e.jbutton.button) + (dn ? " DOWN" : " UP"));
                 }
             } else if (e.type == SDL_JOYHATMOTION) {
@@ -151,6 +223,7 @@ int main() {
                 }
             }
         }
+        { static size_t lastStep = 999; if (g_guided && g_gStep != lastStep) { lastStep = g_gStep; guidedBegin(); } }
         // draw
         SDL_SetRenderDrawColor(g_r, 14, 16, 20, 255); SDL_RenderClear(g_r);
         Uint32 now = SDL_GetTicks();
@@ -197,9 +270,21 @@ int main() {
             }
             (void)panelW;
         }
-        int ly = 470;
+        int ly = g_guided ? 380 : 470;
         text(20, ly - 18, "EVENT LOG (ALSO IN LOGS/JOYTEST.LOG)   R = RESET MIN/MAX   S = SAVE SUMMARY   ESC = QUIT", 1, 170, 170, 180);
         int line = 0; for (auto& s : g_log) { text(20, ly + line * 16, s, 2, 200, 235, 200); line++; }
+        if (g_guided) {
+            rect(0, 596, 1300, 124, 24, 30, 44);
+            if (g_gStep < g_steps.size()) {
+                text(20, 604, "STEP " + num((int)g_gStep + 1) + " OF " + num((int)g_steps.size()) + ":", 2, 255, 220, 90);
+                text(20, 628, g_steps[g_gStep].prompt, 3, 255, 255, 255);
+                text(20, 660, "DEVICE " + num(g_gDev) + "  (RELEASE THE CONTROL BEFORE THE NEXT STEP)", 1, 170, 170, 180);
+            } else text(20, 620, "ALL DONE - RESULT SAVED TO LOGS/JOYTEST_GUIDED.JSON - PRESS ESC", 3, 90, 255, 120);
+            int x = 700, y = 604; for (size_t i = 0; i < g_steps.size(); i++) {
+                auto& st = g_steps[i]; std::string t = std::string(st.key) + (st.done ? (st.axis ? " = AXIS " : " = BTN ") + num(st.index) : st.skipped ? " SKIPPED" : "");
+                text(x + (int)(i / 7) * 300, y + (int)(i % 7) * 14, t, 1, st.done ? 120 : 130, st.done ? 255 : 130, st.done ? 140 : 140);
+            }
+        }
         SDL_RenderPresent(g_r);
     }
     writeSummary();
