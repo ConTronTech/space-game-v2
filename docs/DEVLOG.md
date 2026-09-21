@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 9 - 2026-09-21 (DONE, tag `good-20260921-05`): HUD shows the orbit lock
+- **Changed:** `ui/ship_hud` subscribes to `OrbitLockChanged`: persistent "ORBIT LOCKED: <BODY>" status line (also shows above the cockpit screens in minimal mode) and a 2.5 s "ORBIT RELEASED" banner. Pure logic in hud_logic.h, works without ship/orbit_lock.
+- **Verified:** 197 tests under ASan+UBSan, full smoke, headless clean; worker screenshots with a saved game 3000 units from the sun (locked at radius 2999.6, released banner).
+- **Not verified:** a planet target on screen, fade timing visually.
+- **Next:** 3.3 planet meshes with LOD (biggest visual step; budget for the laptop), 3.6 asteroids, 3.7 stations (cube + cylinder), then Phase 4. Laptop benchmark still waits for SSH access.
+
 ## Leap 8 - 2026-09-21 (DONE, tag `good-20260921-04`): Phase 3.5 `ship/orbit_lock`
 - **Changed:** `O` (`toggle_orbit_lock`) locks the ship onto a circular orbit around the body with the nearest surface (within 3 radii, min altitude 20), speed sqrt(mu/r), mu = `orbit.gravity_scale` (60) x radius^2. Position is held analytically each step through `IShip::setVelocity` only (no ship_core change) and follows the moving body. Thrust/strafe/lift/brake (tunable), damage, death, respawn and warp release it. Event `ship::OrbitLockChanged` for the HUD (not shown yet). Not saved. Docs: `docs/ORBIT_LOCK.md`.
 - **Verified:** 193 tests under ASan+UBSan, full smoke (25 modules), headless run clean. Real-game saved scenario 1000 units above Planet 1: locked at radius 1410.2, circular speed 84.2 m/s, radius drift ~0.001 over 13 s while the planet moved 160 units; released by toggle; lock refused at spawn (sun too far).
