@@ -86,3 +86,6 @@ Uses `combat::ICombat` (per-use get) and the events `combat::Overheated`, `comba
 ## HUD cost notes (laptop pass)
 Text is cached or throttled and per-frame allocations were removed: the speed text refreshes 10x a second (a live number otherwise creates a new text texture every frame), the hint text/fit is computed once per window size, the orbit/dock lines are built once per event, cargo text once per change, ore names once per ore id, weapon labels once.
 The remaining cost is dominated by `UIHandler::glass()` (5 shadow layers + fill + border per panel); the HUD keeps the number of panels low (cargo shares the weapon panel). Measure with `--profile --benchmark=8 --no-vsync`, row `core/ui_handler:ui`.
+
+## Orbit guide block
+While the orbit guide is active (`ship/orbit_lock`, docs/ORBIT_LOCK.md) a two-line status block shows at the **top right**: "ORBIT PLANET 1  alt 1.0K  need 84 m/s" and "SPEED +12  HEADING 4 deg  [ALIGNED - press O]" (green) or the refusal reason in amber. It is drawn by `ship/orbit_lock` itself as a `core::UIHandler` panel (`ship/orbit_guide`, order 12), so it works in cockpit and chase view and this module is unchanged; the top-centre banner stack stays free.
