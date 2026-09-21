@@ -17,7 +17,11 @@ only after the full check passes, so it should always run.
 ## Leap 4 - 2026-09-20 (IN PROGRESS): Phase 3.1 starfield + skybox for the low-end laptop
 - **Plan:** `world/starfield` (moved out of ship_core, with warp streaks) and `world/skybox` (faces downscaled to `skybox.max_size` 1024, loaded one at a time, downscale cache in `cache/skybox/`).
   Spec: `docs/agent_specs/phase3_wave1/w6_starfield_skybox.txt`. Worker: the ship-core/warp worker (dispatch `ctx_ea162b7dcbab`). Reports skybox on/off benchmark difference.
-- **State:** running. Last green tag: `good-20260920-04` (Phase 2 complete).
+- **State (updated on a wake-up):** starfield + skybox are MERGED into main (170 tests under sanitizers; code reviewed; big-face path verified: a 4096 px / 7.9 MB face set loads in 3.0 s cold, 0.27 s from cache, 18 MB of textures).
+  **Known visual bug, fix in flight:** the skybox top/bottom faces are vertically inverted vs the old-game convention (default set dark/set1 pole seams: top 3.57, bottom 2.78 where 1.0 = seamless;
+  every set with a skybox.json gets worse with its flip_v). Measured with the new `package/tools/skybox_seams.py`. FIX LIST #1 (implicit flipV on top/bottom + tests + verify with the tool) is with the worker
+  (dispatch `ctx_a7063b093deb`). Side seams are fine. Full smoke on merged main is running; tag `good-20260920-05` follows it, then the fix merge gets its own tag.
+  Note for the laptop: a cold first launch with a large skybox set decodes big PNGs once (3 s here, several times slower on the laptop); the default set is 1024 px and needs no downscale.
 
 ## Leap 3 - 2026-09-20: hardware log + `--benchmark` (built while Wave 2 runs)
 - **Changed:** startup log of GL version/vendor/renderer/max texture, display driver, CPU threads and RAM (`core/window`); `--no-vsync`; new inert-unless-flagged
