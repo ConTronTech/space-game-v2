@@ -53,3 +53,8 @@ clean:
 
 -include $(OBJS:.o=.d)
 -include $(TEST_OBJS:.o=.d)   # header changes must rebuild test objects too (a stale layout = silent UB)
+
+# Standalone visual joystick / wheel / pedal tester (SDL2 only): `make joytest`, run `build/joytest` (see docs/CONTROLLERS.md)
+joytest: package/tools/joytest/joytest.cpp
+	$(CXX) -std=c++23 -O2 -Wall -Wextra -o $(BUILD)/joytest $< -lSDL2
+.PHONY: joytest
