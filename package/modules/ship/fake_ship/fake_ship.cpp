@@ -12,6 +12,8 @@
 class FakeShip : public engine::Module, public ship::IShip {
 public:
     const char* name() const override { return "ship/fake_ship"; }
+    // Init AFTER the real ship so that, when --fake-ship is given, our provide<IShip> overwrites ship_core's (and only then).
+    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core"}; }
 
     bool init(engine::Engine& eng) override {
         std::string spec = eng.flagValue("fake-ship");
@@ -37,7 +39,10 @@ public:
         LOG_I("fake_ship", "active: hp %.0f shield %.0f%s fuel %.0f%s", st_.hp, st_.shield, st_.shieldInstalled ? "" : " (none)", st_.warpFuel, st_.alive ? "" : " DEAD");
         return true;
     }
-    void shutdown(engine::Engine& eng) override { if (active_) eng.services.withdraw<ship::IShip>(); }
+    void shutdown(engine::Engine& eng) override {
+        // withdraw only if we are still the provider (ship_core withdraws its own entry in its shutdown; erasing twice is harmless)
+        if (active_ && eng.services.get<ship::IShip>() == static_cast<ship::IShip*>(this)) eng.services.withdraw<ship::IShip>();
+    }
 
     void onUpdate(engine::Engine& eng, float) override {
         if (!active_ || announced_) return;
