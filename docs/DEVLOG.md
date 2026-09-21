@@ -14,6 +14,15 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 2 - 2026-09-20 (IN PROGRESS): Phase 2 Wave 2 - warp drive + respawn
+- **Plan:** `ship/warp_drive` (2.2) by the ship-core worker; `ship/respawn` (2.4) + HUD "RESPAWNING IN N" by the HUD worker. Specs: `docs/agent_specs/phase2_wave2/`.
+  Contract additions already on main: `IShip::setWarping` (non-pure), `ship::IRespawn`, input action `toggle_warp` (Z).
+- **Design decisions to review when the user is back:** leaving warp cuts speed to `warp.exit_speed` (default 200 m/s, like the old game; 0 = keep momentum, pure Newtonian);
+  warp key is Z (rebind in `config/input/default.json`); respawn takes `respawn.seconds` (default 3) and can be disabled with `respawn.enabled=false`.
+- **State:** workers running; nothing merged yet. Last green tag: `good-20260920-01` (+ contract commit `527d965`, smoke pending).
+- **Next after this leap:** Phase 3.1 starfield + skybox out of `ship_core` (a world module), then a small benchmark scene + frame-time log (see docs/VISION.md performance target),
+  then Phase 3.2 star system. Qwen can take small doc/data/test jobs (max 2 at once).
+
 ## Leap 1 - 2026-09-20: Phase 2 Wave 1 merged, cockpit + HUD-on-the-ship is the default
 - **Changed:** `ship/ship_core` (real ship: HP, regen, shield, fuel storage, collision damage, death, `IShip`), `ui/ship_hud` (glass HUD; steps back in
   cockpit view; IMPACT shows shield-inclusive total; hint fades), `ship/cockpit` (ShipV2 interior, generic `@GROUP-NAME` materials extracted as tagged quads,
