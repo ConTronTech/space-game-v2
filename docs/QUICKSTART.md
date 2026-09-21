@@ -39,6 +39,7 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | yaw | mouse x-axis, Left / Right |
 | pitch | mouse y-axis, Down / Up |
 | brake | X or right mouse button |
+| toggle_warp | Z (engage/disengage warp drive) |
 | camera_next | V (cockpit <-> chase view) |
 | mouse_capture_toggle | Tab (free/capture cursor) |
 | pause | Escape |
@@ -46,6 +47,7 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | ui_down | Down or S |
 | ui_left | Left or A |
 | ui_right | Right or D |
+| ui_confirm | Return / Space |
 
 Esc opens the pause menu (Resume, Save Game, Load Game, Settings, Exit Game).
 
@@ -63,6 +65,10 @@ Esc opens the pause menu (Resume, Save Game, Load Game, Settings, Exit Game).
 ./space_game_v2 --saves=<dir>          # save to another directory
 ./space_game_v2 --data=<dir>           # load content from another directory
 ./space_game_v2 --list-modules           # print loaded modules and exit
+./space_game_v2 --benchmark=20           # run the scene for 20 s (2 s warm-up), print frame-time stats, quit
+./space_game_v2 --no-vsync               # don't cap frames at the display rate (measure real headroom with --benchmark)
+./space_game_v2 --fake-ship=hp:35,shield:120,fuel:10  # stand-in ship for testing consumers without ship_core
+./space_game_v2 --ui-click=640,388,10    # press the left button at pixel (X,Y) on frame 10 only
 ```
 
 `--disable` takes module names like `ship/cockpit,core/ui_handler`.
