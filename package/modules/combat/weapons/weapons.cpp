@@ -65,10 +65,18 @@ public:
         lockParams_.coneDeg = std::clamp(c.get("combat.lock_cone_deg", 12.0f, "lock-on cone half angle around the nose, degrees; acquiring must stay inside it"), 0.5f, 90.0f);
         lockParams_.keepConeDeg = std::max(lockParams_.coneDeg, (double)c.get("combat.lock_keep_cone_deg", 30.0f, "a finished lock is dropped when the target leaves this wider cone, degrees"));
         lockParams_.lockTime = std::max(0.0f, c.get("combat.lock_time", 1.0f, "seconds the target must stay in the cone to lock"));
+        autoParams_.enabled = c.get("combat.auto_lock", true, "missiles pick the nearest rock ahead by themselves while weapon 3 is selected (false = manual T only)");
+        autoParams_.hz = std::clamp(c.get("combat.auto_lock_hz", 4.0f, "auto-lock scans per second (only while no lock is held)"), 0.1f, 60.0f);
+        autoParams_.coneDeg = std::clamp(c.get("combat.auto_lock_cone_deg", 80.0f, "auto-lock cone half angle around the nose, degrees (wide: missiles turn); the auto lock is kept inside it"), 1.0f, 179.0f);
+        lockParams_.autoConeDeg = autoParams_.coneDeg;
+        autoParams_.pause = std::max(0.0f, c.get("combat.auto_lock_pause", 3.0f, "seconds without auto-lock after a manual clear (Y)"));
+        autoParams_.instant = c.get("combat.auto_lock_instant", false, "a launch without a lock locks the nearest rock at once (skips the acquisition time)");
         std::string gm = eng.flagValue("give-missiles");
         if (!gm.empty()) { missiles_ = std::clamp(std::atoi(gm.c_str()), 0, maxMissiles_); LOG_W("combat", "--give-missiles: %d missiles in the rack (test flag)", missiles_); }
         std::string al = eng.flagValue("auto-lock");
         autoLock_ = al.empty() ? -1 : std::atol(al.c_str());
+        std::string alc = eng.flagValue("auto-lock-clear");
+        autoLockClear_ = alc.empty() ? -1 : std::atol(alc.c_str());
         mpool_.init(mcap);
         lockCands_.reserve(256); ranked_.reserve(256);
         lines_.assign((size_t)(cap + mcap + 16) * 2 * 3, 0); lineCol_.assign((size_t)(cap + mcap + 16) * 2 * 4, 0);
@@ -237,6 +245,21 @@ private:
         }
     }
 
+    // Auto-lock: the nearest alive rock of the cache inside the wide cone (no extra query: near_ is refreshed at cacheHz_).
+    bool autoPick(world::IAsteroids& ast, const combat::Vec3d& pos, const combat::Vec3d& fwd, bool instant) {
+        lockCands_.clear();
+        for (auto& a : near_) if (ast.alive(a.id)) lockCands_.push_back({a.id, a.pos, a.radius});
+        int k = combat::nearestInCone(pos, fwd, lockCands_, lockParams_.range, autoParams_.coneDeg);
+        if (k < 0) return false;
+        combat::startAutoLock(lock_, lockCands_[k].id, instant);
+        double d = combat::length(combat::sub(lockCands_[k].pos, pos));
+        combat::Vec3d r0 = combat::sub(lockCands_[0].pos, pos);                 // the cache is nearest first: the nearest rock in any direction
+        LOG_I("combat", "auto-lock: %s nearest asteroid %d at %.0f units, %.1f deg (%zu rocks nearby; nearest overall %d at %.0f units, %.0f deg)",
+              instant ? "LOCKED" : "acquiring", lockCands_[k].id, d, combat::angleDeg(fwd, combat::sub(lockCands_[k].pos, pos)), lockCands_.size(),
+              lockCands_[0].id, combat::length(r0), combat::angleDeg(fwd, r0));
+        return true;
+    }
+
     void fireBlaster(engine::Engine& eng, ship::IShip& ship, const combat::WeaponDef& w, combat::HeatState& hs, const combat::Vec3d& pos, const combat::Vec3d& fwd,
                      const combat::Vec3d& up, const combat::Vec3d& sv) {
         bool tipped = false;
@@ -338,14 +361,18 @@ private:
     void updateLockOn(engine::Engine& eng, const combat::Vec3d& pos, const combat::Vec3d& fwd, float dt, long frame) {
         auto* ast = eng.services.get<world::IAsteroids>();
         if (autoLock_ >= 0 && frame == autoLock_) { lockPress_ = true; LOG_W("combat", "--auto-lock: lock pressed at frame %ld (test flag)", frame); }
-        if (lockClear_ && lock_.state != combat::LockState::Idle) { LOG_I("combat", "lock cleared"); combat::clearLock(lock_); }
+        if (autoLockClear_ >= 0 && frame == autoLockClear_) { lockClear_ = true; LOG_W("combat", "--auto-lock-clear: lock clear pressed at frame %ld (test flag)", frame); }
+        if (lockClear_) {
+            if (lock_.state != combat::LockState::Idle) { LOG_I("combat", "lock cleared"); combat::clearLock(lock_); }
+            if (autoParams_.enabled) { combat::autoLockManualClear(auto_, autoParams_); LOG_I("combat", "auto-lock paused %.1f s (manual clear)", autoParams_.pause); }
+        }
         if (lockPress_ && ast) {
             lockCands_.clear();
             for (auto& a : near_) if (ast->alive(a.id)) lockCands_.push_back({a.id, a.pos, a.radius});
             combat::rankCandidates(pos, fwd, lockCands_, lockParams_, ranked_);
             int before = lock_.target;
             int t = combat::pressLock(lock_, lockCands_, ranked_);
-            if (t < 0 && before >= 0) LOG_I("combat", "lock cleared (T on the same target)");
+            if (t < 0 && before >= 0) { LOG_I("combat", "lock cleared (T on the same target)"); if (autoParams_.enabled) combat::autoLockManualClear(auto_, autoParams_); }
             else if (t < 0) {
                 LOG_I("combat", "lock: no target inside the %.0f deg cone within %.0f units (%zu rocks nearby)", lockParams_.coneDeg, lockParams_.range, lockCands_.size());
                 int shown = 0;
@@ -365,6 +392,8 @@ private:
             else if (t != before) LOG_I("combat", "lock: acquiring asteroid %d (%d candidates in the cone)", t, (int)ranked_.size());
         }
         lockPress_ = lockClear_ = false;
+        bool missileSel = weapons_[sel_].kind == combat::Kind::Missile;
+        if (ast && combat::autoLockDue(auto_, autoParams_, dt, missileSel, lock_.state)) autoPick(*ast, pos, fwd, false);
         combat::LockState was = lock_.state;
         bool alive = ast && lock_.target >= 0 && ast->alive(lock_.target);
         combat::Vec3d tp{};
@@ -380,6 +409,7 @@ private:
             }
         } else { lockName_.clear(); lockNameId_ = -1; lockDist_ = lockAngle_ = 0; }
         if (lock_.state != was) {
+            if (lock_.state == combat::LockState::Lost && lock_.autoPicked) LOG_I("combat", "auto-lock lost %s: %s", lockName_.c_str(), lock_.why);
             if (lock_.state == combat::LockState::Lost) LOG_I("combat", "lock lost: %s (%s, %.0f units, %.1f deg)", lock_.why, lockName_.c_str(), lockDist_, lockAngle_);
             else if (lock_.state == combat::LockState::Locked) LOG_I("combat", "LOCKED %s at %.0f units, %.1f deg off the nose", lockName_.c_str(), lockDist_, lockAngle_);
             else LOG_D("combat", "lock %s", combat::lockStateName(lock_.state));
@@ -407,6 +437,12 @@ private:
         combat::takeMissile(missiles_);
         combat::Vec3d muzzle = combat::muzzlePosition(pos, fwd, up, w.muzzle);
         combat::MissileState m = combat::launchMissile(muzzle, sv, fwd, w.missile);
+        if (lock_.state != combat::LockState::Locked && lock_.state != combat::LockState::Acquiring && autoParams_.enabled && auto_.pause <= 0)
+            if (auto* ast = eng.services.get<world::IAsteroids>()) autoPick(*ast, pos, fwd, autoParams_.instant);   // fire without a lock: pick now
+        if (autoParams_.instant && lock_.state == combat::LockState::Acquiring) { lock_.state = combat::LockState::Locked; lock_.timer = 0; }
+        if (lock_.state == combat::LockState::Locked && lock_.target >= 0 && lockNameId_ != lock_.target) {
+            if (auto* ast = eng.services.get<world::IAsteroids>()) { char b[96]; std::snprintf(b, sizeof b, "asteroid %d (%s)", lock_.target, ast->ore(lock_.target).c_str()); lockName_ = b; lockNameId_ = lock_.target; }
+        }
         int tgt = lock_.state == combat::LockState::Locked ? lock_.target : -1;
         mpool_.spawn(m, tgt, 0);
         LOG_I("combat", "missile launched %s (rack %d / %d, %d in flight)", tgt >= 0 ? ("at " + lockName_).c_str() : "unguided (no lock)", missiles_, maxMissiles_, mpool_.n);
@@ -597,7 +633,7 @@ private:
     core::ISaveSystem* saves_ = nullptr;
     // missiles and lock-on
     int missiles_ = 0, maxMissiles_ = 12, lockNameId_ = -1;
-    long autoLock_ = -1;
+    long autoLock_ = -1, autoLockClear_ = -1;
     bool lockPress_ = false, lockClear_ = false, noAmmoLogged_ = false;
     float lockDist_ = 0, lockAngle_ = 0, lockRadius_ = 0;
     double lastLockLog_ = -10, lastMissileLog_ = -10;
@@ -606,6 +642,8 @@ private:
     combat::MissilePool mpool_;
     combat::Lock lock_;
     combat::LockParams lockParams_;
+    combat::AutoLockParams autoParams_;
+    combat::AutoLock auto_;
     std::vector<combat::LockCandidate> lockCands_;
     std::vector<int> ranked_, blastScratch_;
     core::RenderEngine* render_ = nullptr;

@@ -106,6 +106,60 @@ TEST(missile_lock_loss_conditions) {
     CHECK(a.state == combat::LockState::Idle && a.target == -1);
 }
 
+TEST(missile_autolock_nearest_in_cone) {
+    std::vector<combat::LockCandidate> c = {
+        {10, {0, 0, 200}, 5},                                        // nearer, but BEHIND the ship: excluded
+        {11, {0, 0, -3000}, 5},                                      // ahead, out of range: excluded
+        {12, {std::tan(60 * combat::kPi / 180) * 400, 0, -400}, 5},  // 60 deg off, 800 units: inside the 80 deg cone
+        {13, {0, 0, -900}, 5},                                       // dead ahead, 900 units
+        {14, {std::tan(85 * combat::kPi / 180) * 50, 0, -50}, 5},    // 85 deg off: outside the cone
+    };
+    int k = combat::nearestInCone({0, 0, 0}, {0, 0, -1}, c, 2500, 80);
+    CHECK(k >= 0); CHECK_EQ(c[k].id, 12);
+    CHECK(near(dist(c[k].pos, {0, 0, 0}), 800, 1e-6));
+    // ties go to the lower id
+    std::vector<combat::LockCandidate> t = {{7, {0, 0, -500}, 5}, {3, {500, 0, -0.0000001}, 5}, {5, {0, 500, 0}, 5}};
+    k = combat::nearestInCone({0, 0, 0}, {0, 0, -1}, t, 2500, 90);
+    CHECK_EQ(t[k].id, 3);
+    // nothing ahead
+    std::vector<combat::LockCandidate> b = {{1, {0, 0, 100}, 5}};
+    CHECK_EQ(combat::nearestInCone({0, 0, 0}, {0, 0, -1}, b, 2500, 80), -1);
+}
+
+TEST(missile_autolock_hysteresis_pause_rate_disabled) {
+    combat::AutoLockParams p;                                        // 4 Hz, 3 s pause
+    combat::AutoLock a;
+    const float dt = 1.0f / 60.0f;
+    // rate limiter: 4 scans in one second of idle
+    int scans = 0;
+    for (int i = 0; i < 60; i++) scans += combat::autoLockDue(a, p, dt, true, combat::LockState::Idle);
+    CHECK(scans >= 4 && scans <= 5);
+    // not with another weapon, and never while a lock is held (no hopping)
+    a = {}; CHECK(!combat::autoLockDue(a, p, dt, false, combat::LockState::Idle));
+    a = {}; CHECK(!combat::autoLockDue(a, p, dt, true, combat::LockState::Locked));
+    a = {}; CHECK(!combat::autoLockDue(a, p, dt, true, combat::LockState::Acquiring));
+    a = {}; CHECK(combat::autoLockDue(a, p, dt, true, combat::LockState::Lost));
+    // disabled = the old manual behaviour
+    combat::AutoLockParams off; off.enabled = false; a = {};
+    for (int i = 0; i < 120; i++) CHECK(!combat::autoLockDue(a, off, dt, true, combat::LockState::Idle));
+    // manual clear pauses for 3 s
+    a = {}; combat::autoLockManualClear(a, p);
+    int first = -1;
+    for (int i = 0; i < 300 && first < 0; i++) if (combat::autoLockDue(a, p, dt, true, combat::LockState::Idle)) first = i;
+    CHECK(near(first * dt, 3.0, 2 * dt));
+    // hysteresis in the state machine: an auto lock is kept at 70 deg (inside the 80 deg cone), a nearer rock does not matter; 85 deg loses it
+    combat::LockParams lp;
+    combat::Lock l; combat::startAutoLock(l, 12, false);
+    CHECK(l.state == combat::LockState::Acquiring && l.autoPicked);
+    Vec3d at70{std::tan(70 * combat::kPi / 180) * 300, 0, -300};
+    for (int i = 0; i < 70; i++) combat::updateLock(l, lp, dt, {0, 0, 0}, {0, 0, -1}, true, at70);
+    CHECK(l.state == combat::LockState::Locked && l.target == 12);
+    combat::updateLock(l, lp, dt, {0, 0, 0}, {0, 0, -1}, true, {std::tan(85 * combat::kPi / 180) * 300, 0, -300});
+    CHECK(l.state == combat::LockState::Lost);
+    combat::Lock i2; combat::startAutoLock(i2, 4, true);
+    CHECK(i2.state == combat::LockState::Locked);
+}
+
 TEST(missile_pn_hits_stationary_target_from_offset) {
     combat::MissileParams p;
     // launched straight ahead from a ship drifting sideways at 30 m/s; the rock is 800 ahead and 150 to the side

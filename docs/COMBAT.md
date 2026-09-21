@@ -9,8 +9,8 @@ Code: `package/modules/combat/weapons/` (`weapons_rules.h` and `missile_rules.h`
 |---|---|---|
 | `fire` | left mouse button | hold to fire the selected weapon |
 | `weapon_1` / `weapon_2` / `weapon_3` | 1 / 2 / 3 | blaster / mining beam / missiles |
-| `lock_target` | T | lock the best rock in the cone; again = next candidate; on the only candidate = clear |
-| `lock_clear` | Y | drop the lock |
+| `lock_target` | T | lock the best rock in the cone; again = next candidate; on the only candidate = clear (optional: auto-lock picks by itself) |
+| `lock_clear` | Y | drop the lock (and pause auto-lock for `combat.auto_lock_pause` s) |
 | `weapon_next` | mouse wheel | cycle weapons |
 
 Firing is ignored while paused, dead, warping, **docked**, and while the mouse is **not captured** (Tab = free mouse: menu clicks must not shoot). `core::IInput` does not expose the capture state, so the module uses the condition mouse look uses (`SDL_GetRelativeMouseMode()`).
@@ -44,6 +44,7 @@ Pool: struct of arrays (`MissilePool`, double position/velocity), no allocation 
 Candidates: alive asteroids of the nearby list (see the cache below) within `combat.lock_range` (2500) and inside the `combat.lock_cone_deg` (12 deg) cone around the nose, ranked by angle (half a degree counts as equal), then distance. Stations are not lockable.
 State machine (pure, `updateLock`): **idle -> acquiring** (T) **-> locked** after `combat.lock_time` (1.0 s) inside the cone **-> lost** when the target is destroyed, out of range, or leaves the cone (the narrow cone while acquiring, the wider `combat.lock_keep_cone_deg` 30 deg once locked); lost shows for 1 s, then idle.
 T with a target cycles to the next candidate (acquiring again); T when the current target is the only candidate clears; Y clears.
+**Auto-lock** (`combat.auto_lock`, default on; wheels and pads have no spare buttons): while weapon 3 is selected and no lock is held (idle or lost), a scan runs `combat.auto_lock_hz` (4) times a second over the nearby-asteroid cache (no extra query) and starts acquiring the NEAREST alive rock within `lock_range` inside `combat.auto_lock_cone_deg` (80 deg half angle: wide, missiles turn). Rocks behind the ship, stations, planets and the sun are never picked. The normal acquisition time applies (blinking bracket, then solid). Hysteresis: an auto-picked lock is acquired and kept inside the wide cone and is only replaced after it is lost (destroyed, out of range, beyond the wide cone); it never hops to a nearer rock. T still cycles the narrow-cone candidates (a T pick is a normal manual lock); Y, or T on the only target, clears and suspends auto-lock for `combat.auto_lock_pause` (3 s). Firing a missile without any lock picks the nearest at once: it starts acquiring (the missile flies unguided, as before) unless `combat.auto_lock_instant` is true, then the pick (or a lock still acquiring) locks immediately and the missile is guided. Log: `auto-lock: acquiring nearest asteroid N at D units, A deg (... nearest overall ...)`, `auto-lock lost ...`, `auto-lock paused 3.0 s (manual clear)`. Pure logic: `nearestInCone`, `autoLockDue`, `autoLockManualClear`, `startAutoLock` in missile_rules.h.
 **Marker:** a diamond around the target (at least 1.6 x its radius, and never smaller than ~2.5 % of its distance), camera-relative lines in the weapons pass' line batch: amber and blinking while acquiring, solid red with four inner ticks when locked. No extra draw call, no full-screen layer.
 
 ## Heat, rate of fire, recoil
@@ -86,9 +87,10 @@ Asteroid health, `IAsteroids::damage/alive` and `AsteroidDestroyed`: docs/WORLD.
 | `combat.max_missiles_alive` | 8 (Low 4, Ultra 12) | **0 = missiles cannot be launched** |
 | `combat.max_missiles` / `start_missiles` | 12 / 0 | rack size / missiles at a new game |
 | `combat.lock_range` / `lock_cone_deg` / `lock_keep_cone_deg` / `lock_time` | 2500 / 12 / 30 / 1.0 | lock-on |
+| `combat.auto_lock` / `auto_lock_hz` / `auto_lock_cone_deg` / `auto_lock_pause` / `auto_lock_instant` | true / 4 / 80 / 3 / false | auto-lock (nearest rock ahead) |
 | `asteroids.hp_scale` | 1.25 | asteroid hit points per radius^2 |
 
-Dev flags: `--auto-fire=FRAME[,FRAMES]` holds the trigger for FRAMES engine frames from FRAME (works without a mouse and ignores the capture check, not the paused / dead / warping / docked checks); `--auto-weapon=N` starts with weapon N selected (1 = blaster, 2 = beam, 3 = missiles); `--give-missiles=N` fills the rack; `--auto-lock=FRAME` presses T at that frame.
+Dev flags: `--auto-fire=FRAME[,FRAMES]` holds the trigger for FRAMES engine frames from FRAME (works without a mouse and ignores the capture check, not the paused / dead / warping / docked checks); `--auto-weapon=N` starts with weapon N selected (1 = blaster, 2 = beam, 3 = missiles); `--give-missiles=N` fills the rack; `--auto-lock=FRAME` presses T at that frame; `--auto-lock-clear=FRAME` presses Y at that frame.
 Scripted missile scenario (a saved game with a rock ahead; load it with `--paused=load --ui-click=400,297,20` at 800x600):
 `--give-missiles=3 --auto-weapon=3 --auto-lock=80 --auto-fire=220,1`. At debug level every missile logs position / speed / fuel / life / target distance twice a second, acquiring logs distance / angle / timer, and a T press that finds nothing logs the big rocks nearby and the nearest rock (where to point a test ship).
 At debug log level the module prints heat, live bolts, ship speed and CPU per step once a second while firing, every hit, and `fire ignored: docked` for scripted fire.
@@ -97,6 +99,11 @@ At debug log level the module prints heat, live bolts, ship speed and CPU per st
 Pure geometry, measured on the dev machine (`test_weapons`): 100 live bolts against 256 nearby asteroids = **0.05 ms per fixed step** (about 3 ms per second); in the game a step with a handful of bolts costs about 0.01 ms.
 Drawing is one line call and one quad call, no texture, no full-screen layer.
 Missiles (measured in the game, desktop): a step with 8-9 missiles in flight costs **0.024-0.027 ms** (0.012 ms with none); PN guidance alone for 8 missiles is 0.0006 ms (`test_missiles`). An explosion runs one `IAsteroids::nearest(32)` (O(count), once per explosion).
+
+### Verified (4.2d auto-lock, saved-game scenario, no --auto-lock)
+- `--give-missiles=3 --auto-weapon=3 --auto-fire=260,1`: 0.03 s after load `auto-lock: acquiring nearest asteroid 4146 at 649 units, 73.0 deg`, LOCKED after 1.0 s, missile launched at it, target destroyed (347 damage); meanwhile the lock left the 80 deg cone and auto-lock re-acquired the next nearest (4092) with no hopping in between.
+- `--auto-lock-clear=150`: "lock cleared", "auto-lock paused 3.0 s", next pick 3.0 s later. `combat.auto_lock: false`: no pick, the missile flew unguided (old manual behaviour).
+- "Behind the ship" is covered by the unit tests (in that save the nearest rock overall was also in the cone).
 
 ### Verified (4.2b, saved-game scenarios)
 - Locked a radius-9.6 gold rock 858 units ahead in 1.0 s (angle 1.0 -> 1.9 deg while the ship drifted at 20 m/s), missile launched, speed 57 -> 292 m/s over 4 s while fuel went 8.0 -> 4.0, proximity fuse at 8 units: 347 damage, `asteroid 4092 destroyed`, lock lost "target destroyed", then idle.

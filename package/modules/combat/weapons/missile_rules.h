@@ -44,6 +44,7 @@ struct LockParams {
     double keepConeDeg = 30.0;      // a finished lock is dropped only when the target leaves this wider cone
     float lockTime = 1.0f;          // seconds inside the cone to go from acquiring to locked
     float lostShow = 1.0f;          // seconds the "lost" state is shown before it goes back to idle
+    double autoConeDeg = 80.0;      // an auto-picked target is acquired and kept inside this (wide) cone: missiles turn
 };
 
 struct LockCandidate { int id = -1; Vec3d pos; double radius = 0; };
@@ -53,6 +54,7 @@ struct Lock {
     int target = -1;                // asteroid id
     float timer = 0;                // acquiring: time in the cone; lost: time since lost
     const char* why = "";           // the last loss reason ("target destroyed", "out of range", "left the cone")
+    bool autoPicked = false;        // chosen by auto-lock: acquire / keep inside LockParams::autoConeDeg
 };
 
 // Candidates inside the cone and range, best first (smallest angle, then nearest). `out` holds indices into `c`. No allocation if `out` has room.
@@ -86,7 +88,7 @@ inline int pressLock(Lock& l, const std::vector<LockCandidate>& c, const std::ve
         if (at >= 0) pick = c[ranked[(at + 1) % ranked.size()]].id;
         if (pick == l.target) { l = Lock{}; return -1; }             // second press on the same (only) target: clear
     }
-    l.state = LockState::Acquiring; l.target = pick; l.timer = 0; l.why = "";
+    l.state = LockState::Acquiring; l.target = pick; l.timer = 0; l.why = ""; l.autoPicked = false;
     return pick;
 }
 
@@ -107,6 +109,11 @@ inline void updateLock(Lock& l, const LockParams& p, float dt, const Vec3d& ship
         Vec3d r = sub(targetPos, shipPos);
         if (length(r) > p.range) return lose("out of range");
         double a = angleDeg(fwd, r);
+        if (l.autoPicked) {
+            if (a > std::max(p.autoConeDeg, p.keepConeDeg)) return lose("left the cone");
+            if (l.state == LockState::Acquiring) { l.timer += dt; if (l.timer >= p.lockTime) { l.state = LockState::Locked; l.timer = 0; } }
+            return;
+        }
         if (l.state == LockState::Acquiring) {
             if (a > p.coneDeg) return lose("left the cone");
             l.timer += dt;
@@ -115,6 +122,50 @@ inline void updateLock(Lock& l, const LockParams& p, float dt, const Vec3d& ship
         return;
     }
     }
+}
+
+// ---- auto-lock ----
+// While the missile weapon is selected the lock picks the NEAREST alive rock ahead by itself (wheels and pads have no spare buttons).
+// Hysteresis: a scan runs only without a lock (idle / lost); an acquiring or locked target is kept until updateLock loses it.
+struct AutoLockParams {
+    bool enabled = true;            // combat.auto_lock
+    float hz = 4.0f;                // combat.auto_lock_hz: scans per second
+    double coneDeg = 80.0;          // combat.auto_lock_cone_deg: half angle around the nose
+    float pause = 3.0f;             // combat.auto_lock_pause: seconds without auto-lock after a manual clear (Y)
+    bool instant = false;           // combat.auto_lock_instant: a launch without a lock locks the nearest at once (skips the acquisition time)
+};
+struct AutoLock { float scanTimer = 0; float pause = 0; };
+
+// Nearest candidate inside range and cone (behind the ship never counts). Ties (within 1e-6 units) go to the lower id. Returns an index into c, -1 = none.
+inline int nearestInCone(const Vec3d& shipPos, const Vec3d& fwd, const std::vector<LockCandidate>& c, double range, double coneDeg) {
+    int best = -1; double bd = 0;
+    for (int i = 0; i < (int)c.size(); i++) {
+        Vec3d r = sub(c[i].pos, shipPos);
+        double d = length(r);
+        if (d > range || angleDeg(fwd, r) > coneDeg) continue;
+        if (best < 0 || d < bd - 1e-6 || (std::fabs(d - bd) <= 1e-6 && c[i].id < c[best].id)) { best = i; bd = d; }
+    }
+    return best;
+}
+
+// A manual clear (Y, or T on the only target) suspends auto-lock for p.pause seconds.
+inline void autoLockManualClear(AutoLock& a, const AutoLockParams& p) { a.pause = std::max(0.0f, p.pause); }
+
+// Rate limiter: advances the timers and says whether a scan should run this step (enabled, missile selected, no lock held, not paused, due).
+inline bool autoLockDue(AutoLock& a, const AutoLockParams& p, float dt, bool missileSelected, LockState s) {
+    if (a.pause > 0) a.pause = std::max(0.0f, a.pause - dt);
+    if (a.scanTimer > 0) a.scanTimer -= dt;
+    if (!p.enabled || !missileSelected || a.pause > 0) return false;
+    if (s == LockState::Acquiring || s == LockState::Locked) return false;   // hysteresis: never hop while a lock exists
+    if (a.scanTimer > 0) return false;
+    a.scanTimer = p.hz > 0 ? 1.0f / p.hz : 0.0f;
+    return true;
+}
+
+// Starts acquiring an auto-picked target (instant = locked at once).
+inline void startAutoLock(Lock& l, int id, bool instant) {
+    l = Lock{};
+    l.state = instant ? LockState::Locked : LockState::Acquiring; l.target = id; l.autoPicked = true;
 }
 
 // ---- guidance ----

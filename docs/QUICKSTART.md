@@ -43,7 +43,7 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | toggle_orbit_lock | O (circular orbit around the nearest planet/moon/sun; again to release) |
 | fire | left mouse button (hold: fire the selected weapon; only while the mouse is captured) |
 | weapon_1 / weapon_2 / weapon_3 / weapon_next | 1 (blaster) / 2 (mining beam) / 3 (missiles) / mouse wheel (next weapon) |
-| lock_target / lock_clear | T (lock the rock nearest the nose for missiles; again = next target, or clear on the only one) / Y (drop the lock) |
+| lock_target / lock_clear | T (lock the rock nearest the nose for missiles; again = next target, or clear on the only one) / Y (drop the lock; pauses auto-lock 3 s). With missiles selected the nearest rock ahead is locked automatically (`combat.auto_lock`) |
 | toggle_menu | I (the game menu: CARGO and CRAFTING tabs; I or Esc closes it; the ship keeps flying) |
 | dock | G (dock at / undock from a station: inside its dock zone, slowly; again to undock) |
 | camera_next | V (cockpit <-> chase view) |
