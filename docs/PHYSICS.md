@@ -33,3 +33,7 @@ The flight demo (its rocks are now behind `flight.demo_rocks`, off by default; t
 ## Star system bodies
 `world/star_system` registers the sun, planets and moons as static bodies (kinds `sun`, `planet`, `moon`) and moves them every fixed step with `setBody(id, pos, vel)` (not `teleport`), so a moving static body is swept correctly and `Collided::speed`
 is the closing speed relative to it. The ship bounces using that closing speed, so an orbiting planet that runs into a parked ship knocks it away instead of swallowing it (contacts only fire when they begin). See docs/WORLD.md for the float-precision note at 350,000 units.
+
+## What a contact means for the ship (2.1c)
+Because a Collided fires whenever two bodies START touching, a ship that keeps pushing into a surface re-triggers it every few steps. ship_core therefore treats slow touches (closing speed below `ship.damage_min_speed`, default 3 m/s) as scrapes (pushout, no bounce, no damage, no sound;
+the closing velocity component is removed so the ship slides), applies real impacts as before, and lets each body damage the ship at most once per `ship.contact_cooldown` (0.6 s). Details and numbers: docs/SHIP.md, "Scrapes, resting contact and the contact cooldown".

@@ -123,6 +123,7 @@ inline const std::vector<Entry>& presetTable() {
         {"asteroids.draw_distance",         3500,  6000,   8000,   10000},
         {"asteroids.triangle_budget",       6000,  15000,  30000,  60000},
         {"asteroids.lod_edge_px",           16,    10,     8,      6},
+        {"orbit.guide_segments",            48,    96,     96,     96},      // ring segments of the orbit guide; ticks only at 96+
         {"render.scale",                    1.0,   1.0,    1.0,    1.0},  // 3D world resolution as a fraction of the window (docs/PERFORMANCE.md); laptop A/B: 0.7 was slower than 1.0, 0.5 gained ~5 fps but is blurry, so it stays opt-in
         {"render.clear_color",              0,     1,      1,      1},    // 0 = skip the frame's colour clear (the sky / stretched world overwrites every pixel)
         {"starfield.points",                1,     1,      1,      1},    // 1 = GL_POINTS stars, 0 = small camera-facing quads (points are slow on some old Intel GPUs)
