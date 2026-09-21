@@ -73,3 +73,9 @@ orca-ide orchestration worker-start --run <run> --spec "<task>" --terminal <hand
 - **Main checkout:** unrestricted for the user and the coordinator.
 - The hook stops accidents, not determined bypasses: `git commit --no-verify` skips it. Agent briefs forbid that, and the coordinator checks
   `git log` of each worktree when it settles.
+
+## Worker model and reporting (user decision, 2026-09-21)
+- **Model:** every new sub agent / Orca worker runs **Opus 5 at LOW reasoning effort**: `orca-ide orchestration worker-start --agent claude --model claude-opus-5 --effort low --task <id> --worktree id:<repo>::<path>`.
+  (A fresh terminal in the same worktree; the older retained workers keep their previous model until they finish.)
+- **Report early:** every spec tells the worker to send a short progress message as soon as it has something (after the first working step and after each item), partial results welcome,
+  instead of one big report at the end. The coordinator reads them, so a wrong direction is caught early.
