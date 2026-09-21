@@ -31,6 +31,7 @@
     "brake":  [ { "device": "keyboard", "key": "X" },
                 { "device": "mouse",    "button": "right" } ],
     "toggle_warp": [ { "device": "keyboard", "key": "Z" } ],         // engage / disengage the warp drive
+    "toggle_orbit_lock": [ { "device": "keyboard", "key": "O" } ],    // circular orbit around the nearest planet/moon/sun, again to release
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
     "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
     "pause":  [ { "device": "keyboard", "key": "Escape" } ],
