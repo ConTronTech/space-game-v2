@@ -2,7 +2,9 @@
 // Pure ship rules: no SDL, no GL, no engine. Unit-tested in package/tests/test_ship_rules.cpp.
 // ship_core.cpp owns the state and events; the numbers and formulas live here.
 #include <algorithm>
+#include <array>
 #include <string>
+#include "engine/math.h"
 
 namespace ship::rules {
 
@@ -99,6 +101,8 @@ struct CollisionParams {
     bool sunKills = true;          // false: the sun hurts like a planet (tiered by speed)
     float other = 10.0f;
     float minDamage = 1.0f;
+    float minSpeed = 3.0f;         // ship.damage_min_speed: a hit slower than this (closing speed, m/s) is a scrape: no damage, no sound, no bounce
+    float cooldown = 0.6f;         // ship.contact_cooldown: seconds before the SAME body can damage the ship again
 };
 
 inline float baseDamage(const std::string& kind, float radius, const CollisionParams& p) {
@@ -113,5 +117,45 @@ inline float collisionDamage(const std::string& kind, float otherRadius, float c
     float factor = p.refSpeed > 0.0f ? closingSpeed / p.refSpeed : 0.0f;
     return std::max(p.minDamage, factor * baseDamage(kind, otherRadius, p));
 }
+
+// Damage of a touch: the old formula above the scrape threshold, nothing below it. The sun still kills at any speed.
+inline float contactDamage(const std::string& kind, float otherRadius, float closingSpeed, const CollisionParams& p) {
+    if (kind == "sun" && p.sunKills) return p.sun;
+    if (!(closingSpeed >= p.minSpeed)) return 0.0f;                 // scrape (also NaN)
+    return collisionDamage(kind, otherRadius, closingSpeed, p);
+}
+
+// The ship's velocity after a contact whose surface normal n points from the ship to the other body and whose closing speed (relative to that body) is `closing`:
+//   real impact (closing >= minSpeed): bounce, the closing component is reflected (1 + bounce) times  - exactly the old response
+//   resting / scraping contact:        the closing component is removed after the pushout, the ship slides along the surface and does not jitter back in
+//   separating (closing <= 0):         unchanged
+inline engine::Vec3 velocityAfterContact(const engine::Vec3& vel, const engine::Vec3& n, float closing, float bounce, float minSpeed) {
+    if (!(closing > 0.0f)) return vel;
+    float k = closing >= minSpeed ? (1.0f + bounce) * closing : closing;
+    return vel - n * k;
+}
+
+// "The same body only hurts once per cooldown": a few slots (asteroids, planets, stations touched at the same time), fixed storage, no allocation.
+class ContactCooldown {
+public:
+    void tick(float dt) {
+        for (auto& e : e_) if (e.id >= 0) { e.t -= dt; if (e.t <= 0.0f) e.id = -1; }
+    }
+    bool ready(int bodyId) const {
+        for (const auto& e : e_) if (e.id == bodyId && e.t > 0.0f) return false;
+        return true;
+    }
+    void arm(int bodyId, float seconds) {
+        if (seconds <= 0.0f) return;
+        Entry* slot = nullptr;
+        for (auto& e : e_) if (e.id == bodyId) { slot = &e; break; }
+        if (!slot) for (auto& e : e_) if (e.id < 0) { slot = &e; break; }
+        if (!slot) slot = &*std::min_element(e_.begin(), e_.end(), [](const Entry& a, const Entry& b) { return a.t < b.t; });   // all busy: replace the one about to expire
+        slot->id = bodyId; slot->t = seconds;
+    }
+private:
+    struct Entry { int id = -1; float t = 0; };
+    std::array<Entry, 8> e_{};
+};
 
 } // namespace ship::rules

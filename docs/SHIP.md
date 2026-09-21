@@ -41,7 +41,7 @@ Events (`engine.events`): `DamageTaken{amount (reached the hull), absorbedByShie
 ## Tunables (`config/game.json`)
 `flight.*`: thrust, turn_rate, turn_tau, engine_tau, drift, assist_strength, brake, max_speed, hull_radius, bounce (as before).
 `ship.*`: `max_hp` 100, `max_shield` 200, `max_warp_fuel` 100, `hp_regen` 0.2 (HP/s), `max_hp_cap` 200, `damage_ref_speed` 200 (m/s),
-`damage_asteroid_small` 10, `damage_asteroid_med` 20, `damage_asteroid_big` 35, `damage_planet` 50, `damage_other` 10, `damage_min` 1.
+`damage_asteroid_small` 10, `damage_asteroid_med` 20, `damage_asteroid_big` 35, `damage_planet` 50, `damage_other` 10, `damage_min` 1, **`damage_min_speed` 3, `contact_cooldown` 0.6**.
 
 ## Saved fields
 Save id is still **`gameplay/flight`** (kept from the demo so existing saves load): `pos`, `vel`, `fwd`, `up`, and the stats
@@ -55,3 +55,14 @@ At warp speed (5000 m/s, up to 15,000 with drive upgrades; see docs/WARP.md) the
 ## Chase view
 The V key switches between cockpit view and a rigid chase camera (`core/camera`: same orientation as the ship, offset behind and above in the ship frame, so the sky never changes). In chase view the real ShipV2 model is drawn from outside by `ship/cockpit`
 (docs/COCKPIT.md, "Chase view"); `ship_core` draws its wireframe fighter only when `cockpit::IShipModel` says the real one is not drawn.
+
+## Scrapes, resting contact and the contact cooldown (bug fix 2.1c)
+**The bug:** holding a direction against a surface at low speed drained HP in seconds (rock: dead in ~6 s, about 20 hits per second). Cause: `onCollided` pushes the ship out of the surface and bounces it, but the player keeps thrusting, so the hull re-enters the surface a few steps later;
+the physics world reports a new "start touching" `Collided` for each re-entry, and every event applied `collisionDamage`, which is at least `ship.damage_min` (1 HP) whatever the speed, so ~20 events/s = ~20 HP/s (up to 60 if it re-entered every step).
+**The fix** (pure rules in `ship_rules.h`: `contactDamage`, `velocityAfterContact`, `ContactCooldown`; unit-tested):
+* **Scrape threshold** `ship.damage_min_speed` (default 3 m/s): a touch with a closing speed below it does no damage, plays no impact sound and does not bounce. The pushout stays, so the ship still cannot tunnel.
+* **Resting contact:** after the pushout a scrape only removes the velocity component into the surface (relative to the other body, which may be orbiting): the ship slides along the surface instead of re-entering it every step. A real impact (>= the threshold) bounces exactly as before.
+* **Contact cooldown** `ship.contact_cooldown` (default 0.6 s): the same body (rock, planet, moon, station) can damage the ship only once per cooldown, even at high speed, so a bounce straight back into it cannot chain-hit. The bounce itself still happens.
+* Unchanged: the damage tiers and speed formula above the threshold (a 100 m/s hit on a planet is still 25 HP), the 1 HP minimum for hits above the threshold, the sun (lethal at any speed with `ship.sun_kills`), warp collisions, and docking (a held ship ignores station hits).
+Dev aid: `--hold=thrust:1[,strafe:0.5,lift:-1,pitch,yaw,roll]` holds those axes at a value without a keyboard (saved-game tests); at `engine.log_level: debug` ship_core logs each hit and "contacts in the last second: N hits, X damage, hp" once a second.
+Measured (held thrust into a static rock / a planet surface for 9 s from a saved game): before, HP 86.6 -> 54.7 -> 33.9 -> 13.1 -> destroyed by second 6 (rock; planet similar: 74 -> 55 -> 38 -> 24 -> 12 -> 6); after, one or two real impacts on the way in (13.6 + 4.7 HP on the rock, 19.2 + 6.7 on the planet) and then nothing: the ship slides.

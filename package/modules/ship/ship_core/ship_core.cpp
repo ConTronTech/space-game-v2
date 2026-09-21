@@ -62,8 +62,11 @@ public:
         col_.planet = c.get("ship.damage_planet", 50.0f, "full-speed damage of a hit on a planet or moon");
         col_.other = c.get("ship.damage_other", 10.0f, "full-speed damage of a hit on anything else");
         col_.sunKills = c.get("ship.sun_kills", true, "touching the sun is instant death (false = it only hurts like a planet)");
-        col_.minDamage = c.get("ship.damage_min", 1.0f, "every hit does at least this much (scratch)");
+        col_.minDamage = c.get("ship.damage_min", 1.0f, "every hit that counts does at least this much (scratch)");
+        col_.minSpeed = c.get("ship.damage_min_speed", 3.0f, "closing speed (m/s) below which a touch is a scrape: no damage, no sound, no bounce (you slide along the surface)");
+        col_.cooldown = c.get("ship.contact_cooldown", 0.6f, "seconds before the SAME body (rock, planet, station) can damage the ship again");
 
+        parseHold(eng.flagValue("hold"));   // dev aid: --hold=thrust:1[,strafe:0.5,...] holds those axes at that value (no keyboard needed: saved-game tests of contact damage)
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
         if ((audio_ = eng.services.get<core::IAudio>())) hum_ = audio_->playLoop("engine_loop", 0.0f, core::Bus::Engine);
 
@@ -118,6 +121,7 @@ public:
         // Controls don't snap: each axis eases toward what the player is asking for, so engines
         // spool up/down and the ship keeps turning for a moment after you let go.
         prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; // for render interpolation
+        cooldown_.tick(dt);
         if (held_) {   // docking holds the ship: the holder places it with setPose every step; no input, no integration
             rules::regen(vit_, hpRegen_, dt);
             pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0;
@@ -127,13 +131,18 @@ public:
         const float thrust = thrust_, turn = turnRate_, turnTau = turnTau_, engineTau = engineTau_;
 
         rules::regen(vit_, hpRegen_, dt);   // frozen while paused: fixed updates do not run then
+        if ((secondTimer_ += dt) >= 1.0f) {   // debug aid: how often the ship was hit, and for how much, in the last second
+            secondTimer_ = 0;
+            if (hitsThisSecond_ > 0) LOG_D("ship", "contacts in the last second: %d hits, %.1f damage, hp %.1f/%.0f", hitsThisSecond_, damageThisSecond_, vit_.hp, vit_.maxHp);
+            hitsThisSecond_ = 0; damageThisSecond_ = 0;
+        }
         const bool live = vit_.alive;       // a dead ship ignores the controls and just coasts
-        pitchRate_  = ease(pitchRate_,  live ? input_->value("pitch") : 0.0f,  turnTau, dt);
-        yawRate_    = ease(yawRate_,    live ? input_->value("yaw") : 0.0f,    turnTau, dt);
-        rollRate_   = ease(rollRate_,   live ? input_->value("roll") : 0.0f,   turnTau, dt);
-        thrustOut_  = ease(thrustOut_,  live ? input_->value("thrust") : 0.0f, engineTau, dt);
-        strafeOut_  = ease(strafeOut_,  live ? input_->value("strafe") : 0.0f, engineTau, dt);
-        liftOut_    = ease(liftOut_,    live ? input_->value("lift") : 0.0f,   engineTau, dt);
+        pitchRate_  = ease(pitchRate_,  live ? axis("pitch") : 0.0f,  turnTau, dt);
+        yawRate_    = ease(yawRate_,    live ? axis("yaw") : 0.0f,    turnTau, dt);
+        rollRate_   = ease(rollRate_,   live ? axis("roll") : 0.0f,   turnTau, dt);
+        thrustOut_  = ease(thrustOut_,  live ? axis("thrust") : 0.0f, engineTau, dt);
+        strafeOut_  = ease(strafeOut_,  live ? axis("strafe") : 0.0f, engineTau, dt);
+        liftOut_    = ease(liftOut_,    live ? axis("lift") : 0.0f,   engineTau, dt);
 
         // orientation: rotate the basis around its own axes
         float pitch = pitchRate_ * turn * dt;
@@ -285,16 +294,49 @@ private:
         Vec3 otherPos = shipIsA ? c.posB : c.posA;
         float otherR = shipIsA ? c.radiusB : c.radiusA;
         pos_ = otherPos - n * (hullRadius_ + otherR + 0.02f);
-        // bounce off the CLOSING speed the physics reports (relative to the other body, which may be orbiting), so a planet
-        // sweeping into a parked ship knocks it away instead of swallowing it; for fixed rocks this equals the old dot(vel, n)
-        float into = c.speed;
-        if (into > 0) vel_ -= n * ((1.0f + bounce_) * into);
-        physics_->teleport(shipBody_, pos_);
-        if (audio_ && c.speed > 1.0f) audio_->play("impact", std::clamp(c.speed / 40.0f, 0.25f, 1.0f));
+        // The CLOSING speed the physics reports is relative to the other body (which may be orbiting), so a planet sweeping into a parked ship knocks it
+        // away instead of swallowing it; for fixed rocks this equals the old dot(vel, n).
+        // Real impact (>= ship.damage_min_speed): bounce as before. Resting / scraping contact (holding thrust into a surface): the closing component is
+        // just removed after the pushout, so the ship slides instead of re-entering the surface every step (which used to hit again and again).
         const std::string& kind = shipIsA ? c.kindB : c.kindA;
-        float dmg = rules::collisionDamage(kind, otherR, c.speed, col_);
-        LOG_D("ship", "hit %s (radius %.0f) at %.1f m/s closing: damage %.1f, now moving %.1f m/s", kind.c_str(), otherR, c.speed, dmg, engine::length(vel_));
-        applyDamage(dmg, kind);
+        const bool scrape = !(c.speed >= col_.minSpeed) && !(kind == "sun" && col_.sunKills);
+        vel_ = rules::velocityAfterContact(vel_, n, c.speed, bounce_, col_.minSpeed);
+        physics_->teleport(shipBody_, pos_);
+        if (audio_ && !scrape) audio_->play("impact", std::clamp(c.speed / 40.0f, 0.25f, 1.0f));
+        const int otherId = shipIsA ? c.b : c.a;
+        float dmg = rules::contactDamage(kind, otherR, c.speed, col_);
+        const bool lethal = kind == "sun" && col_.sunKills;
+        if (dmg > 0.0f && !lethal && !cooldown_.ready(otherId)) dmg = 0.0f;         // the same body hurt us a moment ago: bounce, but no second hit
+        LOG_D("ship", "hit %s (radius %.0f) at %.1f m/s closing: %s, damage %.1f, now moving %.1f m/s", kind.c_str(), otherR, c.speed, scrape ? "scrape" : "impact", dmg, engine::length(vel_));
+        if (dmg > 0.0f) {
+            cooldown_.arm(otherId, col_.cooldown);
+            hitsThisSecond_++; damageThisSecond_ += dmg;
+            applyDamage(dmg, kind);
+        }
+    }
+
+    // --hold=name:value,...: an axis held at a value instead of the input's (thrust, strafe, lift, pitch, yaw, roll)
+    void parseHold(const std::string& spec) {
+        size_t pos = 0;
+        while (pos < spec.size()) {
+            size_t comma = spec.find(',', pos);
+            std::string item = spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+            size_t colon = item.find(':');
+            if (colon != std::string::npos) {
+                std::string name = item.substr(0, colon);
+                float v = (float)std::atof(item.c_str() + colon + 1);
+                if (name == "thrust") holdThrust_ = v; else if (name == "strafe") holdStrafe_ = v; else if (name == "lift") holdLift_ = v;
+                else if (name == "pitch") holdPitch_ = v; else if (name == "yaw") holdYaw_ = v; else if (name == "roll") holdRoll_ = v;
+                else LOG_W("ship", "--hold: unknown axis '%s'", name.c_str());
+            }
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+    }
+    float axis(const char* name) const {
+        const std::string n = name;
+        const float held = n == "thrust" ? holdThrust_ : n == "strafe" ? holdStrafe_ : n == "lift" ? holdLift_ : n == "pitch" ? holdPitch_ : n == "yaw" ? holdYaw_ : holdRoll_;
+        return held != kNoHold ? held : input_->value(n);
     }
 
     // mirror the internal vitals + speed into the public status
@@ -370,6 +412,7 @@ private:
     ship::rules::Vitals vit_;
     ship::ShipStatus status_;
     ship::rules::CollisionParams col_;
+    ship::rules::ContactCooldown cooldown_;
     float hpRegen_ = 0.2f, maxHpCap_ = 200.0f;
     Vec3 spawnPos_{0, 0, 0};
     int hum_ = 0;
@@ -388,6 +431,10 @@ private:
     Vec3 prevPos_{0, 0, 0}, prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
     std::vector<Rock> rocks_;
     bool demoRocks_ = false;
+    static constexpr float kNoHold = -99.0f;
+    float holdThrust_ = kNoHold, holdStrafe_ = kNoHold, holdLift_ = kNoHold, holdPitch_ = kNoHold, holdYaw_ = kNoHold, holdRoll_ = kNoHold;
+    int hitsThisSecond_ = 0;
+    float damageThisSecond_ = 0, secondTimer_ = 0;
     bool held_ = false;                                       // setHeld(): placed by the docking module
 };
 
