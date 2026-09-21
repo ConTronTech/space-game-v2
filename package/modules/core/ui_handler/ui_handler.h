@@ -14,6 +14,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "core/ui_handler/tabs_layout.h"
 #include "core/ui_handler/text_cache.h"
 #include "engine/module.h"
 
@@ -81,6 +82,11 @@ public:
     bool toggle(const std::string& label, float x, float y, float w, float h, bool value, bool focused); // returns new value
     float slider(const std::string& label, float x, float y, float w, float h,
                  float value, float lo, float hi, bool focused, const char* fmt = "%.0f");       // returns new value
+
+    // A row of tab buttons (glass, the selected one in the accent colour). Returns the newly selected index (a click on a tab, else `selected`).
+    int tabs(const std::vector<std::string>& labels, int selected, float x, float y, float w, float h);
+    // A list row: label on the left, value on the right, highlighted when selected or hovered; true on click.
+    bool listRow(const std::string& label, const std::string& value, float x, float y, float w, float h, bool selected);
 
     int width() const { return w_; }
     int height() const { return h_; }

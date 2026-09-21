@@ -340,6 +340,28 @@ bool UIHandler::button(const std::string& label, float x, float y, float w, floa
     return hot && clicked_;
 }
 
+int UIHandler::tabs(const std::vector<std::string>& labels, int selected, float x, float y, float w, float h) {
+    int n = (int)labels.size();
+    int result = clampTab(selected, n);
+    for (int i = 0; i < n; i++) {
+        TabRect r = tabRect(i, n, x, w);
+        bool sel = i == result, hot = hovered(r.x, y, r.w, h);
+        glass(r.x, y, r.w, h, sel ? 1.0f : (hot ? 0.9f : 0.6f), sel, 10);
+        textCentered(r.x + r.w / 2, y + (h - kLabelSize * 1.3f) / 2, labels[(size_t)i], kLabelSize, sel || hot ? theme.text : theme.textDim);
+        if (hot && clicked_) selected = i;
+    }
+    return clampTab(selected, n);
+}
+
+bool UIHandler::listRow(const std::string& label, const std::string& value, float x, float y, float w, float h, bool selected) {
+    bool hot = hovered(x, y, w, h);
+    glass(x, y, w, h, hot || selected ? 0.9f : 0.45f, selected, 8);
+    float ty = y + (h - 14 * 1.3f) / 2;
+    text(x + 12, ty, label, 14, hot || selected ? theme.text : theme.textDim);
+    text(x + w - 12 - textWidth(value, 14), ty, value, 14, theme.accent);
+    return hot && clicked_;
+}
+
 bool UIHandler::toggle(const std::string& label, float x, float y, float w, float h, bool value, bool focused) {
     bool hot = hovered(x, y, w, h);
     glass(x, y, w, h, hot || focused ? 1.0f : 0.8f, focused || hot, 10);
