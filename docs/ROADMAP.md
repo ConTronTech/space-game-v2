@@ -60,7 +60,7 @@ Done when: a generated system with planets, belts and stations that you can fly 
 
 ## Phase 4 - Combat and mining
 - [x] **4.1 `fx/particles`**: engine exhaust, hit sparks. Modules emit `SpawnParticles`. *particles.h*
-- [ ] **4.2 `combat/weapons`**: blaster, mining beam, missiles with lock-on. Each weapon is data + a small class, so new weapons are drop-ins. *weapons.h, weapons_update.h*
+- [~] **4.2 `combat/weapons`**: blaster, mining beam, missiles with lock-on. Each weapon is data + a small class, so new weapons are drop-ins. *weapons.h, weapons_update.h*
 - [ ] **4.3 `gameplay/mining`**: destroyed asteroids drop ore to cargo (uses 5.1).
 
 ## Phase 5 - Inventory, crafting, menus
