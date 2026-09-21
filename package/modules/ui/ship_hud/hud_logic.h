@@ -253,8 +253,11 @@ public:
         }
     }
     int pickupCount(double now) const { int n = 0; forEachPickup(now, [&](const std::string&, const RGB&, float) { n++; }); return n; }
-    // gameplay::CargoFull: at most one banner per kCargoFullMinGap seconds
-    void onCargoFull(double now) { if (now - cargoFullAt_ >= kCargoFullMinGap) cargoFullAt_ = now; }
+    // gameplay::CargoFull: "IRON FULL", at most one banner per kCargoFullMinGap seconds for each ore (a different ore is not held back by another's banner)
+    void onCargoFull(const std::string& ore, const std::string& label, double now) {
+        for (auto& f : fullAt_) if (f.ore == ore) { if (now - f.at >= kCargoFullMinGap) { f.at = now; cargoFullAt_ = now; cargoFullLabel_ = label; } return; }
+        fullAt_.push_back({ore, now}); cargoFullAt_ = now; cargoFullLabel_ = label;
+    }
     void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }   // the orbit lock announces its own release
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
@@ -279,7 +282,7 @@ public:
         if (float a = timedAlpha(undockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Undocked, "UNDOCKED", std::min(1.0f, a * 3)});
         if (float a = timedAlpha(overheatedAt_, now, kEventBannerSeconds - 0.5f); a > 0) out.push_back({Warn::WeaponOverheated, upper(overheatedName_) + " OVERHEATED", flash * std::min(1.0f, a * 3)});
         if (float a = timedAlpha(weaponChangedAt_, now, kWeaponBannerSeconds); a > 0) out.push_back({Warn::WeaponChanged, "WEAPON: " + upper(weaponName_), std::min(1.0f, a * 3)});
-        if (float a = timedAlpha(cargoFullAt_, now, kCargoFullSeconds); a > 0) out.push_back({Warn::CargoFull, "CARGO FULL", flash * std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(cargoFullAt_, now, kCargoFullSeconds); a > 0) out.push_back({Warn::CargoFull, cargoFullLabel_.empty() ? std::string("CARGO FULL") : cargoFullLabel_ + " FULL", flash * std::min(1.0f, a * 3)});
         return out;
     }
 
@@ -291,6 +294,9 @@ private:
     }
     double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever, overheatedAt_ = kNever, weaponChangedAt_ = kNever, killAt_ = kNever, cargoFullAt_ = kNever;
     Pickup pickups_[kMaxPickups];
+    struct FullAt { std::string ore; double at; };
+    std::vector<FullAt> fullAt_;                 // per ore: when its FULL banner last showed (a handful of ores: no allocation after the first few)
+    std::string cargoFullLabel_;
     std::string overheatedName_, weaponName_;
     bool docked_ = false;
     std::string orbitText_, dockedText_, empty_;

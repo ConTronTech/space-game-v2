@@ -17,10 +17,11 @@ struct Recipe { std::string id, name, result; std::vector<Ingredient> ingredient
 // ---- crafting ----
 struct Decision { bool ok = false; std::string reason; };
 
-// countOf(id) = how many are in the hold; volumeOf(id) = cargo units per item; freeSpace = free cargo units now.
-// The result's volume must fit after the ingredients leave the hold. `docked` only matters when requireDock is on.
+// countOf(id) = how many are in the hold. Ingredients (ores) come out of their own resource holds; the RESULT needs room only in the GENERAL hold:
+// generalFree = free volume in it now, isGeneral(id) says whether an ingredient lives there too (then its volume is freed for the result),
+// volumeOf(id) = volume per item. `docked` only matters when requireDock is on.
 inline Decision decideCraft(const Recipe& r, const std::function<int(const std::string&)>& countOf, const std::function<float(const std::string&)>& volumeOf,
-                            float freeSpace, float resultVolume, bool requireDock, bool docked) {
+                            float generalFree, float resultVolume, bool requireDock, bool docked, const std::function<bool(const std::string&)>& isGeneral = nullptr) {
     if (requireDock && !docked) return {false, "dock at a station to craft"};
     if (r.ingredients.empty()) return {false, "recipe has no ingredients"};
     for (auto& ing : r.ingredients) {
@@ -28,8 +29,8 @@ inline Decision decideCraft(const Recipe& r, const std::function<int(const std::
         if (ing.need > 0 && missing > 0) return {false, "missing " + std::to_string(missing) + " " + ing.id};
     }
     float freed = 0;
-    for (auto& ing : r.ingredients) freed += (float)std::max(0, ing.need) * volumeOf(ing.id);
-    if (freeSpace + freed + 1e-4f < resultVolume) return {false, "cargo full"};
+    for (auto& ing : r.ingredients) if (isGeneral && isGeneral(ing.id)) freed += (float)std::max(0, ing.need) * volumeOf(ing.id);
+    if (generalFree + freed + 1e-4f < resultVolume) return {false, "general hold full (use or discard an item)"};
     return {true, "ok"};
 }
 

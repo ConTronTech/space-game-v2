@@ -42,3 +42,6 @@ class Inventory : public engine::Module, public core::ISaveable {
 | `gameplay/inventory` | `{"level": n, "stacks": [{"id": "iron", "amount": 50}, ...]}`: the cargo hold in stack order and its capacity level; a missing `stacks` key = an empty hold (docs/INVENTORY.md) |
 
 Known gaps (Phase 4.3 / later): ore chunks in flight and destroyed asteroids are **not** saved (the asteroid field regenerates on load).
+
+## Inventory save version 2
+`gameplay/inventory` writes `{"version":2,"level":n,"stacks":[{id,amount}]}`. A save without `version` (single shared pool) loads per pool: overflow beyond an ore's or the general hold's capacity is clipped with a logged warning per stack; it never crashes.

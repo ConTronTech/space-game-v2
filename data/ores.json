@@ -1,11 +1,11 @@
 {
-  "_comment": "Ore types. color = [r,g,b] 0..1 (asteroid tint); rarity = spawn weight (higher = more common).",
-  "iron":     { "name": "Iron",     "color": [0.40, 0.35, 0.30], "rarity": 40 },
-  "copper":   { "name": "Copper",   "color": [0.65, 0.40, 0.20], "rarity": 25 },
-  "titanium": { "name": "Titanium", "color": [0.70, 0.70, 0.75], "rarity": 15 },
-  "gold":     { "name": "Gold",     "color": [0.80, 0.70, 0.20], "rarity": 8 },
-  "cobalt":   { "name": "Cobalt",   "color": [0.35, 0.40, 0.60], "rarity": 12 },
-  "uranium":  { "name": "Uranium",  "color": [0.30, 0.55, 0.30], "rarity": 5 },
-  "platinum": { "name": "Platinum", "color": [0.80, 0.82, 0.85], "rarity": 3 },
-  "crystal":  { "name": "Crystal",  "color": [0.55, 0.25, 0.65], "rarity": 2 }
+  "_comment": "Ore types. color = [r,g,b] 0..1 (asteroid tint); rarity = spawn weight (higher = more common); cargo_cap = how many units of this ore the hold takes at upgrade level 0 (missing = 20).",
+  "iron":     { "name": "Iron",     "color": [0.40, 0.35, 0.30], "rarity": 40, "cargo_cap": 100 },
+  "copper":   { "name": "Copper",   "color": [0.65, 0.40, 0.20], "rarity": 25, "cargo_cap": 80 },
+  "titanium": { "name": "Titanium", "color": [0.70, 0.70, 0.75], "rarity": 15, "cargo_cap": 60 },
+  "gold":     { "name": "Gold",     "color": [0.80, 0.70, 0.20], "rarity": 8, "cargo_cap": 50 },
+  "cobalt":   { "name": "Cobalt",   "color": [0.35, 0.40, 0.60], "rarity": 12, "cargo_cap": 50 },
+  "uranium":  { "name": "Uranium",  "color": [0.30, 0.55, 0.30], "rarity": 5, "cargo_cap": 10 },
+  "platinum": { "name": "Platinum", "color": [0.80, 0.82, 0.85], "rarity": 3, "cargo_cap": 10 },
+  "crystal":  { "name": "Crystal",  "color": [0.55, 0.25, 0.65], "rarity": 2, "cargo_cap": 10 }
 }

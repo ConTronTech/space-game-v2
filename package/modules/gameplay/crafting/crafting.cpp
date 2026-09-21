@@ -62,7 +62,7 @@ public:
         if (!i) { reason = "no cargo hold"; return false; }
         auto* dock = eng_->services.get<ship::IDocking>();
         auto d = gameplay::decideCraft(*r, [&](const std::string& k) { return i->count(k); }, [&](const std::string& k) { return volumeOf(k); },
-                                       i->free(), volumeOf(r->result), requireDock_, dock && dock->docked());
+                                       i->free(r->result), volumeOf(r->result), requireDock_, dock && dock->docked(), [&](const std::string& k) { return !i->isResource(k); });
         reason = d.reason;
         return d.ok;
     }

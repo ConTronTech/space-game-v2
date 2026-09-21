@@ -27,3 +27,11 @@ Put it in `data/items.json` (name, description, colour, `effect`, optional `volu
 
 ## Tunables and dev flags
 `inventory.capacity` 100, `inventory.upgrade_level` 0. **Test-only** flags: `--give=iron:50,copper:20` adds cargo at startup (logged as a warning; a bare id gives 1); `--clear-cargo` empties the hold at startup. At debug log level a cargo summary is logged every 5 s.
+
+## Cargo rework: per-resource holds + general hold (5.1c)
+- Every ore in `data/ores.json` has its OWN hold, capped by the optional `cargo_cap` field (default 20; iron 100, copper 80, titanium 60, cobalt 50, gold 50, platinum 10, uranium 10, crystal 10; filler `rock` 100, not counted in totals). Filling one ore never blocks another.
+- Crafted items live in a GENERAL hold: `inventory.general_capacity` (default 30) units, each item taking its `volume` (items.json, default 1).
+- Upgrade levels (`data/cargo.json`) carry `resource_mult` and `general_mult` (1/2/4/8). The old `capacity_mult` is still read as a fallback for both.
+- API: `capacity(id)`, `free(id)`, `isResource(id)`, `generalCapacity/Used()`; `used()/capacity()/free()` are now the TOTALS (counted ore holds + general hold; base 400).
+- `add()` accepts what fits per pool and emits `CargoFull{id, refused}` when something is refused. `remove()` is atomic.
+- Softlock audit: (1) one ore filling a shared hold blocked everything -> per-resource pools; (2) general hold full of unusable items (Missile Pack, Ore Scanner) -> CARGO tab discard buttons; (3) full general hold refusing crafts -> discard/use; (4) warp fuel 0 is not a softlock (thrust, mining work, respawn refills); (5) capsule with a full ore hold stays red and is retried when room appears; (6) every recipe ingredient need <= its cap and every item volume <= general capacity, guarded by a unit-test lint; (7) old overfull saves are clipped with a warning, never crash.

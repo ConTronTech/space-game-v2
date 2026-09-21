@@ -37,3 +37,6 @@ Do not list `ui/game_menu` and a module that adds tabs as optional dependencies 
 
 ## Tunables
 `menu.pause_game` (false).
+
+## CARGO tab (cargo rework)
+Header "CARGO used / capacity" with a total bar. Left column: one row per ore with a bar ("iron 45/100"). Right column: GENERAL HOLD items with bars. Every stack has "-1" and "ALL" discard buttons (through `IInventory::remove`), usable items also have USE. Unusable items (Missile Pack, Ore Scanner) can always be discarded. A message line shows the last discard or craft/use result.

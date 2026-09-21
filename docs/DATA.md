@@ -34,3 +34,8 @@ Ported from the old game's `ORE_TABLE`, `ITEM_TABLE` and `RECIPES`.
 2. `make test` - `shipped_data_is_consistent` checks every recipe result is a real item, every ingredient a real ore,
    colors are 0..1, rarity > 0, names/descriptions non-empty. A typo fails the build.
 3. Modules read what they need by id; an item's `effect` keys are interpreted by the module that owns that stat.
+
+## Cargo data additions
+- `ores.json`: optional `cargo_cap` per ore (default 20; `rock` filler 100).
+- `items.json`: optional `volume` (default 1) = units of general hold.
+- `cargo.json`: levels use `resource_mult` and `general_mult`; `capacity_mult` is a fallback. Tunable `inventory.general_capacity` (30).

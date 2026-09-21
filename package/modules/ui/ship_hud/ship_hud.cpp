@@ -42,7 +42,7 @@ public:
             const OreInfo& o = oreInfo(e.ore);
             state_.onOreMined(e.ore, o.label, o.colour, e.amount, eng_->time());
         });
-        eng.events.subscribe<gameplay::CargoFull>([this](const gameplay::CargoFull&) { state_.onCargoFull(eng_->time()); });
+        eng.events.subscribe<gameplay::CargoFull>([this](const gameplay::CargoFull& e) { state_.onCargoFull(e.id, oreInfo(e.id).label, eng_->time()); });
         dockRange_ = eng.config.get("docking.prompt_range", 0.0f, "distance from a station centre at which the HUD shows the dock prompt, units (0 = 4 x the station's dock radius)");
         auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));

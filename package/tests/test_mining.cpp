@@ -110,3 +110,116 @@ TEST(mining_cpu_cost_of_96_chunks_is_small) {
     std::fprintf(stderr, "  [mining] 96 chunks: advance + scoop test = %.4f ms per fixed step (%ld scoop hits)\n", ms, scoopChecks);
     CHECK(ms < 1.0);
 }
+
+// ---- capsules (mining.mode = capsule) ----
+TEST(mining_capsule_flash_speeds_up_in_the_last_five_seconds_and_never_jumps) {
+    using namespace gameplay;
+    CHECK(close(flashHz(0, 30), kFlashHz)); CHECK(close(flashHz(24.9f, 30), kFlashHz));            // steady until 5 s before the end
+    CHECK(flashHz(26, 30) > kFlashHz); CHECK(flashHz(28, 30) > flashHz(26, 30));                    // then faster and faster
+    CHECK(close(flashHz(30, 30), kFlashHzFast)); CHECK(close(flashHz(35, 30), kFlashHzFast));       // capped at the fast rate
+    // the phase (cycles) is continuous and increasing: the pulse never jumps when the speed-up starts
+    float prev = flashCycles(0, 30);
+    for (float t = 0.01f; t < 30.0f; t += 0.01f) {
+        float c = flashCycles(t, 30);
+        CHECK(c >= prev - 1e-6f); CHECK(c - prev < 0.06f);                                          // at most 6 Hz * 0.01 s = 0.06 cycles per step
+        prev = c;
+    }
+    CHECK(close(flashCycles(10, 30), kFlashHz * 10, 1e-4));                                          // steady part: frequency x time
+    // cycles over the last 5 s = mean frequency (1.5 and 6 -> 3.75) x 5 s
+    CHECK(close(flashCycles(30, 30) - flashCycles(25, 30), 3.75f * 5.0f, 1e-3));
+    for (float t = 0; t < 30; t += 0.37f) { float p = flashPulse(t, 30); CHECK(p >= -1e-6f && p <= 1.0f + 1e-6f); }
+    // it really flashes: a 1.5 Hz flash has its bright and dark phase within one second
+    float lo = 1, hi = 0; for (float t = 0; t < 1.0f; t += 0.01f) { float p = flashPulse(t, 30); lo = std::min(lo, p); hi = std::max(hi, p); }
+    CHECK(lo < 0.05f && hi > 0.95f);
+    // a very short life (the warning is longer than the life) is still continuous
+    CHECK(flashCycles(2, 3) >= flashCycles(1, 3));
+    CapsuleLook l = capsuleLook(0, 30, false); CHECK(!l.red); CHECK(l.size >= 0.8f - 1e-4f && l.size <= 1.4f + 1e-4f);
+    CHECK(capsuleLook(5, 30, true).red);                                                             // blocked = red
+}
+
+TEST(mining_capsule_pool_capacity_and_eviction) {
+    using namespace gameplay;
+    CapsulePool p; p.init(3);
+    p.spawn({0, 0, 0}, 5, 1, 30.0f); p.spawn({1, 0, 0}, 6, 1, 30.0f); p.spawn({2, 0, 0}, 7, 1, 30.0f);
+    ageCapsules(p, 20.0f);                                                                           // all at 20 of 30 s
+    p.age[1] = 25.0f;                                                                                // capsule 1 is the closest to expiring
+    int slot = p.spawn({9, 0, 0}, 9, 2, 30.0f);                                                      // full: replaces the one about to expire (least loss)
+    CHECK_EQ(slot, 1); CHECK_EQ(p.n, 3); CHECK_EQ(p.evicted, 1); CHECK_EQ(p.amount[1], 9); CHECK(close(p.age[1], 0.0));
+    CHECK_EQ(p.spawn({0, 0, 0}, 0, 1, 30.0f), -1);                                                   // an empty capsule is not a capsule
+    CapsulePool none; none.init(0); CHECK_EQ(none.spawn({0, 0, 0}, 5, 1, 30.0f), -1);               // mining.max_chunks 0: nothing, no crash
+    CapsulePool q; q.init(4); q.spawn({0, 0, 0}, 5, 1, 30.0f, true); CHECK(q.blocked[0]);            // a capsule can be born blocked (instant mode remainder)
+}
+
+TEST(mining_capsule_expires_after_its_lifetime) {
+    using namespace gameplay;
+    CapsulePool p; p.init(4);
+    p.spawn({0, 0, 0}, 5, 1, 30.0f); p.spawn({1, 0, 0}, 6, 1, 10.0f);
+    ageCapsules(p, 9.9f); CHECK_EQ(p.n, 2);
+    ageCapsules(p, 0.2f); CHECK_EQ(p.n, 1); CHECK_EQ(p.amount[0], 5);                               // the 10 s one is gone
+    ageCapsules(p, 0.0f); ageCapsules(p, -3.0f); CHECK_EQ(p.n, 1);                                   // dt <= 0: no change
+    ageCapsules(p, 20.0f); CHECK_EQ(p.n, 0);                                                         // the 30 s one expires too
+}
+
+TEST(mining_magnet_pulls_the_capsule_in_from_the_magnet_radius_and_leaves_far_ones_alone) {
+    using namespace gameplay;
+    CapsulePool p; p.init(4);
+    p.spawn({100, 0, 0}, 5, 1, 30.0f);                                                               // 100 units away, inside the 120 magnet radius
+    Vec3d ship{0, 0, 0};
+    double first = 100, last = 100; int steps = 0;
+    for (; steps < 60 * 10; steps++) {
+        magnetStep(p, 0, ship, 1.0f / 60, 120.0f, 140.0f);
+        double d = std::sqrt(p.px[0] * p.px[0] + p.py[0] * p.py[0] + p.pz[0] * p.pz[0]);
+        CHECK(d <= last + 1e-6);                                                                     // monotonic approach: never backs off
+        last = d;
+        if (d <= 20.0) break;                                                                        // the scoop radius
+    }
+    CHECK(last <= 20.0); CHECK(steps < 60 * 3); CHECK(first > last);                                // arrives within 3 s, no need to match speed
+    double speed = std::sqrt((double)p.vx[0] * p.vx[0] + (double)p.vy[0] * p.vy[0] + (double)p.vz[0] * p.vz[0]);
+    CHECK(speed <= 140.0 + 1e-3);                                                                    // capped
+    // outside the magnet radius: it just drifts (and slows), it is not pulled
+    CapsulePool f; f.init(2); f.spawn({500, 0, 0}, 5, 1, 30.0f);
+    for (int i = 0; i < 120; i++) magnetStep(f, 0, ship, 1.0f / 60, 120.0f, 140.0f);
+    CHECK(close(f.px[0], 500.0)); CHECK(close(f.vx[0], 0.0));
+    // a blocked capsule stays put even next to the ship (it flashes red and waits)
+    CapsulePool b; b.init(2); b.spawn({50, 0, 0}, 5, 1, 30.0f, true);
+    for (int i = 0; i < 120; i++) magnetStep(b, 0, ship, 1.0f / 60, 120.0f, 140.0f);
+    CHECK(close(b.px[0], 50.0)); CHECK(close(b.vx[0], 0.0));
+    // it follows a moving ship: the capsule keeps closing while the ship flies away at 60 m/s
+    CapsulePool m; m.init(2); m.spawn({60, 0, 0}, 5, 1, 30.0f);
+    double gap0 = 60, gap = gap0; Vec3d s2{0, 0, 0};
+    for (int i = 0; i < 60 * 4; i++) { s2.x -= 60.0 / 60; magnetStep(m, 0, s2, 1.0f / 60, 120.0f, 140.0f); gap = std::fabs(m.px[0] - s2.x); if (gap < 20) break; }
+    CHECK(gap < 20.0);
+    magnetStep(m, 0, s2, 0.0f, 120.0f, 140.0f);                                                       // dt 0: no NaN
+    CHECK(m.px[0] == m.px[0]);
+}
+
+TEST(mining_capsule_is_collected_at_any_speed_and_partial_pickups_leave_a_remainder) {
+    using namespace gameplay;
+    CHECK(canScoopAny(15.0, 500.0, 20.0, 0.0));                        // scoop_speed 0: no speed limit at all
+    CHECK(!canScoopAny(25.0, 1.0, 20.0, 0.0));                          // still needs contact
+    CHECK(canScoopAny(20.0, 10.0, 20.0, 40.0)); CHECK(!canScoopAny(20.0, 41.0, 20.0, 40.0));       // a positive limit still works
+    PickupOutcome all = afterPickup(41, 41);
+    CHECK(all.removeCapsule); CHECK_EQ(all.remaining, 0); CHECK(!all.blocked);
+    PickupOutcome part = afterPickup(41, 12);                             // the ore's hold only had 12 free
+    CHECK(!part.removeCapsule); CHECK_EQ(part.remaining, 29); CHECK(part.blocked);                  // the rest stays in the capsule, red
+    PickupOutcome none = afterPickup(41, 0);
+    CHECK(!none.removeCapsule); CHECK_EQ(none.remaining, 41); CHECK(none.blocked);
+    PickupOutcome odd = afterPickup(10, 99); CHECK(odd.removeCapsule); CHECK_EQ(odd.remaining, 0);   // a bogus "got" is clamped
+    PickupOutcome neg = afterPickup(10, -5); CHECK_EQ(neg.remaining, 10);
+}
+
+TEST(mining_modes_and_where_the_ore_goes) {
+    using namespace gameplay;
+    Mode m;
+    CHECK(parseMode("capsule", m) && m == Mode::Capsule); CHECK(parseMode("instant", m) && m == Mode::Instant); CHECK(parseMode("chunks", m) && m == Mode::Chunks);
+    CHECK(!parseMode("banana", m)); CHECK(!parseMode("", m));
+    // instant: always straight into the hold; capsule: straight in only when the ship is too far to ever collect it; chunks: never
+    CHECK(goesStraightToHold(Mode::Instant, 10.0, 3000.0));
+    CHECK(!goesStraightToHold(Mode::Capsule, 500.0, 3000.0)); CHECK(goesStraightToHold(Mode::Capsule, 3500.0, 3000.0));
+    CHECK(!goesStraightToHold(Mode::Chunks, 9999.0, 3000.0));
+    // instant mode with a nearly full hold: the part that did not fit becomes a (red) capsule, nothing is lost or invented
+    int total = gameplay::totalYield(9.0f, 0.5f);                                                    // 41
+    PickupOutcome o = afterPickup(total, 12);
+    CHECK_EQ(o.remaining + 12, total); CHECK(o.blocked);
+    CHECK_EQ(gameplay::totalYield(9.0f, 0.5f), 41);                                                  // capsule mode holds ALL of it in one capsule
+}

@@ -33,15 +33,25 @@ TEST(crafting_recipe_needs_every_ingredient) {
     Recipe empty{"x", "X", "x", {}}; CHECK(!craftCheck(empty, h).ok);   // a recipe without ingredients would be free items: refused
 }
 
-TEST(crafting_result_needs_room_but_ingredients_free_theirs) {
-    Hold h; h.stacks = {{"iron", 5}, {"uranium", 3}}; h.free = 0;        // a completely full hold
-    CHECK(craftCheck(fuelCell(), h, 1.0f).ok);                           // 8 units leave, 1 arrives: fits
-    CHECK(craftCheck(fuelCell(), h, 8.0f).ok);                           // exactly the freed space
-    auto d = craftCheck(fuelCell(), h, 9.0f);
-    CHECK(!d.ok); CHECK_EQ(d.reason, std::string("cargo full"));         // a bulky result does not fit even after the ingredients leave
-    Hold tight; tight.stacks = {{"iron", 5}, {"uranium", 3}}; tight.free = 2;
-    CHECK(craftCheck(fuelCell(), tight, 10.0f).ok);                      // 2 free + 8 freed = 10
-    CHECK(!craftCheck(fuelCell(), tight, 10.5f).ok);
+TEST(crafting_result_needs_room_only_in_the_general_hold) {
+    Hold h; h.stacks = {{"iron", 5}, {"uranium", 3}};
+    // ingredients are ores: they come out of their own resource holds and free nothing in the general hold, so the result needs general room by itself
+    h.free = 1; CHECK(craftCheck(fuelCell(), h, 1.0f).ok);
+    h.free = 0;
+    auto d = craftCheck(fuelCell(), h, 1.0f);
+    CHECK(!d.ok); CHECK_EQ(d.reason, std::string("general hold full (use or discard an item)"));       // the exact wording the player sees
+    h.free = 0.5f; CHECK(!craftCheck(fuelCell(), h, 1.0f).ok);
+    h.free = 8; CHECK(craftCheck(fuelCell(), h, 8.0f).ok); CHECK(!craftCheck(fuelCell(), h, 8.5f).ok);
+    // a full iron hold never matters: crafting checks the general hold only
+    Hold ironFull; ironFull.stacks = {{"iron", 100}, {"uranium", 3}}; ironFull.free = 5;
+    CHECK(craftCheck(fuelCell(), ironFull, 1.0f).ok);
+    // an ingredient that lives in the general hold frees its own volume for the result
+    Recipe fromItems{"combo", "Combo", "combo", {{"repair_kit", 2}}};
+    Hold g; g.stacks = {{"repair_kit", 2}}; g.free = 0;
+    auto isGeneral = [](const std::string&) { return true; };
+    CHECK(decideCraft(fromItems, g.count(), vol1, 0.0f, 2.0f, false, false, isGeneral).ok);        // 2 leave, 2 arrive
+    CHECK(!decideCraft(fromItems, g.count(), vol1, 0.0f, 3.0f, false, false, isGeneral).ok);
+    CHECK(!decideCraft(fromItems, g.count(), vol1, 0.0f, 2.0f, false, false).ok);                    // without the hint the ingredients are ores: nothing freed
 }
 
 TEST(crafting_the_dock_rule_is_a_switch) {

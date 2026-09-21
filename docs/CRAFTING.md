@@ -36,3 +36,6 @@ One row per recipe: name, ingredients as `Name have/need` (**green** enough, **r
 
 ## Tunables
 `crafting.require_dock` (false).
+
+## Cargo rework
+Ingredients are taken from the resource holds; the result needs room only in the GENERAL hold (its `volume`). Ingredients that live in the general hold free their own volume first. Refusal reason: "general hold full (use or discard an item)". Discard from the CARGO tab (see GAME_MENU.md) to make room, so crafting can never softlock.

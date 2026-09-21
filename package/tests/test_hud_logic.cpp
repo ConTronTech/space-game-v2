@@ -438,17 +438,22 @@ TEST(hud_pickup_slots_are_reused_when_full) {
     CHECK_EQ(h.pickupCount(1.1), kMaxPickups);       // the oldest were replaced, no growth
 }
 
-TEST(hud_cargo_full_banner_is_rate_limited) {
+TEST(hud_cargo_full_banner_names_the_ore_and_is_rate_limited_per_ore) {
     HudState h;
     Snapshot s;
-    h.onCargoFull(10.0);
+    h.onCargoFull("iron", "IRON", 10.0);
     auto b = h.banners(s, 10.1);
     CHECK_EQ(b.size(), 1u);
     CHECK(b[0].kind == Warn::CargoFull);
-    CHECK_EQ(b[0].text, std::string("CARGO FULL"));
-    h.onCargoFull(10.5);                              // too soon: ignored, does not extend it
-    h.onCargoFull(11.0);
+    CHECK_EQ(b[0].text, std::string("IRON FULL"));                  // the ore's name, not a generic "CARGO FULL"
+    h.onCargoFull("iron", "IRON", 10.5);                            // too soon for iron: ignored, does not extend it
+    h.onCargoFull("iron", "IRON", 11.0);
     CHECK(h.banners(s, 10.0 + kCargoFullSeconds + 0.05).empty());
-    h.onCargoFull(12.5);                              // after the gap: shows again
+    h.onCargoFull("iron", "IRON", 12.5);                            // after the gap: shows again
     CHECK_EQ(h.banners(s, 12.6).size(), 1u);
+    h.onCargoFull("gold", "GOLD", 12.7);                            // another ore is not held back by iron's gap
+    b = h.banners(s, 12.8);
+    CHECK_EQ(b.size(), 1u); CHECK_EQ(b[0].text, std::string("GOLD FULL"));
+    HudState g; g.onCargoFull("", "", 5.0);                          // no name known: the generic banner
+    CHECK_EQ(g.banners(s, 5.1)[0].text, std::string("CARGO FULL"));
 }

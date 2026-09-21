@@ -86,3 +86,6 @@ Uses `combat::ICombat` (per-use get) and the events `combat::Overheated`, `comba
 ## HUD cost notes (laptop pass)
 Text is cached or throttled and per-frame allocations were removed: the speed text refreshes 10x a second (a live number otherwise creates a new text texture every frame), the hint text/fit is computed once per window size, the orbit/dock lines are built once per event, cargo text once per change, ore names once per ore id, weapon labels once.
 The remaining cost is dominated by `UIHandler::glass()` (5 shadow layers + fill + border per panel); the HUD keeps the number of panels low (cargo shares the weapon panel). Measure with `--profile --benchmark=8 --no-vsync`, row `core/ui_handler:ui`.
+
+## Cargo line and banners (cargo rework)
+The cargo line shows total used / total capacity (sum of all holds): cyan, amber above 80%, red when all full. The pickup banner "+N ORE" is unchanged. `CargoFull` shows "<ORE> FULL" (e.g. "IRON FULL"), rate limited per ore; "CARGO FULL" if the ore has no label.

@@ -123,59 +123,98 @@ private:
         return l;
     }
 
+    static core::Color fillColour(float frac) {
+        return frac < 0.6f ? core::Color{0.3f, 0.85f, 0.45f, 1} : frac < 0.9f ? core::Color{0.95f, 0.8f, 0.25f, 1} : core::Color{0.95f, 0.35f, 0.3f, 1};
+    }
+
+    // one row of a hold: colour square, name, a fill bar with "45/100", and the discard buttons "-1" and "ALL" (always possible: the player can never be locked out)
+    void holdRow(core::UIHandler& ui, gameplay::IInventory& inv, gameplay::ICrafting* craft, const std::string& id, int amount, float cap, float x, float y, float w, bool withUse) {
+        const float rowH = 28;
+        ItemLook look = lookOf(id);
+        ui.glass(x, y, w, rowH, 0.5f, false, 8);
+        ui.rect(x + 8, y + 6, 16, 16, look.colour.r, look.colour.g, look.colour.b, 1.0f);
+        ui.text(x + 32, y + 5, look.name, 15, amount > 0 ? ui.theme.text : ui.theme.textDim);
+        float btnW = 34 + 4 + 40 + (withUse ? 48.0f : 0.0f);
+        float bx = x + 132, bw = std::max(20.0f, w - 132 - btnW - 90);
+        float frac = cap > 0 ? std::clamp((float)amount / cap, 0.0f, 1.0f) : 0.0f;
+        ui.bar(bx, y + 9, bw, 10, frac, fillColour(frac));
+        char b[32]; std::snprintf(b, sizeof b, "%d/%.0f", amount, cap);
+        ui.text(bx + bw + 8, y + 6, b, 14, frac >= 0.999f ? core::Color{1.0f, 0.5f, 0.4f, 1} : ui.theme.accent);
+        float px = x + w - btnW - 4;
+        if (withUse && craft && craft->usable(id) && amount > 0) { if (ui.button("USE", px, y + 1, 44, rowH - 2, false)) { std::string why; craft->use(id, why); } }
+        px += withUse ? 48.0f : 0.0f;
+        if (amount > 0) {
+            if (ui.button("-1", px, y + 1, 34, rowH - 2, false)) discard(inv, id, 1);
+            if (ui.button("ALL", px + 38, y + 1, 40, rowH - 2, false)) discard(inv, id, amount);
+        }
+    }
+
+    void discard(gameplay::IInventory& inv, const std::string& id, int amount) {
+        if (amount > 0 && inv.remove(id, amount)) {
+            note_ = "Discarded " + std::to_string(amount) + " " + lookOf(id).name;
+            noteTime_ = eng_->time();
+            LOG_I("menu", "%s", note_.c_str());
+        }
+    }
+
     void cargoTab(core::UIHandler& ui, float x, float y, float w, float h) {
         auto* inv = eng_->services.get<gameplay::IInventory>();
         auto* craft = eng_->services.get<gameplay::ICrafting>();
-        float leftW = w * 0.62f, rightX = x + leftW + 20, rightW = w - leftW - 20;
         if (!inv) { ui.text(x, y, "No cargo hold (gameplay/inventory is off)", 16, ui.theme.textDim); return; }
-        // capacity bar
+        float leftW = w * 0.55f, rightX = x + leftW + 16, rightW = w - leftW - 16;
+        // the summed total: every resource hold plus the general hold
         char buf[64];
         std::snprintf(buf, sizeof buf, "CARGO   %.0f / %.0f", inv->used(), inv->capacity());
-        ui.text(x, y, buf, 16, ui.theme.text);
+        ui.text(x, y, buf, 17, ui.theme.text);
         float frac = inv->capacity() > 0 ? std::clamp(inv->used() / inv->capacity(), 0.0f, 1.0f) : 0.0f;
-        core::Color fill = frac < 0.6f ? core::Color{0.3f, 0.85f, 0.45f, 1} : frac < 0.9f ? core::Color{0.95f, 0.8f, 0.25f, 1} : core::Color{0.95f, 0.35f, 0.3f, 1};
-        ui.bar(x, y + 26, leftW, 14, frac, fill);
-        // the stacks
+        ui.bar(x + 190, y + 6, w - 190, 12, frac, fillColour(frac));
+        // resources: one hold per ore, so filling one can never block another
+        float ry = y + 34;
+        ui.text(x, ry, "RESOURCES (each ore has its own hold)", 12, ui.theme.textDim);
+        ry += 18;
+        std::vector<std::string> ids;
+        inv->resources(ids);
+        if (inv->count("rock") > 0) ids.push_back("rock");
+        for (auto& id : ids) { holdRow(ui, *inv, craft, id, inv->count(id), inv->capacity(id), x, ry, leftW, false); ry += 31; }
+        // the general hold: crafted items
+        float gy = y + 34;
+        char gb[64];
+        std::snprintf(gb, sizeof gb, "GENERAL HOLD (items)   %.0f / %.0f", inv->generalUsed(), inv->generalCapacity());
+        ui.text(rightX, gy, gb, 12, ui.theme.textDim);
+        gy += 18;
         std::vector<gameplay::Stack> st;
         inv->stacks(st);
-        float ry = y + 54;
-        const float rowH = 30;
-        int maxRows = std::max(1, (int)((h - 54 - 34) / (rowH + 4)));
-        if (st.empty()) ui.text(x, ry + 6, "The hold is empty. Mine asteroids (2 + fire) and scoop the ore.", 14, ui.theme.textDim);
         int shown = 0;
+        bool any = false;
         for (auto& s : st) {
-            if (shown >= maxRows) { ui.text(x, ry + 4, "...", 14, ui.theme.textDim); break; }
-            ItemLook look = lookOf(s.id);
-            ui.glass(x, ry, leftW, rowH, 0.5f, false, 8);
-            ui.rect(x + 10, ry + 7, 16, 16, look.colour.r, look.colour.g, look.colour.b, 1.0f);
-            ui.text(x + 36, ry + 6, look.name, 15, ui.theme.text);
-            std::string count = std::to_string(s.amount);
-            bool canUse = craft && craft->usable(s.id);
-            float countX = x + leftW - 12 - (canUse ? 74.0f : 0.0f) - ui.textWidth(count, 15);
-            ui.text(countX, ry + 6, count, 15, ui.theme.accent);
-            if (canUse && ui.button("USE", x + leftW - 68, ry + 2, 62, rowH - 4, false)) {
-                std::string why;
-                craft->use(s.id, why);                                        // the crafting module keeps the result line
-            }
-            ry += rowH + 4; shown++;
+            if (inv->isResource(s.id)) continue;
+            any = true;
+            if (gy + 28 > y + h - 76) { ui.text(rightX, gy + 4, "...", 14, ui.theme.textDim); break; }
+            holdRow(ui, *inv, craft, s.id, s.amount, inv->generalCapacity(), rightX, gy, rightW, true);
+            gy += 31; shown++;
         }
-        if (craft && craft->messageAge() < 8.0 && !craft->message().empty())
-            ui.text(x, y + h - 24, craft->message(), 14, craft->messageOk() ? core::Color{0.4f, 0.95f, 0.5f, 1} : core::Color{1.0f, 0.5f, 0.4f, 1});
-        // ship stats
-        ui.text(rightX, y, "SHIP", 16, ui.theme.text);
+        if (!any) ui.text(rightX, gy + 4, "No items. Craft some in the CRAFTING tab.", 13, ui.theme.textDim);
+        // ship stats: three compact bars along the bottom
         auto* ship = eng_->services.get<ship::IShip>();
-        if (!ship) { ui.text(rightX, y + 30, "no ship", 14, ui.theme.textDim); return; }
-        const auto& s = ship->status();
-        float by = y + 32;
-        auto stat = [&](const char* label, float v, float mx, const core::Color& c, bool show = true) {
-            char b[64]; std::snprintf(b, sizeof b, show ? "%s   %.0f / %.0f" : "%s   not fitted", label, v, mx);
-            ui.text(rightX, by, b, 14, show ? ui.theme.text : ui.theme.textDim);
-            ui.bar(rightX, by + 22, rightW, 12, show && mx > 0 ? std::clamp(v / mx, 0.0f, 1.0f) : 0.0f, c);
-            by += 50;
-        };
-        stat("HULL", s.hp, s.maxHp, {0.3f, 0.85f, 0.45f, 1});
-        stat("SHIELD", s.shield, s.maxShield, {0.4f, 0.65f, 1.0f, 1}, s.shieldInstalled);
-        stat("WARP FUEL", s.warpFuel, s.maxWarpFuel, {0.35f, 0.5f, 1.0f, 1});
+        float sy = y + h - 60;
+        if (ship) {
+            const auto& s = ship->status();
+            float cw = (w - 24) / 3;
+            auto stat = [&](int col, const char* label, float v, float mx, const core::Color& c, bool show) {
+                float sx = x + col * (cw + 12);
+                char b[64]; std::snprintf(b, sizeof b, show ? "%s   %.0f / %.0f" : "%s   not fitted", label, v, mx);
+                ui.text(sx, sy, b, 13, show ? ui.theme.text : ui.theme.textDim);
+                ui.bar(sx, sy + 20, cw, 10, show && mx > 0 ? std::clamp(v / mx, 0.0f, 1.0f) : 0.0f, c);
+            };
+            stat(0, "HULL", s.hp, s.maxHp, {0.3f, 0.85f, 0.45f, 1}, true);
+            stat(1, "SHIELD", s.shield, s.maxShield, {0.4f, 0.65f, 1.0f, 1}, s.shieldInstalled);
+            stat(2, "WARP FUEL", s.warpFuel, s.maxWarpFuel, {0.35f, 0.5f, 1.0f, 1}, true);
+        }
+        // the last result line: a use / craft message or a discard note, whichever is newer
+        bool useMsg = craft && craft->messageAge() < 8.0 && !craft->message().empty();
+        bool noteMsg = eng_->time() - noteTime_ < 8.0 && !note_.empty();
+        if (noteMsg && (!useMsg || eng_->time() - noteTime_ < craft->messageAge())) ui.text(x, y + h - 22, note_, 14, core::Color{0.8f, 0.9f, 1.0f, 1});
+        else if (useMsg) ui.text(x, y + h - 22, craft->message(), 14, craft->messageOk() ? core::Color{0.4f, 0.95f, 0.5f, 1} : core::Color{1.0f, 0.5f, 0.4f, 1});
     }
 
     engine::Engine* eng_ = nullptr;
@@ -184,6 +223,8 @@ private:
     bool open_ = false, pauseGame_ = false, ownPause_ = false, closeRequested_ = false;
     ui::PauseSwallow swallow_;
     int selected_ = 0, openTab_ = 0;
+    std::string note_;
+    double noteTime_ = -1e9;
     long openFrame_ = -1;
     std::vector<Tab> tabs_;
 };

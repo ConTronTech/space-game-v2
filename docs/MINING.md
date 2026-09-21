@@ -36,3 +36,10 @@ At debug log level: the chunk count and CPU per step every 5 s. Every break-up a
 ## Known gaps
 * **Ore chunks are not saved** (they are lost on load), and **destroyed asteroids are not saved either**: the field regenerates on load, so a destroyed rock comes back. A later persistence step (saving the destroyed ids) fixes both.
 * No HUD line for cargo or pickups yet; no sound (no `pickup` sound exists); nothing consumes ore yet (crafting is 5.5).
+
+## Capsule collection (4.3b)
+- `mining.mode` = `capsule` (default) | `instant` | `chunks`.
+- capsule: a destroyed asteroid leaves ONE flashing capsule holding all its ore (ore-colour diamond, white core). Life `mining.capsule_seconds` (30), flash speeds up in the last 5 s. Within `mining.magnet_radius` (120) it is pulled toward the ship; within `mining.scoop_radius` (20) it is collected at any speed (`mining.scoop_speed` 0 = no limit). If that ore's hold is full it stays, flashes RED until it expires, and `CargoFull` is emitted once; it is retried when room appears. A partial fit leaves the remainder in the capsule.
+- instant: ore goes straight into the hold; a remainder that does not fit becomes a (red) capsule.
+- A rock destroyed beyond `mining.chunk_range` goes straight to the hold in any mode.
+- chunks: the old scattered chunks (`chunk_*` tunables). `mining.max_chunks` sizes both pools; the quality rows still apply.
