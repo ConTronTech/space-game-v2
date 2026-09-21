@@ -61,10 +61,10 @@ Done when: a generated system with planets, belts and stations that you can fly 
 ## Phase 4 - Combat and mining
 - [x] **4.1 `fx/particles`**: engine exhaust, hit sparks. Modules emit `SpawnParticles`. *particles.h*
 - [~] **4.2 `combat/weapons`**: blaster, mining beam, missiles with lock-on. Each weapon is data + a small class, so new weapons are drop-ins. *weapons.h, weapons_update.h*
-- [ ] **4.3 `gameplay/mining`**: destroyed asteroids drop ore to cargo (uses 5.1).
+- [x] **4.3 `gameplay/mining`**: destroyed asteroids drop ore to cargo (uses 5.1).
 
 ## Phase 5 - Inventory, crafting, menus
-- [ ] **5.1 `gameplay/inventory`**: cargo capacity, stacks, ore types from `data/`. Saveable.
+- [x] **5.1 `gameplay/inventory`**: cargo capacity, stacks, ore types from `data/`. Saveable.
 - [ ] **5.2 `ui/toast`**: info / warning / urgent popups, stackable. *ui_framework.h UIPopupManager*
 - [ ] **5.3 UI tabs widget** in the UI handler (tab bar, list, grid, bar).
 - [ ] **5.4 `ui/game_menu`**: tabbed menu (Map / Cargo / Crafting). Other modules add tabs by registering them, like panels. *game_menu.h, tabs/*
