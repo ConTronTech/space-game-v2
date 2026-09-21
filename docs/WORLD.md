@@ -157,3 +157,6 @@ A warp crash into a registered asteroid reports the full closing speed (checked:
 
 Laptop notes: a stress run with 21,500 asteroids drew 25 meshes and about 4,000 points with 300 physics bodies at 1,700 fps on the dev machine; the cost scales with the asteroids inside the draw distance, not with the field size (the culling loop is one pass over the field per frame, fine into the tens of thousands).
 The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::nearest(shipPos, N, out)` (see docs/COCKPIT.md).
+
+## Stations
+`world/stations` adds 1-3 stations (orbital or planetary, placeholder cube + cylinder models) and `ship/docking` the dock key: see docs/STATIONS.md.

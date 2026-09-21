@@ -220,3 +220,91 @@ TEST(hud_orbit_banner_hidden_when_dead) {
     h.onOrbitLock(false, "Sun", 2.0);
     CHECK(h.banners(s, 2.1).empty());
 }
+
+TEST(hud_distance_text_units) {
+    CHECK_EQ(distanceText(420.4f), std::string("420 m"));
+    CHECK_EQ(distanceText(999.0f), std::string("999 m"));
+    CHECK_EQ(distanceText(1250.0f), std::string("1.2 km"));
+}
+
+TEST(hud_dock_reason_shortening) {
+    CHECK_EQ(shortDockReason("too far from the station"), std::string("too far"));
+    CHECK_EQ(shortDockReason("too fast"), std::string("too fast"));
+    CHECK_EQ(shortDockReason("Too fast (30 m/s, max 15)"), std::string("too fast"));
+    CHECK_EQ(shortDockReason("warp drive engaged"), std::string("warp drive on"));
+    CHECK_EQ(shortDockReason("orbit lock engaged"), std::string("orbit lock on"));
+    CHECK_EQ(shortDockReason("something new"), std::string("something new"));
+}
+
+TEST(hud_dock_prompt_range) {
+    CHECK(std::fabs(dockPromptRange(120.0f, 0.0f) - 480.0f) < 1e-3f);      // 4 x dock radius
+    CHECK(std::fabs(dockPromptRange(120.0f, 1000.0f) - 1000.0f) < 1e-3f);  // tunable wins
+    CHECK(inDockPromptRange(479.0f, 120.0f, 0.0f));
+    CHECK(!inDockPromptRange(481.0f, 120.0f, 0.0f));
+    CHECK(inDockPromptRange(900.0f, 120.0f, 1000.0f));
+}
+
+TEST(hud_dock_prompt_states) {
+    DockQuery q; q.has = true; q.distance = 420; q.name = "Station 1"; q.ok = false; q.reason = "too fast";
+    DockPrompt p = dockPrompt(q, 120, 0, false);
+    CHECK(p.show && !p.ready);
+    CHECK_EQ(p.status, std::string("STATION 1  420 m"));
+    CHECK_EQ(p.action, std::string("too fast"));
+    q.ok = true; q.distance = 100;
+    p = dockPrompt(q, 120, 0, false);
+    CHECK(p.show && p.ready);
+    CHECK_EQ(p.action, std::string("DOCK [G]"));
+    q.distance = 900;                                       // out of range: nothing
+    CHECK(!dockPrompt(q, 120, 0, false).show);
+    q.distance = 100;
+    CHECK(!dockPrompt(q, 120, 0, true).show);               // docked: the docked line replaces it
+    q.has = false;
+    CHECK(!dockPrompt(q, 120, 0, false).show);             // no station at all
+}
+
+TEST(hud_docked_state_lines_and_banners) {
+    HudState h;
+    Snapshot s;
+    CHECK(!h.docked());
+    CHECK_EQ(h.dockedStatus(), std::string(""));
+    h.onDocked("Station 1", 10.0);
+    CHECK(h.docked());
+    CHECK_EQ(h.dockedStatus(), std::string("DOCKED: STATION 1 - [G] UNDOCK"));
+    auto b = h.banners(s, 10.5);
+    CHECK_EQ(b.size(), 1u);
+    CHECK(b[0].kind == Warn::Docked);
+    CHECK_EQ(b[0].text, std::string("DOCKED"));
+    CHECK(h.banners(s, 10.0 + kDockBannerSeconds + 0.1).empty());
+    h.onUndocked(20.0);
+    CHECK(!h.docked());
+    b = h.banners(s, 20.5);
+    CHECK_EQ(b.size(), 1u);
+    CHECK(b[0].kind == Warn::Undocked);
+    CHECK_EQ(b[0].text, std::string("UNDOCKED"));
+}
+
+TEST(hud_undock_without_dock_shows_nothing) {
+    HudState h;
+    Snapshot s;
+    h.onUndocked(5.0);
+    CHECK(h.banners(s, 5.1).empty());
+}
+
+TEST(hud_station_names_are_shortened) {
+    CHECK_EQ(shortStationName("Station 1 (Planet 1, orbital)"), std::string("Station 1"));
+    CHECK_EQ(shortStationName("Station 2"), std::string("Station 2"));
+    CHECK_EQ(shortStationName(""), std::string(""));
+    DockQuery q; q.has = true; q.ok = true; q.distance = 88; q.name = "Station 1 (Planet 1, orbital)";
+    CHECK_EQ(dockPrompt(q, 120, 0, false).status, std::string("STATION 1  88 m"));
+    CHECK_EQ(dockedText("Station 1 (Planet 1, orbital)"), std::string("DOCKED: STATION 1 - [G] UNDOCK"));
+}
+
+TEST(hud_dock_banners_replace_each_other) {
+    HudState h;
+    Snapshot s;
+    h.onDocked("Station 1", 1.0);
+    h.onUndocked(1.5);
+    auto b = h.banners(s, 1.6);
+    CHECK_EQ(b.size(), 1u);
+    CHECK(b[0].kind == Warn::Undocked);
+}
