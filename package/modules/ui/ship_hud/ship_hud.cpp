@@ -6,6 +6,7 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "ship/cockpit/cockpit_screens_api.h"
+#include "ship/orbit_lock/orbit_lock_api.h"
 #include "ship/respawn/respawn_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/ship_hud/hud_logic.h"
@@ -23,6 +24,7 @@ public:
         eng.events.subscribe<ship::ShieldBroken>([this](const ship::ShieldBroken&) { state_.onShieldBroken(eng_->time()); });
         eng.events.subscribe<ship::FuelEmpty>([this](const ship::FuelEmpty&) { state_.onFuelEmpty(eng_->time()); });
         eng.events.subscribe<ship::Respawned>([this](const ship::Respawned&) { state_.onRespawned(); });
+        eng.events.subscribe<ship::OrbitLockChanged>([this](const ship::OrbitLockChanged& e) { state_.onOrbitLock(e.locked, e.bodyName, eng_->time()); });
         auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
         if (parsed.unknown) LOG_W("ship_hud", "hud.cockpit_overlay: unknown value, using 'minimal' (valid: minimal, full, hidden)");
@@ -34,6 +36,7 @@ public:
     void shutdown(engine::Engine&) override { ui_->removePanel("ui/ship_hud"); }
 
 private:
+    static constexpr hud::RGB kCalm{0.45f, 0.85f, 1.0f};
     static core::Color col(const hud::RGB& c, float a = 1) { return {c.r, c.g, c.b, a}; }
 
     void draw(core::UIHandler& ui) {
@@ -98,8 +101,14 @@ private:
         }
         hud::Snapshot snap{st.hp, st.maxHp, st.warpFuel, st.maxWarpFuel, st.alive};
         if (plan.banners) for (auto& b : state_.banners(snap, now)) {
-            hud::RGB c = (b.kind == hud::Warn::LowHp || b.kind == hud::Warn::FuelEmpty) ? hud::RGB{1.0f, 0.35f, 0.3f} : hud::RGB{1.0f, 0.75f, 0.25f};
+            hud::RGB c = (b.kind == hud::Warn::LowHp || b.kind == hud::Warn::FuelEmpty) ? hud::RGB{1.0f, 0.35f, 0.3f}
+                       : b.kind == hud::Warn::OrbitReleased ? kCalm : hud::RGB{1.0f, 0.75f, 0.25f};
             drawBanner(ui, L, by, b.text, c, b.alpha);
+            by += L.bannerH + L.bannerGap;
+        }
+        // persistent status while orbit-locked (calm colour, not flashing, does not expire)
+        if (plan.banners && st.alive && state_.orbitLocked()) {
+            drawBanner(ui, L, by, state_.orbitStatus(), kCalm, 1.0f);
             by += L.bannerH + L.bannerGap;
         }
 

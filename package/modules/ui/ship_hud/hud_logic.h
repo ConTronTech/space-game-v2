@@ -18,7 +18,7 @@ inline float fraction(float cur, float max) { return max > 0 ? clamp01(cur / max
 inline RGB lerp(const RGB& a, const RGB& b, float t) { t = clamp01(t); return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t}; }
 
 constexpr float kLowHp = 0.25f, kLowFuel = 0.15f;
-constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f;
+constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f;
 
 enum class Bar { Hp, Shield, Fuel };
 
@@ -79,10 +79,18 @@ inline int fitHint(Layout& L, int screenW, const std::function<int(const std::st
 }
 
 // ---- warnings ----
-enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken };
+enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased };
 struct Banner { Warn kind; std::string text; float alpha; };   // alpha: flashing 0.55..1, times the fade-out of timed ones
 
 struct Snapshot { float hp = 100, maxHp = 100, warpFuel = 100, maxWarpFuel = 100; bool alive = true; };
+
+// "ORBIT LOCKED: PLANET 1"; just "ORBIT LOCKED" when the body has no name.
+inline std::string orbitStatusText(const std::string& body) {
+    if (body.empty()) return "ORBIT LOCKED";
+    std::string up = body;
+    for (auto& c : up) c = (char)std::toupper((unsigned char)c);
+    return "ORBIT LOCKED: " + up;
+}
 
 class HudState {
 public:
@@ -92,7 +100,15 @@ public:
     }
     void onShieldBroken(double now) { shieldBrokenAt_ = now; }
     void onFuelEmpty(double now) { fuelEmptyAt_ = now; }
-    void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }
+    // ship::OrbitLockChanged. A release with no lock before it (e.g. a duplicate event) shows nothing.
+    void onOrbitLock(bool locked, const std::string& body, double now) {
+        if (locked) { orbitLocked_ = true; orbitBody_ = body; return; }
+        if (orbitLocked_) orbitReleasedAt_ = now;
+        orbitLocked_ = false;
+    }
+    bool orbitLocked() const { return orbitLocked_; }
+    std::string orbitStatus() const { return orbitLocked_ ? orbitStatusText(orbitBody_) : ""; }
+    void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }   // the orbit lock announces its own release
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
     float impactAlpha(double now) const { return timedAlpha(impactAt_, now, kImpactSeconds); }
@@ -111,6 +127,7 @@ public:
         if (float a = timedAlpha(shieldBrokenAt_, now, kEventBannerSeconds); a > 0) out.push_back({Warn::ShieldBroken, "SHIELD BROKEN", flash * std::min(1.0f, a * 3)});
         if (float a = timedAlpha(fuelEmptyAt_, now, kEventBannerSeconds); a > 0) out.push_back({Warn::FuelEmpty, "WARP FUEL EMPTY", flash * std::min(1.0f, a * 3)});
         else if (s.maxWarpFuel > 0 && s.warpFuel > 0 && fraction(s.warpFuel, s.maxWarpFuel) <= kLowFuel) out.push_back({Warn::LowFuel, "LOW WARP FUEL", flash});
+        if (float a = timedAlpha(orbitReleasedAt_, now, kOrbitReleasedSeconds); a > 0) out.push_back({Warn::OrbitReleased, "ORBIT RELEASED", std::min(1.0f, a * 3)});
         return out;
     }
 
@@ -120,7 +137,9 @@ private:
         double age = now - at;
         return (age < 0 || age >= dur) ? 0.0f : (float)(1.0 - age / dur);
     }
-    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever;
+    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever;
+    bool orbitLocked_ = false;
+    std::string orbitBody_;
     float impactAmount_ = 0;
     bool impactShielded_ = false;
     std::string impactSource_;

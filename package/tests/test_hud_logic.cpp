@@ -175,3 +175,48 @@ TEST(hud_respawn_text_counts_3_2_1) {
     CHECK_EQ(respawnText(0.0f), std::string(""));
     CHECK_EQ(respawnText(-1.0f), std::string(""));
 }
+
+TEST(hud_orbit_status_text) {
+    CHECK_EQ(orbitStatusText("Planet 1"), std::string("ORBIT LOCKED: PLANET 1"));
+    CHECK_EQ(orbitStatusText("Sun"), std::string("ORBIT LOCKED: SUN"));
+    CHECK_EQ(orbitStatusText(""), std::string("ORBIT LOCKED"));
+}
+
+TEST(hud_orbit_lock_state_and_released_banner) {
+    HudState h;
+    Snapshot s;
+    CHECK(!h.orbitLocked());
+    CHECK_EQ(h.orbitStatus(), std::string(""));
+    h.onOrbitLock(true, "Planet 1", 10.0);
+    CHECK(h.orbitLocked());
+    CHECK_EQ(h.orbitStatus(), std::string("ORBIT LOCKED: PLANET 1"));
+    CHECK(h.banners(s, 100.0).empty());                 // the status line is persistent, not a banner
+    h.onOrbitLock(false, "Planet 1", 20.0);
+    CHECK(!h.orbitLocked());
+    CHECK_EQ(h.orbitStatus(), std::string(""));
+    auto b = h.banners(s, 20.5);
+    CHECK_EQ(b.size(), 1u);
+    CHECK(b[0].kind == Warn::OrbitReleased);
+    CHECK_EQ(b[0].text, std::string("ORBIT RELEASED"));
+    CHECK(b[0].alpha > 0.0f && b[0].alpha <= 1.0f);
+    CHECK(h.banners(s, 20.0 + kOrbitReleasedSeconds + 0.1).empty());   // expires
+}
+
+TEST(hud_orbit_release_without_lock_shows_nothing) {
+    HudState h;
+    Snapshot s;
+    h.onOrbitLock(false, "Sun", 5.0);
+    CHECK(h.banners(s, 5.1).empty());
+    h.onOrbitLock(true, "Sun", 6.0);
+    h.onOrbitLock(false, "Sun", 7.0);
+    h.onOrbitLock(false, "Sun", 7.1);                   // duplicate release must not restart the banner
+    CHECK(h.banners(s, 7.0 + kOrbitReleasedSeconds + 0.05).empty());
+}
+
+TEST(hud_orbit_banner_hidden_when_dead) {
+    HudState h;
+    Snapshot s; s.alive = false;
+    h.onOrbitLock(true, "Sun", 1.0);
+    h.onOrbitLock(false, "Sun", 2.0);
+    CHECK(h.banners(s, 2.1).empty());
+}

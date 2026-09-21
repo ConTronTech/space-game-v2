@@ -54,3 +54,10 @@ The decisions are pure functions in `hud_logic.h` (`parseOverlayMode`, `overlayP
 ## Respawn countdown
 While the ship is destroyed and `ship::IRespawn` (`ship/respawn`, see docs/RESPAWN.md) is counting, "RESPAWNING IN N" (N = ceil of seconds left, 3, 2, 1)
 is shown under SHIP DESTROYED. Without the service, or with `respawn.enabled=false`, only SHIP DESTROYED shows. Formatting: `hud::respawnText` in `hud_logic.h`.
+
+## Orbit lock
+`ui/ship_hud` subscribes to `ship::OrbitLockChanged` (from `ship/orbit_lock`, see docs/ORBIT_LOCK.md; the module is optional, without it nothing happens).
+- While locked a **persistent status line** "ORBIT LOCKED: PLANET 1" (body name upper-cased; just "ORBIT LOCKED" if the name is empty) sits in the banner stack in a calm cyan, not flashing, never expiring.
+- On release a short **"ORBIT RELEASED"** banner (2.5 s, fades) shows. A release with no lock before it shows nothing; a dead ship shows neither.
+- Both belong to the banner group of the overlay plan: shown in chase view, `full` and `minimal` (so also in the default cockpit view, where the ship's screens have no orbit indicator), hidden in `hidden`.
+- Logic: `orbitStatusText` and `HudState::onOrbitLock / orbitLocked / orbitStatus` in `hud_logic.h`.
