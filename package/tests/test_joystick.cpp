@@ -171,7 +171,7 @@ TEST(joystick_profile_parsing_and_errors) {
     engine::Json empty = engine::Json::parse("{}", &err); Profile e2; CHECK(parseProfile(empty, e2, err)); CHECK(e2.empty());   // an empty object is a valid profile that maps nothing
 }
 
-TEST(joystick_shipped_profiles_parse_and_are_marked_unverified) {
+TEST(joystick_shipped_profiles_parse_and_state_their_verification_status) {
     int n = 0;
     for (auto& e : std::filesystem::directory_iterator("config/input/devices")) {                  // tests run from the repo root
         if (e.path().extension() != ".json") continue;
@@ -179,7 +179,7 @@ TEST(joystick_shipped_profiles_parse_and_are_marked_unverified) {
         std::string err; engine::Json j = engine::Json::parse(ss.str(), &err);
         Profile p; bool ok = parseProfile(j, p, err);
         CHECK(ok); if (!ok) std::fprintf(stderr, "  %s: %s\n", e.path().c_str(), err.c_str());
-        CHECK(p.status.find("UNVERIFIED") != std::string::npos);
+        CHECK(p.status.find("UNVERIFIED") != std::string::npos || p.status.find("VERIFIED") != std::string::npos);   // every shipped profile states VERIFIED (guided run on the real device) or UNVERIFIED (a guess)
         CHECK(!p.empty()); CHECK(p.match.vid >= 0);
         for (auto& a : p.axes) CHECK(a.cal.max > a.cal.min);
         n++;
