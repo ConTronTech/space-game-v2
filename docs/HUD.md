@@ -61,3 +61,9 @@ is shown under SHIP DESTROYED. Without the service, or with `respawn.enabled=fal
 - On release a short **"ORBIT RELEASED"** banner (2.5 s, fades) shows. A release with no lock before it shows nothing; a dead ship shows neither.
 - Both belong to the banner group of the overlay plan: shown in chase view, `full` and `minimal` (so also in the default cockpit view, where the ship's screens have no orbit indicator), hidden in `hidden`.
 - Logic: `orbitStatusText` and `HudState::onOrbitLock / orbitLocked / orbitStatus` in `hud_logic.h`.
+
+## Station docking prompt
+Optional: uses `ship::IDocking` (`ship/docking`) and, for the dock radius, `world::IStations`; without them nothing is drawn. All lines are in the banner group (chase view, `full`, and `minimal` cockpit view above the ship screens).
+- **Near a station** (within `docking.prompt_range` units of its centre; default `0` = 4 x the station's dock radius, from `IStations`, 480 for a 120 zone): a calm status line "STATION 1  420 m" (short name, distance in m / km) and under it either a green "DOCK [G]" when `nearestDockable` says ok, or the reason in a dim colour ("too far", "too fast", "warp drive on", "orbit lock on"; unknown reasons as they are).
+- **Docked:** a persistent "DOCKED: STATION 1 - [G] UNDOCK" line; short "DOCKED" / "UNDOCKED" banners on `ship::Docked` / `Undocked` (2.5 s, each replaces the other).
+- The key label is the default profile's `G` (`core::IInput` does not expose bindings). Logic: `dockPrompt`, `shortDockReason`, `shortStationName`, `distanceText`, `HudState::onDocked/onUndocked` in `hud_logic.h`. The distance query reuses member strings, so no per-frame allocation in the draw path beyond the text the HUD already builds; the station radius is looked up only when the nearest station's name changes.

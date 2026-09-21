@@ -6,10 +6,12 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "ship/cockpit/cockpit_screens_api.h"
+#include "ship/docking/docking_api.h"
 #include "ship/orbit_lock/orbit_lock_api.h"
 #include "ship/respawn/respawn_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/ship_hud/hud_logic.h"
+#include "world/stations/stations_api.h"
 
 class ShipHud : public engine::Module {
 public:
@@ -25,6 +27,9 @@ public:
         eng.events.subscribe<ship::FuelEmpty>([this](const ship::FuelEmpty&) { state_.onFuelEmpty(eng_->time()); });
         eng.events.subscribe<ship::Respawned>([this](const ship::Respawned&) { state_.onRespawned(); });
         eng.events.subscribe<ship::OrbitLockChanged>([this](const ship::OrbitLockChanged& e) { state_.onOrbitLock(e.locked, e.bodyName, eng_->time()); });
+        eng.events.subscribe<ship::Docked>([this](const ship::Docked& e) { state_.onDocked(e.stationName, eng_->time()); });
+        eng.events.subscribe<ship::Undocked>([this](const ship::Undocked&) { state_.onUndocked(eng_->time()); });
+        dockRange_ = eng.config.get("docking.prompt_range", 0.0f, "distance from a station centre at which the HUD shows the dock prompt, units (0 = 4 x the station's dock radius)");
         auto parsed = hud::parseOverlayMode(eng.config.get<std::string>("hud.cockpit_overlay", "minimal",
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
         if (parsed.unknown) LOG_W("ship_hud", "hud.cockpit_overlay: unknown value, using 'minimal' (valid: minimal, full, hidden)");
@@ -36,7 +41,7 @@ public:
     void shutdown(engine::Engine&) override { ui_->removePanel("ui/ship_hud"); }
 
 private:
-    static constexpr hud::RGB kCalm{0.45f, 0.85f, 1.0f};
+    static constexpr hud::RGB kCalm{0.45f, 0.85f, 1.0f}, kReady{0.45f, 1.0f, 0.55f}, kDim{0.62f, 0.70f, 0.80f};
     static core::Color col(const hud::RGB& c, float a = 1) { return {c.r, c.g, c.b, a}; }
 
     void draw(core::UIHandler& ui) {
@@ -102,7 +107,7 @@ private:
         hud::Snapshot snap{st.hp, st.maxHp, st.warpFuel, st.maxWarpFuel, st.alive};
         if (plan.banners) for (auto& b : state_.banners(snap, now)) {
             hud::RGB c = (b.kind == hud::Warn::LowHp || b.kind == hud::Warn::FuelEmpty) ? hud::RGB{1.0f, 0.35f, 0.3f}
-                       : b.kind == hud::Warn::OrbitReleased ? kCalm : hud::RGB{1.0f, 0.75f, 0.25f};
+                       : (b.kind == hud::Warn::OrbitReleased || b.kind == hud::Warn::Docked || b.kind == hud::Warn::Undocked) ? kCalm : hud::RGB{1.0f, 0.75f, 0.25f};
             drawBanner(ui, L, by, b.text, c, b.alpha);
             by += L.bannerH + L.bannerGap;
         }
@@ -110,6 +115,24 @@ private:
         if (plan.banners && st.alive && state_.orbitLocked()) {
             drawBanner(ui, L, by, state_.orbitStatus(), kCalm, 1.0f);
             by += L.bannerH + L.bannerGap;
+        }
+        // docked line, or the station prompt while flying near one (both optional: no ship/docking = nothing)
+        if (plan.banners && st.alive) {
+            if (state_.docked()) {
+                drawBanner(ui, L, by, state_.dockedStatus(), kCalm, 1.0f);
+                by += L.bannerH + L.bannerGap;
+            } else if (auto* dock = eng_->services.get<ship::IDocking>()) {
+                dq_.has = dock->nearestDockable(dq_.name, dq_.distance, dq_.ok, dq_.reason);
+                if (dq_.has) {
+                    hud::DockPrompt p = hud::dockPrompt(dq_, stationRadius(dq_.name), dockRange_, false);
+                    if (p.show) {
+                        drawBanner(ui, L, by, p.status, kCalm, 1.0f);
+                        by += L.bannerH + L.bannerGap;
+                        drawBanner(ui, L, by, p.action, p.ready ? kReady : kDim, p.ready ? 1.0f : 0.7f);
+                        by += L.bannerH + L.bannerGap;
+                    }
+                }
+            }
         }
 
         // controls hint (kept from the old demo HUD, plus V camera)
@@ -140,10 +163,24 @@ private:
         ui.textCentered(L.cx, y + (L.bannerH - fs * 1.3f) / 2, text, fs, col(c, a));
     }
 
+    // dock radius of the station called 'name' (world/stations, optional); cached by name so the lookup is not per frame
+    float stationRadius(const std::string& name) {
+        if (name == radiusName_) return radius_;
+        radiusName_ = name;
+        radius_ = 120.0f;                                     // smallest station dock zone when world/stations is off
+        if (auto* stations = eng_->services.get<world::IStations>())
+            for (int i = 0; i < stations->count(); i++) { auto info = stations->info(i); if (info.name == name) { radius_ = info.radius; break; } }
+        return radius_;
+    }
+
     engine::Engine* eng_ = nullptr;
     core::UIHandler* ui_ = nullptr;
     hud::HudState state_;
     bool warned_ = false;
+    float dockRange_ = 0;
+    hud::DockQuery dq_;
+    std::string radiusName_;
+    float radius_ = 120.0f;
     hud::OverlayMode mode_ = hud::OverlayMode::Minimal;
     float hintSeconds_ = 20.0f;
 };

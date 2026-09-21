@@ -24,7 +24,7 @@ Tunables: `stations.enabled` true, `stations.count` 2, `stations.seed_offset` 0,
 - **Dock** (`IInput::pressed` in `onUpdate`, ignored while paused): needs the ship alive, not warping, **not orbit-locked** (refused with a log line: press O first), inside the nearest station's dock zone and **slower than `docking.max_speed` (15 m/s) relative to the station**. Otherwise one log line says why (`too far from the station`, `too fast`, `warp drive engaged`, `orbit lock engaged`, ...).
 - **While docked** the ship is held at the offset it had when it docked (nothing jumps) and moves with the station: each fixed step it is steered through `IShip::setVelocity` to `station position + station velocity * dt + offset`, exactly like `ship/orbit_lock` (analytic, no drift; `ship_core` unchanged). Orbital or planetary alike. Measured: distance to an orbital station 112.380-112.382 units for 7 s while the station moved about 140 units.
 - **Undock:** press G again, or thrust / strafe / lift (dead zone 0.1), or damage, death, respawn, or the warp drive engaging. The ship leaves with the station's velocity plus `docking.undock_push` (default 3 m/s) straight out from the station. Turning does not undock.
-- **Events / service** (`docking_api.h`): `ship::Docked{stationName}`, `ship::Undocked{stationName}`; `ship::IDocking`: `docked()`, `stationName()`, `nearestDockable(name, distance, ok, reason)` returns false when there is no station, else the nearest one, its distance from the centre, whether G would work now and why not. The HUD/radar can show `DOCK [G]` from this (not done here).
+- **Events / service** (`docking_api.h`): `ship::Docked{stationName}`, `ship::Undocked{stationName}`; `ship::IDocking`: `docked()`, `stationName()`, `nearestDockable(name, distance, ok, reason)` returns false when there is no station, else the nearest one, its distance from the centre, whether G would work now and why not. The HUD shows it (see the HUD section below).
 - **Not saved:** the docked state is not saved (after loading you are flying with whatever velocity you had; the station list comes from the seed).
 - **`docking.test_refill`** (default **false**, TEST ONLY): while docked, heal to full, refill warp fuel and (re)install a full shield. A warning is logged at startup when it is on. Real refuelling and shields are meant to come from mining asteroids.
 
@@ -35,3 +35,6 @@ Tunables: `docking.max_speed` 15, `docking.undock_push` 3, `docking.test_refill`
 
 ## Code
 Pure rules (generation, analytic positions, docking checks, steering, undock velocity): `stations_rules.h`, tested in `package/tests/test_stations.cpp`.
+
+## HUD
+`ui/ship_hud` shows "STATION 1  420 m" plus a green "DOCK [G]" (or the short reason) near a station, and "DOCKED: STATION 1 - [G] UNDOCK" plus DOCKED/UNDOCKED banners while docked: see docs/HUD.md. Tunable `docking.prompt_range` (0 = 4 x the dock radius).

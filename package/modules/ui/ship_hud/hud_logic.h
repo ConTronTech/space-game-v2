@@ -18,7 +18,7 @@ inline float fraction(float cur, float max) { return max > 0 ? clamp01(cur / max
 inline RGB lerp(const RGB& a, const RGB& b, float t) { t = clamp01(t); return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t}; }
 
 constexpr float kLowHp = 0.25f, kLowFuel = 0.15f;
-constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f;
+constexpr float kImpactSeconds = 0.7f, kEventBannerSeconds = 3.0f, kOrbitReleasedSeconds = 2.5f, kDockBannerSeconds = 2.5f;
 
 enum class Bar { Hp, Shield, Fuel };
 
@@ -79,7 +79,7 @@ inline int fitHint(Layout& L, int screenW, const std::function<int(const std::st
 }
 
 // ---- warnings ----
-enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased };
+enum class Warn { LowHp, LowFuel, FuelEmpty, ShieldBroken, OrbitReleased, Docked, Undocked };
 struct Banner { Warn kind; std::string text; float alpha; };   // alpha: flashing 0.55..1, times the fade-out of timed ones
 
 struct Snapshot { float hp = 100, maxHp = 100, warpFuel = 100, maxWarpFuel = 100; bool alive = true; };
@@ -90,6 +90,58 @@ inline std::string orbitStatusText(const std::string& body) {
     std::string up = body;
     for (auto& c : up) c = (char)std::toupper((unsigned char)c);
     return "ORBIT LOCKED: " + up;
+}
+
+// ---- station docking prompt (ship::IDocking) ----
+constexpr float kDockPromptFactor = 4.0f;       // prompt shows within this many dock radii (docking.prompt_range overrides, in units)
+inline const char* dockKeyLabel() { return "G"; }   // core::IInput does not expose bindings: the default profile's key
+
+inline std::string upper(std::string s) { for (auto& c : s) c = (char)std::toupper((unsigned char)c); return s; }
+
+// "Station 1 (Planet 1, orbital)" -> "Station 1": the HUD line only needs the short name
+inline std::string shortStationName(const std::string& name) {
+    auto p = name.find(" (");
+    return p == std::string::npos || p == 0 ? name : name.substr(0, p);
+}
+
+// "420 m", "1.2 km"
+inline std::string distanceText(float meters) {
+    char b[32];
+    if (meters < 1000.0f) std::snprintf(b, sizeof b, "%.0f m", meters);
+    else std::snprintf(b, sizeof b, "%.1f km", meters / 1000.0f);
+    return b;
+}
+// prompt range: an explicit tunable (> 0) or kDockPromptFactor x the station's dock radius
+inline float dockPromptRange(float dockRadius, float tunable) { return tunable > 0 ? tunable : kDockPromptFactor * dockRadius; }
+inline bool inDockPromptRange(float distance, float dockRadius, float tunable) { return distance <= dockPromptRange(dockRadius, tunable); }
+
+// ship/docking's reasons -> short forms; unknown reasons are shown as they are
+inline std::string shortDockReason(const std::string& reason) {
+    std::string r = reason;
+    for (auto& c : r) c = (char)std::tolower((unsigned char)c);
+    auto has = [&](const char* n) { return r.find(n) != std::string::npos; };
+    if (has("too far")) return "too far";
+    if (has("too fast")) return "too fast";
+    if (has("warp")) return "warp drive on";
+    if (has("orbit")) return "orbit lock on";
+    return reason;
+}
+
+struct DockQuery { bool has = false, ok = false; float distance = 0; std::string name, reason; };
+struct DockPrompt { bool show = false, ready = false; std::string status, action; };   // status: "STATION 1  420 m"; action: "DOCK [G]" or the short reason
+
+// What to show while flying near a station. Nothing when there is no station, it is out of range, or we are docked.
+inline DockPrompt dockPrompt(const DockQuery& q, float dockRadius, float tunableRange, bool docked) {
+    DockPrompt p;
+    if (docked || !q.has || !inDockPromptRange(q.distance, dockRadius, tunableRange)) return p;
+    p.show = true;
+    p.ready = q.ok;
+    p.status = upper(shortStationName(q.name)) + "  " + distanceText(q.distance);
+    p.action = q.ok ? std::string("DOCK [") + dockKeyLabel() + "]" : shortDockReason(q.reason);
+    return p;
+}
+inline std::string dockedText(const std::string& station) {
+    return "DOCKED: " + upper(shortStationName(station)) + " - [" + dockKeyLabel() + "] UNDOCK";
 }
 
 class HudState {
@@ -108,6 +160,11 @@ public:
     }
     bool orbitLocked() const { return orbitLocked_; }
     std::string orbitStatus() const { return orbitLocked_ ? orbitStatusText(orbitBody_) : ""; }
+    // ship::Docked / Undocked
+    void onDocked(const std::string& station, double now) { docked_ = true; dockedAt_ = now; undockedAt_ = kNever; dockedName_ = station; }
+    void onUndocked(double now) { if (docked_) { undockedAt_ = now; dockedAt_ = kNever; } docked_ = false; }
+    bool docked() const { return docked_; }
+    std::string dockedStatus() const { return docked_ ? dockedText(dockedName_) : ""; }
     void onRespawned() { impactAt_ = shieldBrokenAt_ = fuelEmptyAt_ = kNever; }   // the orbit lock announces its own release
 
     // 0 (none) .. 1 (just hit); fades linearly over kImpactSeconds
@@ -128,6 +185,8 @@ public:
         if (float a = timedAlpha(fuelEmptyAt_, now, kEventBannerSeconds); a > 0) out.push_back({Warn::FuelEmpty, "WARP FUEL EMPTY", flash * std::min(1.0f, a * 3)});
         else if (s.maxWarpFuel > 0 && s.warpFuel > 0 && fraction(s.warpFuel, s.maxWarpFuel) <= kLowFuel) out.push_back({Warn::LowFuel, "LOW WARP FUEL", flash});
         if (float a = timedAlpha(orbitReleasedAt_, now, kOrbitReleasedSeconds); a > 0) out.push_back({Warn::OrbitReleased, "ORBIT RELEASED", std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(dockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Docked, "DOCKED", std::min(1.0f, a * 3)});
+        if (float a = timedAlpha(undockedAt_, now, kDockBannerSeconds); a > 0) out.push_back({Warn::Undocked, "UNDOCKED", std::min(1.0f, a * 3)});
         return out;
     }
 
@@ -137,7 +196,9 @@ private:
         double age = now - at;
         return (age < 0 || age >= dur) ? 0.0f : (float)(1.0 - age / dur);
     }
-    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever;
+    double impactAt_ = kNever, shieldBrokenAt_ = kNever, fuelEmptyAt_ = kNever, orbitReleasedAt_ = kNever, dockedAt_ = kNever, undockedAt_ = kNever;
+    bool docked_ = false;
+    std::string dockedName_;
     bool orbitLocked_ = false;
     std::string orbitBody_;
     float impactAmount_ = 0;
