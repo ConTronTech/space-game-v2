@@ -148,7 +148,7 @@ private:
     bool triggerHeld(engine::Engine& eng, ship::IShip& ship, bool scripted) {
         const auto& st = ship.status();
         const char* blocked = !st.alive ? "ship destroyed" : st.warping ? "warp drive engaged" : nullptr;
-        if (!blocked) if (auto* dock = eng.services.get<ship::IDocking>()) if (dock->docked()) blocked = "docked";
+        if (!blocked) if (auto* dock = eng.services.get<ship::IDocking>()) if (dock->busy()) blocked = "docked";
         if (blocked) {
             if (scripted && !loggedBlock_) { LOG_D("combat", "fire ignored: %s", blocked); loggedBlock_ = true; }   // dev flag only: the player's clicks are silently ignored
             return false;

@@ -14,7 +14,7 @@ Optional fields: `size` (multiplier, 0 = the preset's), `lifetime` (multiplier),
 ## Sources built in (read-only: nothing in `ship_core`, `warp_drive`, the cockpit or physics was changed)
 | Effect | Trigger | Details |
 |---|---|---|
-| `exhaust` | thrust / strafe / lift actions (`core::IInput`) | chase view only (`core::ICamera::showsShip()`); 60 particles per second at full thrust times `fx.exhaust`; from the ship's rear for forward thrust, opposite to the total push; carries the ship's velocity |
+| `exhaust` | thrust / strafe / lift actions (`core::IInput`) | chase view only (`core::ICamera::showsShip()`); 60 particles per second at full thrust times `fx.nozzle_back` 7.9 / `fx.nozzle_down` 0.4 (where the exhaust starts, ShipV2 thrusters), `fx.exhaust`; from the ship's rear for forward thrust, opposite to the total push; carries the ship's velocity |
 | `spark` + `debris` | `core::Collided` | at the contact point, flying back along the contact normal; count grows with the closing speed (3 at a scratch to 40 at 200 m/s; debris a third of that) |
 | `spark` | `ship::DamageTaken` | 2-10 sparks around the ship, scaled by the damage |
 | `warp_flash` | `ship::IWarpDrive::engaged()` turning true (polled every frame) | 50-80 blue-white glow particles bursting out 8 units ahead of the ship |

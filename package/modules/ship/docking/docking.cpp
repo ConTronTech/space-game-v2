@@ -27,7 +27,7 @@ public:
         maxSpeed_ = c.get("docking.max_speed", 15.0f, "highest speed relative to the station at which docking works, m/s");
         push_ = c.get("docking.undock_push", 3.0f, "speed away from the station when undocking, m/s");
         approachSeconds_ = c.get("docking.approach_seconds", 1.5f, "seconds the ship takes to glide onto the landing pad after G (0 = instant)");
-        restHeight_ = c.get("docking.rest_height", 0.6f, "height of the ship's origin above the pad surface when docked, units (the belly of the hull rests on the pad)");
+        restHeight_ = c.get("docking.rest_height", 1.4f, "height of the ship's origin above the pad surface when docked, units (the belly of the hull rests on the pad)");
         refill_ = c.get("docking.test_refill", false, "TEST ONLY: while docked, refill hull, shield and warp fuel (real fuel and shields come from mining later)");
         autoDock_ = frameFlag(eng, "auto-dock");
         autoUndock_ = frameFlag(eng, "auto-undock");
@@ -49,6 +49,7 @@ public:
     }
 
     // ---- ship::IDocking ----
+    bool busy() const override { return state_ != State::Idle; }        // approaching the pad OR docked
     bool docked() const override { return state_ == State::Docked; }   // true once the approach is finished (the Docked event fires then)
     std::string stationName() const override { return state_ == State::Docked ? name_ : std::string(); }
     bool nearestDockable(std::string& name, float& distance, bool& ok, std::string& reason) const override {

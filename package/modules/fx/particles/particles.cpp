@@ -31,6 +31,8 @@ public:
         int cap = std::clamp(c.get("fx.max_particles", 800, "most live particles at once; spawns beyond it are dropped"), 16, 20000);
         spawnBudget_ = std::max(1, c.get("fx.spawn_budget", 150, "most particles spawned per frame (a big burst is spread over frames by dropping the excess)"));
         sizeScale_ = std::max(0.0f, c.get("fx.size_scale", 1.0f, "multiplier on every particle's size"));
+        nozzleBack_ = c.get("fx.nozzle_back", 7.9f, "exhaust origin: metres behind the pilot's eye (ShipV2's thrusters)");
+        nozzleDown_ = c.get("fx.nozzle_down", 0.4f, "exhaust origin: metres below the pilot's eye");
         exhaust_ = std::clamp(c.get("fx.exhaust", 1.0f, "engine exhaust amount: 0 = off, 0.5 = half as many particles, 1 = full"), 0.0f, 2.0f);
         limits_.maxDist = c.get("fx.max_distance", 2500.0f, "particles farther than this are not drawn, units");
         soft_ = c.get("fx.soft_dots", true, "draw particles as soft round dots with one tiny 32x32 texture (false = plain hard squares, no texture)");
@@ -176,8 +178,9 @@ private:
         engine::Vec3 back = accel * (-1.0f / level);                 // the exhaust goes opposite to the push
         auto v = ship->velocity();
         // the nozzle: at the rear for forward thrust, else at the ship's centre
-        float rear = t > 0.05f ? 1.6f : 0.0f;
-        world::Vec3d origin{ps.pos.x - ps.fwd.x * rear, ps.pos.y - ps.fwd.y * rear, ps.pos.z - ps.fwd.z * rear};
+        // (ShipV2: the thruster jets sit ~7.9 m behind the pilot's eye and ~0.4 m below it; both are tunables)
+        float rear = t > 0.05f ? nozzleBack_ : 0.0f, drop = t > 0.05f ? nozzleDown_ : 0.0f;
+        world::Vec3d origin{ps.pos.x - ps.fwd.x * rear - ps.up.x * drop, ps.pos.y - ps.fwd.y * rear - ps.up.y * drop, ps.pos.z - ps.fwd.z * rear - ps.up.z * drop};
         emit("exhaust", origin, {back.x, back.y, back.z}, {v.x, v.y, v.z}, n);
     }
 
@@ -243,7 +246,7 @@ private:
     bool soft_ = true;
     bool active_ = false, warned_ = false, wasWarping_ = false, testLoop_ = false, fakeThrust_ = false;
     int spawnBudget_ = 150;
-    float sizeScale_ = 1.0f, exhaust_ = 1.0f, exhaustCarry_ = 0;
+    float sizeScale_ = 1.0f, exhaust_ = 1.0f, exhaustCarry_ = 0, nozzleBack_ = 7.9f, nozzleDown_ = 0.4f;
     long testFrame_ = -1;
     fx::QuadLimits limits_;
     std::vector<fx::Preset> presets_;

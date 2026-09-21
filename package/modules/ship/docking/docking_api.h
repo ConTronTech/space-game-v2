@@ -16,6 +16,7 @@ class IDocking {
 public:
     virtual ~IDocking() = default;
     virtual bool docked() const = 0;
+    virtual bool busy() const { return docked(); }      // approaching the pad OR docked: the ship is not under the player's control (weapons refuse to fire)
     virtual std::string stationName() const = 0;        // the station we are docked at ("" when not docked)
     // The nearest station and whether pressing the dock key would work right now. Returns false when there is no station at all.
     // `distance` is from the station centre; `reason` says why not when `ok` is false ("too far from the station", "too fast", ...).
