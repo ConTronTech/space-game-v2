@@ -65,10 +65,10 @@ TEST(quality_preset_parsing_and_cycling) {
 TEST(quality_table_grows_with_the_preset) {
     for (auto& e : presetTable()) {
         // on/off switches (0 = the cheap path at Low) may be 0 at Low; every numeric tunable must be positive
-        bool isSwitch = std::string(e.key) == "world.sphere_detail" || std::string(e.key) == "render.clear_color" || std::string(e.key) == "starfield.points" || std::string(e.key) == "cockpit.glass_tint";
+        bool isSwitch = std::string(e.key) == "world.sphere_detail" || std::string(e.key) == "render.clear_color" || std::string(e.key) == "starfield.points" || std::string(e.key) == "cockpit.glass_tint" || std::string(e.key) == "window.fullscreen";
         CHECK(e.low > 0 || isSwitch);
         if (std::string(e.key).find("edge_px") != std::string::npos) CHECK(e.low >= e.medium && e.medium >= e.high && e.high >= e.ultra);   // smaller = more detail
-        else CHECK(e.low <= e.medium && e.medium <= e.high && e.high <= e.ultra);
+        else if (std::string(e.key) != "window.fullscreen") CHECK(e.low <= e.medium && e.medium <= e.high && e.high <= e.ultra);
     }
     CHECK_EQ(valueFor(presetTable()[0], Preset::Low), 512.0);
     CHECK_EQ(valueFor(presetTable()[0], Preset::Ultra), 2048.0);

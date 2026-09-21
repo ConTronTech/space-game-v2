@@ -8,6 +8,7 @@
 #include "core/quality/quality_api.h"
 #include "core/quality/quality_rules.h"
 #include "core/settings/settings_api.h"
+#include "core/window/window.h"
 #include "engine/engine.h"
 #include "engine/log.h"
 
@@ -65,6 +66,13 @@ public:
               want == quality::Preset::Auto ? " (auto)" : "", source.c_str());
 
         LOG_I("quality", "preset values: %s", applied.c_str());
+
+        // Borderless fullscreen avoids the desktop compositor: on the Ironlake laptop it took the windowed 56 fps / 16 fps 1% low to 80 fps / 29 fps
+        // (docs/PERFORMANCE.md). The preset asks for it on Low; an explicit player choice (the Settings toggle -> video.fullscreen) always wins.
+        bool userChoseFullscreen = false;
+        if (auto* s = eng.services.get<ISettings>()) userChoseFullscreen = !s->raw("video.fullscreen").isNull();
+        if (!userChoseFullscreen && eng.config.get("window.fullscreen", false, "start in borderless fullscreen (the Low preset turns this on: it avoids the compositor; the Settings toggle wins)"))
+            if (auto* w = eng.services.get<Window>()) w->setFullscreen(true);
         eng.services.provide<IQuality>(this);
         return true;
     }

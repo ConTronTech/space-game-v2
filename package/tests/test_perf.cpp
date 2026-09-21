@@ -377,10 +377,16 @@ TEST(quality_table_has_the_round_two_rows) {
     auto* scale = find("render.scale");
     CHECK(scale != nullptr);
     if (scale) {
-        CHECK(nearp(scale->low, 0.7) && nearp(scale->medium, 0.85) && nearp(scale->high, 1.0) && nearp(scale->ultra, 1.0));
+        CHECK(nearp(scale->low, 1.0) && nearp(scale->medium, 1.0) && nearp(scale->high, 1.0) && nearp(scale->ultra, 1.0));   // laptop A/B: 0.7 lost fps, so scaling is opt-in
         CHECK(quality::valueFor(*scale, quality::Preset::High) >= 0.995);          // no visual change on High / Ultra
     }
-    for (const char* k : {"render.clear_color", "starfield.points", "cockpit.glass_tint"}) {
+    auto* pts = find("starfield.points");
+    CHECK(pts != nullptr);
+    if (pts) CHECK(pts->low == 1.0 && pts->ultra == 1.0);   // laptop A/B: the quad path was slower than GL_POINTS
+    auto* fsr = find("window.fullscreen");
+    CHECK(fsr != nullptr);
+    if (fsr) CHECK(fsr->low == 1.0 && fsr->medium == 0.0 && fsr->ultra == 0.0);   // fullscreen only on Low
+    for (const char* k : {"render.clear_color", "cockpit.glass_tint"}) {
         auto* e = find(k);
         CHECK(e != nullptr);
         if (e) CHECK(e->low == 0.0 && e->medium == 1.0 && e->high == 1.0 && e->ultra == 1.0);   // only Low changes
