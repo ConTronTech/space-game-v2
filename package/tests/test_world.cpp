@@ -2,6 +2,7 @@
 #include "tests/test.h"
 #include "world/skybox/skybox_rules.h"
 #include "world/starfield/starfield_rules.h"
+#include "world/star_system/star_system_rules.h"
 
 namespace {
 bool near(float a, float b) { return std::fabs(a - b) < 1e-4f; }
@@ -130,4 +131,110 @@ TEST(world_effective_face_uv_implicit_flip_on_top_and_bottom) {
     CHECK(world::effectiveFaceUV(4, none).flipV);                 // no json: implicit flip alone
     world::FaceUV j; j.flipV = true;
     CHECK(!world::effectiveFaceUV(5, j).flipV);                   // json flip_v cancels it
+}
+
+// ---- star system ----
+namespace {
+double dist(const world::Vec3d& a, const world::Vec3d& b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)); }
+} // namespace
+
+TEST(star_system_same_seed_same_system_different_seed_differs) {
+    world::SystemParams p; p.seed = 1234;
+    auto a = world::generateSystem(p), b = world::generateSystem(p);
+    CHECK_EQ(a.bodies.size(), b.bodies.size());
+    for (size_t i = 0; i < a.bodies.size(); i++) {
+        CHECK(near(a.bodies[i].radius, b.bodies[i].radius));
+        CHECK(std::fabs(a.bodies[i].orbitRadius - b.bodies[i].orbitRadius) < 1e-6);
+        CHECK(std::fabs(a.bodies[i].period - b.bodies[i].period) < 1e-6);
+        CHECK_EQ(a.bodies[i].name, b.bodies[i].name);
+    }
+    p.seed = 99;
+    auto c = world::generateSystem(p);
+    CHECK(std::fabs(c.bodies[1].orbitRadius - a.bodies[1].orbitRadius) > 1e-3 || c.bodies.size() != a.bodies.size());
+}
+
+TEST(star_system_structure_counts_and_ordering) {
+    for (unsigned seed : {1u, 7u, 1234u, 99999u}) {
+        world::SystemParams p; p.seed = seed; p.planets = 6;
+        auto s = world::generateSystem(p);
+        CHECK(s.bodies[0].kind == world::BodyKind::Sun);
+        int planets = 0; double last = 0;
+        for (size_t i = 1; i < s.bodies.size(); i++) {
+            auto& b = s.bodies[i];
+            CHECK_EQ(b.id, (int)i);
+            CHECK(b.parent >= 0 && b.parent < (int)i);                // parent listed before its moons
+            if (b.kind == world::BodyKind::Planet) { planets++; CHECK(b.orbitRadius > last); last = b.orbitRadius; CHECK(b.parent == 0); }
+            else CHECK(s.bodies[b.parent].kind == world::BodyKind::Planet);
+            CHECK(b.period > 0 && b.radius > 0);
+        }
+        CHECK_EQ(planets, 6);
+        for (auto& b : s.bodies) if (b.kind == world::BodyKind::Planet) {
+            int moons = 0; for (auto& m : s.bodies) if (m.parent == b.id) moons++;
+            CHECK(moons >= 0 && moons <= 3);
+        }
+        CHECK(last > 60000.0);                                          // outer edge is tens of thousands of units out
+    }
+    world::SystemParams p; p.planets = 99; CHECK_EQ(world::generateSystem(p).bodies[0].kind == world::BodyKind::Sun, true);
+    int cnt = 0; for (auto& b : world::generateSystem(p).bodies) cnt += b.kind == world::BodyKind::Planet;
+    CHECK_EQ(cnt, 10);                                                  // clamped
+    p.planets = 0; cnt = 0; for (auto& b : world::generateSystem(p).bodies) cnt += b.kind == world::BodyKind::Planet;
+    CHECK_EQ(cnt, 2);
+}
+
+TEST(star_system_orbits_are_analytic_and_periodic) {
+    world::SystemParams p;
+    auto s = world::generateSystem(p);
+    world::updatePositions(s, 0);
+    auto at0 = s.bodies;
+    for (auto& b : s.bodies) if (b.parent >= 0) CHECK(std::fabs(dist(b.position, s.bodies[b.parent].position) - b.orbitRadius) < 1e-6 * b.orbitRadius + 1e-6);
+    // huge time: still exactly on the circle (no drift), and after whole periods back at the start
+    world::updatePositions(s, 1.0e9);
+    for (auto& b : s.bodies) if (b.parent >= 0) CHECK(std::fabs(dist(b.position, s.bodies[b.parent].position) - b.orbitRadius) < 1e-5 * b.orbitRadius);
+    auto& pl = s.bodies[1];
+    world::updatePositions(s, pl.period * 3.0);
+    CHECK(dist(s.bodies[1].position, at0[1].position) < 1e-3 * pl.orbitRadius);
+    // it actually moves
+    world::updatePositions(s, pl.period * 0.25);
+    CHECK(dist(s.bodies[1].position, at0[1].position) > 0.5 * pl.orbitRadius);
+    // position depends on t only (same t, same answer, in any order)
+    world::updatePositions(s, 5000); auto x1 = s.bodies[2].position;
+    world::updatePositions(s, 9000); world::updatePositions(s, 5000);
+    CHECK(dist(x1, s.bodies[2].position) < 1e-9);
+}
+
+TEST(star_system_spawn_is_clear_of_every_body) {
+    for (unsigned seed : {1u, 42u, 1234u, 777u, 31337u}) {
+        world::SystemParams p; p.seed = seed;
+        auto s = world::generateSystem(p);
+        for (double t : {0.0, 1e3, 1e4, 1e5, 1e6}) {
+            world::updatePositions(s, t);
+            for (auto& b : s.bodies) CHECK(dist(b.position, world::Vec3d{}) - b.radius > 5000.0);   // nothing within 5000 units of the origin
+        }
+    }
+}
+
+TEST(star_system_projection_keeps_angular_size_and_direction) {
+    world::Vec3d cam{100, 0, 0}, body{100, 0, -60000};
+    auto far = world::projectBody(body, 600.0, cam, 15000.0);
+    CHECK(far.clamped);
+    CHECK(near(far.z, -15000.0f)); CHECK(near(far.x, 0)); CHECK(near(far.dist, 60000.0f));
+    CHECK(near(far.radius, 600.0f * 15000.0f / 60000.0f));
+    CHECK(near(far.radius / std::sqrt(far.x * far.x + far.y * far.y + far.z * far.z), 600.0f / 60000.0f));   // same angular size
+    auto close = world::projectBody(body, 600.0, {100, 0, -50000}, 15000.0);   // 10000 away: untouched
+    CHECK(!close.clamped); CHECK(near(close.z, -10000.0f)); CHECK(near(close.radius, 600.0f));
+    // precision: a body 1e6 units away and a camera next to it still gives an exact small offset (double subtraction)
+    auto pre = world::projectBody({1.0e6 + 5.0, 0, 0}, 1.0, {1.0e6, 0, 0}, 15000.0);
+    CHECK(near(pre.x, 5.0f)); CHECK(!pre.clamped);
+    auto zero = world::projectBody({1, 2, 3}, 1.0, {1, 2, 3}, 15000.0);       // camera at the centre: no NaN
+    CHECK(zero.x == zero.x && near(zero.radius, 1.0f));
+}
+
+TEST(star_system_sphere_mesh_is_valid) {
+    auto m = world::buildSphere(16, 12);
+    CHECK_EQ(m.verts.size(), (size_t)(13 * 17 * 3));
+    CHECK_EQ(m.indices.size(), (size_t)(12 * 16 * 6));
+    for (size_t i = 0; i < m.verts.size(); i += 3)
+        CHECK(near(std::sqrt(m.verts[i] * m.verts[i] + m.verts[i + 1] * m.verts[i + 1] + m.verts[i + 2] * m.verts[i + 2]), 1.0f));
+    unsigned short mx = 0; for (auto v : m.indices) mx = std::max(mx, v);
+    CHECK(mx < m.verts.size() / 3);
 }

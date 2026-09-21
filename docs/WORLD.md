@@ -59,3 +59,34 @@ Create `assets/skybox/bkg/<color>/<set>/` with the six face images (any resoluti
 ## Code map
 Pure rules (no SDL/GL): `world/skybox/skybox_rules.h` (capped size, face names, UV transform, set choice, cache path/freshness, box downscale) and `world/starfield/starfield_rules.h` (streak length), tested in `package/tests/test_world.cpp`.
 The demo rocks stay in `ship/ship_core` until the real world replaces them.
+
+## `world/star_system` (pass `star_system`, order 50: after starfield/skybox, before the demo rocks)
+A seeded, deterministic star system: one sun, `planets.count` planets (2-10, default 6), 0-3 moons each. Provides `world::IStarSystem` (`star_system_api.h`): `sunPosition()`, `bodies()` (id, name, kind sun/planet/moon,
+position in **double**, radius, parent id, orbit radius, period, colour), `positionAt(id)`, `simTime()`, `seed()`. Radar, navigation and the collision wiring (3.4) can consume it; nothing here touches physics or ship behaviour yet.
+
+**Generation** (`generateSystem`, pure, from a `std::mt19937` with platform-independent number conversion): behaviour ported from the old game: sun radius 800-2000 in one of five star colours; the first planet ~8 sun radii + 20-40k out, then 30-80k
+(+10 planet radii) further for each next one, so the outer edge is 100k-350k units; inner planets small (150-450), outer big (400-1200); seven planet colours; moons 40-(30% of the planet) big, a few thousand units out.
+Same seed = identical system (unit-tested). The sun is placed `world.sun_distance` (12000) from the origin in a seeded direction, so the ship's default spawn is clear of every body: nearest body is the sun, ~10,000 units from its surface, and every planet stays more than 13,000 units from the origin for ever (smallest orbit 26,400 minus the sun offset 12,000, minus a planet radius).
+
+**Orbits:** circular, per-body inclination (planets +-10 deg, moons +-15 deg), analytic: `position = parent + r*(cos a, sin a * sin tilt, sin a * cos tilt)`, `a = phase + 2 pi t / period`. No integration, so no drift however long the game runs.
+Sim time advances only in `onFixedUpdate` (so it stops while paused) at `world.time_scale` (1 = real seconds; the periods are hours, as in the old game, so try 100 to watch them move). It is saved (`world/star_system`: seed + time) and restored on load; a save with another seed regenerates the system.
+
+**Camera-relative rendering (precision):** positions are doubles. Each frame the camera position (from the view matrix) is subtracted in double, and only the small difference goes to float. Bodies farther than 75% of the far plane are pulled in along the line of sight to that distance
+and scaled by the same factor, so a planet 60,000 units away is still a dot with the correct angular size (`projectBody`, unit-tested). Those backdrop bodies are painted far-to-near with depth testing off; nearer bodies are real depth-tested geometry. No world re-origin is done and no other module changes.
+
+**Drawing:** the sun is an emissive (unlit) sphere plus an additive camera-facing glow; planets and moons are lit, colour-tinted spheres with one `GL_LIGHT0` per body pointing at the sun (a directional light, `w = 0`).
+The unit sphere is built once (vertex + index arrays, no per-frame allocation). All GL state is saved and restored. Placeholder meshes: real LOD meshes come with 3.3.
+
+| Tunable | Default | |
+|---|---|---|
+| `star_system.enabled` | true | generate and draw |
+| `world.seed` | 1234 | system seed |
+| `planets.count` | 6 | 2-10 |
+| `world.sun_distance` | 12000 | sun from the spawn point, units |
+| `world.time_scale` | 1.0 | orbit speed multiplier |
+| `world.sphere_detail` | 1 | 0 = 12x8 segments, 1 = 16x12 |
+
+Logging at `engine.log_level: debug` lists every body with its orbit radius and period.
+
+**Adding a body kind** (e.g. asteroid belt, station): add a value to `world::BodyKind` in `star_system_api.h`, create the bodies in `generateSystem` (parent index lower than the child's, `orbitRadius`/`period`/`phase`/`tilt` describe the orbit),
+and handle the new kind in `drawBody` in `star_system.cpp`. Consumers that switch on `kind` need a case for it.
