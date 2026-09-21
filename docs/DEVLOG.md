@@ -14,6 +14,13 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 15 - 2026-09-21: laptop ("crap-top") online - first real numbers
+- **Access:** SSH key `~/.ssh/id_ed25519_spacegame_laptop` -> `contolis@192.168.1.150` (Linux Mint 22.3, i5 M 560 2c/4t, HD Graphics ILK, OpenGL 2.1 Mesa 25.2.8, 7.6 GB, 1366x768). No sudo, and the SDL2 dev packages are NOT installed there, so nothing is built on the laptop: the main rig builds the generic binary and `package/tools/laptop_bench.sh` rsyncs it plus assets/data and the four missing runtime libs (SDL2_image/ttf/mixer, opusfile) into `~/space-game-v2-test/libs`. Its config/game.json and settings.json are never copied (laptop runs defaults). Nothing is left running.
+- **Auto quality worked:** the laptop picked LOW by itself ("older Intel integrated graphics (Ironlake/Sandy Bridge class)").
+- **Numbers (benchmark, no vsync, low preset, 1280x706):** 42.7 fps average, 1% low 14.9 fps, worst frame 67 ms. Target is 60 average / 30 floor: NOT met yet.
+- **Where the time goes (average fps with parts disabled):** skybox off 52.0 (skybox costs ~4 ms/frame), cockpit off 58.4 (cockpit ~6.5 ms/frame), star system + asteroids off 41.5 (cheap), HUD off 41.9 (cheap), everything (skybox, star system, asteroids, starfield, cockpit) off 78.3 (the bare engine + UI + ship is still 12.8 ms/frame). The 1% low stays ~15 fps in EVERY variant (about 6 frames of ~65 ms in 640): a periodic hitch that is NOT any of those modules.
+- **Next (perf task):** cockpit render cost, skybox fill cost, the base 12.8 ms, and the ~65 ms hitch. Target: 60 fps average on Low.
+
 ## Leap 12 - 2026-09-21 (DONE, tag `good-20260921-08`): radar height stems (user gripe 1)
 - **Changed:** each radar contact keeps its flat position with a small base marker on the ship plane; its dot is offset up/down by a log-scaled height with a stem line (brighter above, dimmer below); label shows e.g. "PLANET 1  6.3K  UP 2.5K / DN 2.5K". Level (under 25 units or ~1 degree) shows no stem. Note: the old game radar in the reference tree has no stems, so this follows the user description.
 - **Verified:** 217 tests under ASan+UBSan, full smoke, headless clean; screenshots above/below a planet from crafted saves.
