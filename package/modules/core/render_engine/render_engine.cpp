@@ -68,7 +68,6 @@ bool RenderEngine::init(engine::Engine& eng) {
     else LOG_I("render", "render.scale 1.0 (off): the world is drawn straight to the window");
     prof_ = eng.services.get<engine::Profiler>();
     if (prof_) { char b[96]; std::snprintf(b, sizeof b, "render.scale %.2f%s, render.clear_color %s", scaleTunable_, fboOk_ ? "" : " (off)", clearTunable_ ? "true" : "false"); prof_->setNote(b); }
-    profGpu_ = prof_ && eng.flagValue("profile") == "gpu";
     eng.services.provide<RenderEngine>(this);
     return true;
 }
@@ -193,6 +192,7 @@ void RenderEngine::onRender(engine::Engine&) {
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixf(camera.view);
 
+    const bool gpu = prof_ && prof_->gpuMode();     // --profile=gpu, or F4 in the live overlay: glFinish around every pass
     running_ = passes_; // a pass may add/remove passes while we iterate (shared_ptr copies: cheap, capacity reused)
     for (auto& pp : running_) {
         Entry& p = *pp;
@@ -200,10 +200,10 @@ void RenderEngine::onRender(engine::Engine&) {
         glPushMatrix();
         if (prof_) {
             if (p.profId < 0) p.profId = prof_->intern("pass:" + p.name);
-            if (profGpu_) glFinish();                       // earlier GPU work must not be charged to this pass
+            if (gpu) glFinish();                            // earlier GPU work must not be charged to this pass
             engine::ProfScope scope(prof_, p.profId);
             p.fn(*this);
-            if (profGpu_) glFinish();
+            if (gpu) glFinish();
         } else {
             p.fn(*this);
         }
@@ -212,9 +212,9 @@ void RenderEngine::onRender(engine::Engine&) {
     }
     if (scaled_.scaled) {
         engine::ProfScope scope(prof_, prof_ ? (compositeId_ < 0 ? (compositeId_ = prof_->intern("pass:render.scale composite")) : compositeId_) : -1);
-        if (profGpu_) glFinish();
+        if (gpu) glFinish();
         compositeWorldBuffer(w, h);
-        if (profGpu_) glFinish();
+        if (gpu) glFinish();
     }
 }
 

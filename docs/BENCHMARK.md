@@ -36,3 +36,6 @@ See docs/PERFORMANCE.md for how to read it, how to run it on the laptop and what
 Every performance fix has its own tunable (table in docs/PERFORMANCE.md, "Round 2"): put the keys you want to force into the laptop's `config/game.json` (`render.scale`, `render.clear_color`, `starfield.points`, `cockpit.glass_tint`), alternate the old and new settings run by run
 (the laptop throttles: only alternating runs compare). Extra flags: `--fullscreen` (borderless desktop fullscreen) and `--no-vsync`; the startup log line `[window] swap interval: ...` says whether vsync is really off.
 The `--profile` table header shows the render scale in use; the benchmark result block does not (the startup log line `[render] render.scale ...` does).
+
+## Live profiler
+F3 opens a live overlay (fps, frame graph, top consumers, hitch count), F5 writes `logs/profile_live.txt` for sending back after a stutter: see docs/PERFORMANCE.md, "Live profiler". `--benchmark` and `--profile` behave as before.

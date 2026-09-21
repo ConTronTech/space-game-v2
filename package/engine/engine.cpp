@@ -120,10 +120,21 @@ int Engine::run(int argc, char** argv) {
     log::openFile(config.get<std::string>("engine.log_file", "logs/game.log", "log file, overwritten each run; empty = console only"));
     events.subscribe<QuitRequested>([this](const QuitRequested&) { quit(); });
 
-    // --profile: per-phase / per-pass timing (docs/PERFORMANCE.md). Provided as a service BEFORE the modules load so RenderEngine can time its passes.
+    // Profiling (docs/PERFORMANCE.md). Provided as a service BEFORE the modules load so RenderEngine can time its passes.
+    //   LIVE (profiler.lite, default true): a ring of the last 600 frames + hitch capture for the in-game overlay (F3) and the F5 dump: about 220 clock reads a frame.
+    //   --profile: the DETAILED cumulative table + slow frames, printed at exit;  --profile=gpu adds glFinish around passes.
     Profiler profiler;
-    Profiler* prof = (hasFlag("profile") || !flagValue("profile").empty()) ? &profiler : nullptr;
-    if (prof) { services.provide<Profiler>(prof); profiler.setSlowMs(std::atof(flagValue("profile-slow", "0").c_str())); }
+    const bool detailed = hasFlag("profile") || !flagValue("profile").empty();
+    const bool lite = config.get("profiler.lite", true, "always-on lite profiler: keeps the last 600 frames for the in-game overlay (F3) and the F5 dump; the cost is a few microseconds per frame");
+    profiler.setHitchMs(config.get("profiler.hitch_ms", 40.0f, "a frame slower than this many ms is remembered as a hitch (the overlay counts them, F5 lists them)"));
+    Profiler* prof = (detailed || lite) ? &profiler : nullptr;
+    if (prof) {
+        services.provide<Profiler>(prof);
+        profiler.setDetailed(detailed);
+        profiler.enableLive(lite);
+        profiler.setGpuMode(flagValue("profile") == "gpu");
+        profiler.setSlowMs(std::atof(flagValue("profile-slow", "0").c_str()));
+    }
 
     if (!loadModules()) {
         LOG_E("engine", "a required module failed - aborting");
@@ -155,18 +166,20 @@ int Engine::run(int argc, char** argv) {
     }
     double phaseMs = 0;   // time inside module hooks this frame (profiling only)
     auto runPhase = [&](int hook, auto&& fn) {
+        if (!prof) { for (size_t i = 0; i < modules_.size(); i++) fn(*modules_[i]); return; }
+        auto t0 = clock::now();                                    // one clock read per module: each end time is the next start time
         for (size_t i = 0; i < modules_.size(); i++) {
-            if (!prof) { fn(*modules_[i]); continue; }
-            auto t0 = clock::now();
             fn(*modules_[i]);
-            double ms = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+            auto t1 = clock::now();
+            double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
             prof->add(hookIds[hook][i], ms);
             phaseMs += ms;
+            t0 = t1;
         }
     };
     auto closeProfiledFrame = [&](double frameMs) {
         prof->add(idOther, std::max(0.0, frameMs - phaseMs));
-        prof->endFrame(frameMs);
+        prof->endFrame(frameMs, paused_);
     };
 
     while (running_) {
@@ -177,7 +190,7 @@ int Engine::run(int argc, char** argv) {
         dt = std::min(dt, 0.1f); // don't spiral after a stall
         if (prof) {
             if (frame_ > 0) closeProfiledFrame(rawDt * 1000.0);   // the frame that just ended, swap included
-            prof->beginFrame(frame_);
+            prof->beginFrame(frame_, paused_, time_);
             phaseMs = 0;
         }
         time_ += dt;
@@ -200,16 +213,16 @@ int Engine::run(int argc, char** argv) {
         if (maxFrames > 0 && (long)frame_ >= maxFrames) quit();
     }
 
-    if (prof) {
-        closeProfiledFrame(std::chrono::duration<double, std::milli>(clock::now() - last).count());
+    if (prof) closeProfiledFrame(std::chrono::duration<double, std::milli>(clock::now() - last).count());
+    if (prof && detailed) {
         std::string report = prof->report();
         std::fputs(report.c_str(), stdout);
         std::error_code ec;
         std::filesystem::create_directories("logs", ec);
         std::ofstream("logs/profile.txt") << report;
         LOG_I("engine", "profile written to logs/profile.txt");
-        services.withdraw<Profiler>();
     }
+    if (prof) services.withdraw<Profiler>();
 
     for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) (*it)->shutdown(*this);
     modules_.clear();

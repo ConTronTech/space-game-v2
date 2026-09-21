@@ -3,6 +3,33 @@
 Target (docs/VISION.md): 60 fps average and a 30 fps floor on the i5 M 560 / Intel Ironlake laptop at 1280x720, OpenGL 2.1 fixed function.
 The dev PC cannot show a problem there, so the game measures itself: `--benchmark` (docs/BENCHMARK.md) gives the totals, `--profile` says **where the time goes**.
 
+## Live profiler (F3 / F4 / F5): find a stutter without restarting
+The same `engine::Profiler` now also runs **live**, always on (`profiler.lite`, default true): a ring of the last 600 frames (about 10 s at 60 fps) with the frame time and the CPU time of every module hook and render pass, recorded without `glFinish` and without allocating.
+Code: `package/engine/profiler_live.{h,cpp}` (pure ring, rolling windows, 1% low, top consumers, hitch rules, graph bars: `tests/test_profiler_live.cpp`), the recorder in `profiler.cpp`, the panel in `package/modules/core/profiler_overlay/`.
+
+| Key (input action) | What it does |
+|---|---|
+| **F3** (`toggle_profiler`) | open / close the overlay (top-right corner). `--profile-overlay` starts with it open |
+| **F4** (`toggle_profiler_gpu`) | while the overlay is open: GPU attribution on/off (`glFinish` around every render pass, like `--profile=gpu`). The panel says "GPU MODE (slower, ranks passes)" in amber |
+| **F5** (`dump_profile`) | writes `logs/profile_live.txt` (works with the overlay closed) and shows "profile written to logs/profile_live.txt" for 4 s |
+
+**Reading the overlay:** `FPS` = average over the last second; `frame` = the last frame; `avg / worst` over the last 5 s; `1% low` = the frame rate of the slowest 1% of frames in the last 10 s (the number that says "stutter");
+the graph shows the last 120 frames, oldest on the left (blue normal, **amber above 18 ms**, **red above 33 ms**, thin lines at 16.7 ms = 60 fps and 33 ms = 30 fps);
+the line under it counts **hitches** in the last 30 s (amber when there were any); `TOP CONSUMERS` are the six module hooks / render passes with the highest average CPU time per frame over the last second, with a bar (share of the frame);
+the bottom lines say the quality preset, window size / fullscreen, the render scale in use and the GL renderer.
+Notes: with vsync ON the frame wait is inside `core/window:present`, so it tops the list at ~16 ms even when everything is fine: look at the other rows. When the GPU is the bottleneck, its time also shows up in `present` (or the next frame's first pass), not in the pass that is heavy:
+press F4 to charge GPU time to the pass that caused it (fps drops while it is on: it ranks passes, it does not measure fps). `cockpit:solid/screens/glass` are parts of `pass:ship/cockpit`; passes run inside `core/render_engine:render`, which is left out of the list.
+
+**Hitches:** a frame slower than `profiler.hitch_ms` (default 40) is remembered (the newest 50) with its frame number, engine time, milliseconds and its three slowest parts. Not counted: the first 60 frames (loading), any frame while the game is paused, the frame after unpausing, and the frame(s) of a window resize / fullscreen switch.
+
+**Sending a capture after a stutter:** press **F5** right after it (the ring holds the last ~10 s, so do it within a few seconds), then send `logs/profile_live.txt`. It is self-explanatory: a header (build time, uptime, quality preset and why, GL renderer and version, window size and fullscreen, vsync swap interval, render scale, profiler mode, pause state),
+a "how to read this" paragraph, the aggregate table over the ring (avg / worst / % per part), the hitch list (frame, time, ms, three slowest parts) and the last 120 frame times.
+
+**Cost:** closed, the lite recorder is about 220 clock reads and a 1 KB copy per frame (a few microseconds): no measurable change on the dev PC (0.39 ms/frame with `profiler.lite` on and off, 4 runs each, NVIDIA, vsync off), none beyond noise on the software renderer (23.2-24.2 ms vs 23.0-23.4 ms, 2 pinned cores, `--quality=low`).
+Open, the panel adds one blended glass panel, ~30 text quads (the text is rebuilt 4 times a second so the UI text cache keeps its textures) and ONE GL batch for the graph: +0.05 ms on the dev PC (0.39 -> 0.44 ms/frame), about +3.5-4 ms on the software renderer (fill bound). It is a diagnosis tool: close it (F3) when not looking.
+Switch the recorder off with `profiler.lite: false` in `config/game.json` (the overlay then does nothing). Dev flags for tests: `--profile-overlay`, `--profile-dump=FRAME` (as if F5 were pressed on that frame), `--profile-gpu-toggle=FRAME` (as if F4).
+`--profile` / `--profile=gpu` / `--profile-slow` and `--benchmark` are unchanged: `--profile` is still the DETAILED mode (cumulative table, every slow frame, `logs/profile.txt` at exit); live and detailed share the same `Profiler` and timers.
+
 ## The profiler (`--profile`)
 Inert unless the flag is given (no cost otherwise). Code: `package/engine/profiler.{h,cpp}` (pure, unit-tested), timers in `Engine::run` and `RenderEngine::onRender`.
 ```

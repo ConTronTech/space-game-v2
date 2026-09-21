@@ -58,7 +58,6 @@ private:
     int fboW_ = 0, fboH_ = 0;
     int compositeId_ = -1;
     engine::Profiler* prof_ = nullptr;   // --profile: time every pass
-    bool profGpu_ = false;               // --profile=gpu: glFinish around each pass
 };
 
 } // namespace core
