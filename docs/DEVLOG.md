@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 10 - 2026-09-21 (DONE, tag `good-20260921-06`): Phase 3.3 planet terrain meshes with LOD
+- **Changed:** planets and moons are terrain meshes (icosphere levels 0-4, seeded FBM relief `world.terrain_height` 3%, biome colours from height/latitude, per-vertex normals), LOD from projected size with hysteresis and a triangle budget (`world.planet_triangle_budget` 20000, `world.planet_max_lod` 3, `planet_mesh.enabled`). Meshes are built lazily, at most ONE per frame, cached and freed after 30 s unused. Client vertex arrays (GL 2.1). Pure code in `planet_mesh.h`.
+- **Verified:** 204 tests under ASan+UBSan, full smoke (25 modules), headless clean. Worker: level 4 builds in 1.1 ms here (est. 6-11 ms on the laptop), level 3 1,280 triangles / 31 KB; fps unchanged (~2200 with mesh on or off); screenshots near Planet 1 (continents, terminator), 15,000 units (dot), spawn (backdrop).
+- **Not verified:** on the laptop; popping while flying through LOD changes; moons / Planet 6 close up; level 4 visually; more than 3 planets at once (budget path unit-tested only). Physics sphere stays at base radius (max mismatch 3% of radius).
+- **Next:** 3.6 asteroids (belts, pooled LOD meshes), 3.7 stations (cube + cylinder docking placeholder), then Phase 4. Laptop benchmark still waits for SSH access.
+
 ## Leap 9 - 2026-09-21 (DONE, tag `good-20260921-05`): HUD shows the orbit lock
 - **Changed:** `ui/ship_hud` subscribes to `OrbitLockChanged`: persistent "ORBIT LOCKED: <BODY>" status line (also shows above the cockpit screens in minimal mode) and a 2.5 s "ORBIT RELEASED" banner. Pure logic in hud_logic.h, works without ship/orbit_lock.
 - **Verified:** 197 tests under ASan+UBSan, full smoke, headless clean; worker screenshots with a saved game 3000 units from the sun (locked at radius 2999.6, released banner).
