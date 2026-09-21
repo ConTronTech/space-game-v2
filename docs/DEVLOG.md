@@ -14,6 +14,10 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 12 - 2026-09-21 (DONE, tag `good-20260921-08`): radar height stems (user gripe 1)
+- **Changed:** each radar contact keeps its flat position with a small base marker on the ship plane; its dot is offset up/down by a log-scaled height with a stem line (brighter above, dimmer below); label shows e.g. "PLANET 1  6.3K  UP 2.5K / DN 2.5K". Level (under 25 units or ~1 degree) shows no stem. Note: the old game radar in the reference tree has no stems, so this follows the user description.
+- **Verified:** 217 tests under ASan+UBSan, full smoke, headless clean; screenshots above/below a planet from crafted saves.
+
 ## Leap 11 - 2026-09-21 (DONE, tag `good-20260921-07`): Phase 3.6 `world/asteroids`
 - **Changed:** seeded static belts (band between two planet orbits) and clusters around planets/moons; struct-of-arrays field (default 1,740 rocks, 117 KB, generation 0.8 ms here), 4 shared lumpy meshes x 3 LOD levels + point batch for specks, camera-relative culled drawing, triangle budget, sun-lit; physics pool of at most 300 static "asteroid" bodies near the ship (add nearest-first, remove at 1.2x); read-only `world::IAsteroids` service (for mining/radar later). **The old demo rocks are now OFF by default (`flight.demo_rocks`)**, so the spawn area is empty; saved games referring to rock 0 need `flight.demo_rocks true`.
 - **Verified:** 213 tests under ASan+UBSan, full smoke (26 modules), headless clean. Worker: belt screenshots (lit rocks, points in the distance), medium-rock collision 10 dmg at 100 m/s (right tier), warp at a rock = hit, no tunnelling; benchmark on/off within noise (~2400 fps); 21,500-rock stress test 1706 fps with the physics cap holding.
