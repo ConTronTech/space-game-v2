@@ -6,7 +6,7 @@ mouse or keyboard is needed), takes a screenshot, and compares the pixels on eit
 change elsewhere in the picture. ratio 1.0 = seamless; higher = a visible seam. Fails (exit 1) if any ratio > --threshold.
 
   package/tools/skybox_seams.py                       # all sets
-  package/tools/skybox_seams.py --sets dark/set1,red/set2 --threshold 2.2
+  package/tools/skybox_seams.py --sets dark/set1,red/set2 --threshold 2.5
 
 Needs: the built game (./space_game_v2), python3 with numpy and Pillow, a display. Does not touch assets/: it works on symlinked copies.
 Temporarily replaces config/game.json (restored afterwards).
@@ -58,7 +58,7 @@ def find_sets(root):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sets", default="", help="comma separated color/set names (default: all)")
-    ap.add_argument("--threshold", type=float, default=2.2)
+    ap.add_argument("--threshold", type=float, default=2.5, help="ratios up to ~2.1 occur naturally (content-dependent); a real orientation bug scored 2.7-3.6")
     ap.add_argument("--game", default="./space_game_v2")
     ap.add_argument("--assets", default="assets/skybox/bkg")
     a = ap.parse_args()
