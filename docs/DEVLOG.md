@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 11 - 2026-09-21 (DONE, tag `good-20260921-07`): Phase 3.6 `world/asteroids`
+- **Changed:** seeded static belts (band between two planet orbits) and clusters around planets/moons; struct-of-arrays field (default 1,740 rocks, 117 KB, generation 0.8 ms here), 4 shared lumpy meshes x 3 LOD levels + point batch for specks, camera-relative culled drawing, triangle budget, sun-lit; physics pool of at most 300 static "asteroid" bodies near the ship (add nearest-first, remove at 1.2x); read-only `world::IAsteroids` service (for mining/radar later). **The old demo rocks are now OFF by default (`flight.demo_rocks`)**, so the spawn area is empty; saved games referring to rock 0 need `flight.demo_rocks true`.
+- **Verified:** 213 tests under ASan+UBSan, full smoke (26 modules), headless clean. Worker: belt screenshots (lit rocks, points in the distance), medium-rock collision 10 dmg at 100 m/s (right tier), warp at a rock = hit, no tunnelling; benchmark on/off within noise (~2400 fps); 21,500-rock stress test 1706 fps with the physics cap holding.
+- **Not verified:** laptop; LOD popping; belt from far away; spin only seen in stills. Default belt is sparse (about 9 rocks within 1,500 units at the densest spot): raise `asteroids.belt_asteroids` for a denser one. Cluster asteroids do not follow their planet (static; drift over hours).
+- **Next:** 3.7 stations + docking (cube + cylinder placeholder), radar contacts for asteroids via IAsteroids, then Phase 4 (particles, weapons, mining). Laptop benchmark still waits for SSH access.
+
 ## Leap 10 - 2026-09-21 (DONE, tag `good-20260921-06`): Phase 3.3 planet terrain meshes with LOD
 - **Changed:** planets and moons are terrain meshes (icosphere levels 0-4, seeded FBM relief `world.terrain_height` 3%, biome colours from height/latitude, per-vertex normals), LOD from projected size with hysteresis and a triangle budget (`world.planet_triangle_budget` 20000, `world.planet_max_lod` 3, `planet_mesh.enabled`). Meshes are built lazily, at most ONE per frame, cached and freed after 30 s unused. Client vertex arrays (GL 2.1). Pure code in `planet_mesh.h`.
 - **Verified:** 204 tests under ASan+UBSan, full smoke (25 modules), headless clean. Worker: level 4 builds in 1.1 ms here (est. 6-11 ms on the laptop), level 3 1,280 triangles / 31 KB; fps unchanged (~2200 with mesh on or off); screenshots near Planet 1 (continents, terminator), 15,000 units (dot), spawn (backdrop).
