@@ -1,7 +1,7 @@
 # Cockpit (`ship/cockpit`)
 
 Draws the inside of the ship: an OBJ model glued to the camera (view space), plus live content on the model's custom
-`@` screens. Only visible in **cockpit view** (`core::ICamera::showsShip() == false`); in chase view nothing is drawn.
+`@` screens. In **cockpit view** (`core::ICamera::showsShip() == false`) it is drawn glued to the camera; in **chase view** the same model is drawn from outside in world space (see "Chase view").
 
 ```
 package/modules/core/import_handler/obj_parser.{h,cpp}   pure OBJ+MTL parser (no SDL/GL), tagged '@' quads
@@ -24,7 +24,7 @@ Consequence for renderers registered through `ICockpitScreens`: they are called 
 
 ## What it does each frame
 Render pass `ship/cockpit` (order 800, after the world). In this order:
-1. skip if `cockpit.enabled` is false, the model did not load, or the camera shows the ship (chase view);
+1. skip if `cockpit.enabled` is false, the model did not load, or the camera shows the ship (chase view: the separate `ship/model_chase` pass draws instead);
 2. `glLoadIdentity()` (view space: the model moves with the camera, not with the world) and **clear the depth buffer**, so the cockpit never clips into world geometry;
 3. draw the opaque triangles lit by one directional light + ambient (two-sided lighting);
 4. draw every `@` screen: dark backing, then the renderer registered for its group;
@@ -124,15 +124,17 @@ Pure maths (frame, mapping, height offset/level test, nearest-N list, distance a
 | `cockpit.ship` | `ShipV2` | ship `name` from ship.json (falls back to the first ship) |
 | `cockpit.ambient` | 0.25 | ambient light 0..1 |
 | `cockpit.light_intensity` | 1.0 | directional light strength |
-| `cockpit.light_dir` | `0.35,0.75,0.55` | direction **toward** the light, view space (x right, y up, z back); stand-in until the world has a sun |
+| `cockpit.sun_light` | true | light the model with the REAL sun (`world::IStarSystem`); false = the fixed view-space `cockpit.light_dir` (the old look) |
+| `cockpit.light_dir` | `0.35,0.75,0.55` | fallback direction **toward** the light, view space (x right, y up, z back), used without a star system or with `sun_light` false |
+| `cockpit.chase_model` | true | draw the real ShipV2 in chase view (false: the old wireframe fighter from ship_core) |
 | `cockpit.glass_opacity` | 1.0 | multiplier on the canopy alpha (0 invisible, 1 as modelled, 3 heavy tint) |
 | `cockpit.screen_brightness` | 1.0 | brightness of the content on the screens (0.2 - 2) |
 | `cockpit.screen_hz` | 30 (by preset: low 15, medium 30, high 120, ultra 240) | how often the screens are redrawn per second; between redraws the cached geometry is drawn. At or above the frame rate = every frame; 0 = every frame |
 | `cockpit.radar_range` | 400000 | radar rim distance in units (logarithmic scale) |
 | `cockpit.radar_asteroid_range` | 3000 | asteroids closer than this are shown on the radar |
 
-The light source lives in one function (`CockpitModule::light()` in cockpit.cpp). When the world module exists and provides the star direction through a service, that function
-is the only place to change (rotate the world direction into view space).
+The light is decided in one function (`CockpitModule::computeLight`): the direction from the ship to the sun (`IStarSystem::sunPosition()` minus the ship position, in double) rotated into view space (`dirToViewSpace`), coloured with the sun's colour and scaled by `cockpit.light_intensity`.
+It is set every frame outside the display lists, so it follows the sun and the ship's orientation; cockpit and chase view use the same sun, so the cockpit lighting matches the world.
 
 ## Testing the screens: `--fake-ship`
 `ship/fake_ship` (not part of this module) provides a fake `ship::IShip` when started with
@@ -152,3 +154,13 @@ per-vertex RGBA from the MTL (`Kd`, `d`/`Tr`; CANOPY forced to 30% alpha), a neu
 * Radar shows bodies, stations and nearby asteroids (no ships yet); heading shows only `forward()` (no roll indicator).
 * The light is a fixed direction until the world module supplies a sun direction.
 * Screens are drawn in the pass, not to a texture: text is a stroke font, sharp at any distance but plain.
+
+## Chase view (V)
+* **Camera** (`core/camera`, `cam::chasePose`): a **rigid offset camera in the ship frame**. Its orientation is exactly the ship's (roll included) and it sits `camera.chase_distance` (24) behind and `camera.chase_height` (6) above the pilot's eye, measured along the ship's own forward and up, looking parallel to the ship's forward.
+  The skybox, stars and planets are all drawn with the camera's view rotation, so the sky is identical to cockpit view (verified pixel for pixel with a rolled and pitched ship): pressing V only moves the eye.
+  **What was wrong:** the old chase camera aimed at a point `0.6 x distance` ahead of the ship, which tilted the whole view down by `atan(3.5 / (12 x 1.6))` = about 10.3 degrees relative to the ship, so the sky (and every star and planet) was rotated by that pitch compared with cockpit view; nothing in the skybox or the passes was at fault.
+  Defaults changed from 12 / 3.5 to 24 / 6 because the real model is 11.8 m long and reaches 8.7 m behind the eye: at 12 m the camera sat inside the hull's tail.
+* **Model** (`ship/model_chase` pass, order 110, `drawChasePass`): the ShipV2 display lists drawn in world space with `modelview = view x shipToWorld`, the columns of shipToWorld being (right, up, -forward, position) of the pose the camera uses (`ITransformSource::transform(alpha)`). The model is authored in view space (eye at the origin, +X right, +Y up, -Z forward, metres), so this puts the pilot's eye at the ship position and the nose forward.
+  `chaseModelView` computes the matrix in double relative to the camera (the ship can be 40,000+ units from the origin). Depth test against the world; opaque hull first, then the see-through glass without depth writes (same lists as cockpit view, drawn once). The '@' screens face the pilot and are not visible from outside: skipped.
+* **Wireframe fighter:** `ship/cockpit` provides `cockpit::IShipModel` (`ship_model_api.h`): `drawnInChase()` is true when the model is loaded and `cockpit.chase_model` is on; `ship_core`'s placeholder fighter is skipped then and stays as the fallback (no model, cockpit off).
+* Model facts for other modules (from ShipV2.obj): belly at y = -1.38 (a docked ship needs `docking.rest_height` about 1.4 to rest ON the pad; the default 0.6 sinks it 0.8 m in), nose at z = -3.1, rear tip at z = +8.74, thruster jets at z = +7.85, y = -0.38, wingspan 11.5 m.

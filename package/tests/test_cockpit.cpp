@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include "ship/cockpit/cockpit_light.h"
 #include "ship/cockpit/hud_layout.h"
+#include "core/camera/camera_math.h"
+#include "ship/cockpit/model_pose.h"
 #include "ship/cockpit/radar_map.h"
 #include "ship/cockpit/screen_canvas.h"
 #include "ship/cockpit/ship_registry.h"
@@ -405,4 +407,83 @@ TEST(radar_short_station_names) {
     CHECK_EQ(cockpit::radarShortName(""), std::string(""));
     CHECK_EQ(cockpit::radarShortName(" (odd)"), std::string(""));
     CHECK_EQ(cockpit::radarShortName("A very long station name indeed"), std::string("A very long statio"));   // capped at 18
+}
+
+// ---- ship model transform and sun light ----
+namespace {
+engine::Vec3 applyM(const float m[16], const engine::Vec3& p) {
+    return {m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12], m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13], m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]};
+}
+bool vnear(const engine::Vec3& a, const engine::Vec3& b, float e) { return std::abs(a.x - b.x) < e && std::abs(a.y - b.y) < e && std::abs(a.z - b.z) < e; }
+core::Pose tiltedShip() {
+    core::Pose p;
+    p.pos = {40000.0f, -300.0f, 12000.0f};
+    p.fwd = engine::normalize(engine::Vec3{0.5f, 0.3f, -0.81f});
+    engine::Vec3 up0 = engine::normalize(engine::Vec3{0, 1, 0} - p.fwd * engine::dot(engine::Vec3{0, 1, 0}, p.fwd));
+    p.up = up0 * std::cos(0.61f) + engine::cross(p.fwd, up0) * std::sin(0.61f);
+    return p;
+}
+}
+TEST(model_matrix_in_cockpit_view_is_the_identity) {
+    core::Pose ship = tiltedShip();
+    float view[16], mv[16];
+    core::cam::viewMatrix(ship, view);                                       // cockpit view: the camera IS the ship
+    cockpit::chaseModelView(view, ship.pos, ship.fwd, ship.up, mv);
+    for (int i = 0; i < 16; i++) CHECK(std::abs(mv[i] - (i % 5 == 0 ? 1.0f : 0.0f)) < 0.02f);   // == what the cockpit pass draws with
+}
+TEST(model_matrix_places_the_model_in_the_world_at_the_ship_pose) {
+    core::Pose ship = tiltedShip();
+    core::Pose cam = core::cam::chasePose(ship, 24.0f, 6.0f);
+    float view[16], mv[16];
+    core::cam::viewMatrix(cam, view);
+    cockpit::chaseModelView(view, ship.pos, ship.fwd, ship.up, mv);
+    engine::Vec3 f = engine::normalize(ship.fwd), u = engine::normalize(ship.up), r = engine::normalize(engine::cross(f, u));
+    // model space: +X right, +Y up, -Z forward, the eye at the origin. Each local point must land where the view matrix puts the matching world point.
+    CHECK(vnear(applyM(mv, {0, 0, 0}), applyM(view, ship.pos), 0.05f));                  // the pilot's eye = the ship position
+    CHECK(vnear(applyM(mv, {0, 0, -3}), applyM(view, ship.pos + f * 3.0f), 0.05f));      // 3 m ahead of the eye
+    CHECK(vnear(applyM(mv, {0, 0, 8.7f}), applyM(view, ship.pos - f * 8.7f), 0.05f));    // the rear tip, 8.7 m behind
+    CHECK(vnear(applyM(mv, {2, 0, 0}), applyM(view, ship.pos + r * 2.0f), 0.05f));       // right stays right
+    CHECK(vnear(applyM(mv, {0, 1, 0}), applyM(view, ship.pos + u * 1.0f), 0.05f));       // up stays up: the hull is not upside down
+    // in the camera's view the ship is 24 m ahead: in front (negative z) and below the centre (the camera is above it)
+    engine::Vec3 eye = applyM(mv, {0, 0, 0});
+    CHECK(eye.z < -20.0f && eye.z > -30.0f && eye.y < 0);
+    CHECK(std::abs(mv[3]) < 1e-6f && std::abs(mv[15] - 1.0f) < 1e-6f);
+    // the rotation is orthonormal
+    engine::Vec3 c0{mv[0], mv[1], mv[2]}, c1{mv[4], mv[5], mv[6]}, c2{mv[8], mv[9], mv[10]};
+    CHECK(std::abs(engine::length(c0) - 1) < 1e-4f && std::abs(engine::length(c1) - 1) < 1e-4f && std::abs(engine::length(c2) - 1) < 1e-4f);
+    CHECK(std::abs(engine::dot(c0, c1)) < 1e-4f && std::abs(engine::dot(c0, c2)) < 1e-4f && std::abs(engine::dot(c1, c2)) < 1e-4f);
+}
+TEST(model_matrix_survives_a_zero_forward) {
+    core::Pose cam;
+    float view[16], mv[16];
+    core::cam::viewMatrix(cam, view);
+    cockpit::chaseModelView(view, {5, 6, 7}, {0, 0, 0}, {0, 0, 0}, mv);
+    for (int i = 0; i < 16; i++) CHECK(std::isfinite(mv[i]));
+}
+TEST(sun_direction_and_view_space_conversion) {
+    auto d = cockpit::sunDirection(1000, 0, 0, 0, 0, 0);
+    CHECK(std::abs(d.x - 1) < 1e-12 && d.y == 0 && d.z == 0);
+    auto d2 = cockpit::sunDirection(3, 4, 0, 0, 0, 0);
+    CHECK(std::abs(d2.x - 0.6) < 1e-12 && std::abs(d2.y - 0.8) < 1e-12);
+    auto same = cockpit::sunDirection(5, 5, 5, 5, 5, 5);                       // ship in the sun: no direction, not NaN
+    CHECK(same.x == 0 && same.y == 0 && same.z == 0);
+    auto huge = cockpit::sunDirection(-1.2e5, -4.7e3, 4.4e3, 40000, -300, 12000);   // double precision far from the origin
+    CHECK(std::abs(huge.x * huge.x + huge.y * huge.y + huge.z * huge.z - 1.0) < 1e-12);
+    // a ship facing +X with up +Y: the sun straight ahead (+X world) is straight ahead in view space (-Z); the sun overhead (+Y) stays up
+    core::Pose east; east.fwd = {1, 0, 0}; east.up = {0, 1, 0};
+    float view[16];
+    core::cam::viewMatrix(east, view);
+    CHECK(vnear(cockpit::dirToViewSpace(view, {1, 0, 0}), {0, 0, -1}, 1e-5f));
+    CHECK(vnear(cockpit::dirToViewSpace(view, {0, 1, 0}), {0, 1, 0}, 1e-5f));
+    CHECK(vnear(cockpit::dirToViewSpace(view, {0, 0, 1}), {1, 0, 0}, 1e-5f));        // world +Z is to the ship's right
+    // rolled ship: the direction the ship's own "up" points at is view-space up, whatever the world says
+    core::Pose t = tiltedShip();
+    float v2[16];
+    core::cam::viewMatrix(t, v2);
+    engine::Vec3 u = engine::normalize(t.up);
+    CHECK(vnear(cockpit::dirToViewSpace(v2, {u.x, u.y, u.z}), {0, 1, 0}, 1e-4f));
+    engine::Vec3 f = engine::normalize(t.fwd);
+    engine::Vec3 back = cockpit::dirToViewSpace(v2, {-f.x, -f.y, -f.z});
+    CHECK(vnear(back, {0, 0, 1}, 1e-4f));                                        // the sun behind the ship lights the model from behind (+Z in view space)
+    CHECK(std::abs(engine::length(cockpit::dirToViewSpace(v2, {0.3, 0.4, 0.866})) - 1.0f) < 1e-3f);   // rotation only: length kept
 }

@@ -1,5 +1,5 @@
 // core/camera - owns the view. Reads the ship's pose (core::ITransformSource) and sets RenderEngine's camera.
-// Modes: Cockpit (eye at the ship) and Chase (behind and above; the ship draws itself). Action "camera_next" (V) cycles.
+// Modes: Cockpit (eye at the ship) and Chase (a rigid offset behind and above, same orientation as the ship; the ship model is drawn from outside). Action "camera_next" (V) cycles.
 #include <algorithm>
 #include "core/camera/camera_api.h"
 #include "core/camera/camera_math.h"
@@ -19,8 +19,8 @@ public:
         render_ = &eng.services.require<RenderEngine>();
         input_ = &eng.services.require<IInput>();
         settings_ = eng.services.get<ISettings>();
-        chaseDistance_ = eng.config.get("camera.chase_distance", 12.0f, "chase camera: metres behind the ship");
-        chaseHeight_ = eng.config.get("camera.chase_height", 3.5f, "chase camera: metres above the ship");
+        chaseDistance_ = eng.config.get("camera.chase_distance", 24.0f, "chase camera: metres behind the pilot's eye, along the ship's forward (the ShipV2 model is 11.8 m long and reaches 8.7 m behind the eye)");
+        chaseHeight_ = eng.config.get("camera.chase_height", 6.0f, "chase camera: metres above the pilot's eye, along the ship's up");
         if (settings_) mode_ = (CameraMode)std::clamp(settings_->get("camera.mode", 0), 0, 1);
         eng.services.provide<ICamera>(this);
         return true;
@@ -46,7 +46,7 @@ private:
     IInput* input_ = nullptr;
     ISettings* settings_ = nullptr;
     CameraMode mode_ = CameraMode::Cockpit;
-    float chaseDistance_ = 12.0f, chaseHeight_ = 3.5f;
+    float chaseDistance_ = 24.0f, chaseHeight_ = 6.0f;
 };
 
 REGISTER_MODULE(CameraController);

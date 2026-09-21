@@ -13,6 +13,7 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "engine/math.h"
+#include "ship/cockpit/ship_model_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ship/ship_core/ship_rules.h"
 
@@ -327,6 +328,7 @@ private:
     void drawShip() {
         auto* cam = eng_->services.get<core::ICamera>();
         if (!cam || !cam->showsShip()) return;
+        if (auto* model = eng_->services.get<cockpit::IShipModel>()) if (model->drawnInChase()) return;   // the real ShipV2 is drawn instead (ship/cockpit)
         core::Pose p = transform(eng_->alpha());
         Vec3 r = engine::normalize(engine::cross(p.fwd, p.up));
         float m[16] = {r.x, r.y, r.z, 0,   p.up.x, p.up.y, p.up.z, 0,   -p.fwd.x, -p.fwd.y, -p.fwd.z, 0,   p.pos.x, p.pos.y, p.pos.z, 1};

@@ -15,8 +15,11 @@
 #include "ship/cockpit/cockpit_light.h"
 #include "ship/cockpit/cockpit_screens_api.h"
 #include "ship/cockpit/hud_screens.h"
+#include "ship/cockpit/model_pose.h"
 #include "ship/cockpit/screen_rate.h"
+#include "ship/cockpit/ship_model_api.h"
 #include "ship/cockpit/ship_registry.h"
+#include "world/star_system/star_system_api.h"
 
 namespace cockpit {
 
@@ -27,20 +30,21 @@ struct Batch {
     size_t vertexCount() const { return positions.size() / 3; }
 };
 
-// Where the light comes from. Nothing in the game has a sun yet; when the world module exists it supplies the star's direction
-// through a service and this is the ONE function to change (rotate it into view space here). Direction points TOWARD the light.
+// Where the light comes from: the REAL sun (world::IStarSystem) when it exists, expressed in view space; cockpit.light_dir (a fixed view-space
+// direction) is the fallback without a star system. CockpitModule::computeLight() is the one place that decides. Direction points TOWARD the light.
 struct Light {
-    engine::Vec3 toLight; float intensity;
-    bool operator==(const Light& o) const { return toLight.x == o.toLight.x && toLight.y == o.toLight.y && toLight.z == o.toLight.z && intensity == o.intensity; }
+    engine::Vec3 toLight;                 // direction TOWARD the light, in VIEW space
+    float intensity;
+    float color[3] = {1, 1, 1};
 };
 
 } // namespace
 
-class CockpitModule : public engine::Module, public ICockpitScreens {
+class CockpitModule : public engine::Module, public ICockpitScreens, public IShipModel {
 public:
     const char* name() const override { return "ship/cockpit"; }
     std::vector<std::string> dependencies() const override { return {"core/render_engine", "core/import_handler"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"core/camera", "ship/fake_ship", "ship/ship_core"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"core/camera", "ship/fake_ship", "ship/ship_core", "world/star_system"}; }
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
@@ -58,9 +62,13 @@ public:
         glassTint_ = c.get("cockpit.glass_tint", true, "draw the see-through canopy tint (one extra blended draw). false skips it; the low quality preset turns it off");
         glassScale_ = std::clamp(c.get("cockpit.glass_opacity", 1.0f, "canopy glass opacity multiplier: 0 = invisible glass, 1 = as modelled (30%), 3 = heavy tint"), 0.0f, 3.0f);
         screenHz_ = std::clamp(c.get("cockpit.screen_hz", 30.0f, "how often the cockpit screens redraw, per second (they are cached between redraws); 0 = every frame. Quality presets: low 15, medium 30, high 120, ultra 240 (= every frame)"), 0.0f, 240.0f);
+        sunLight_ = c.get("cockpit.sun_light", true, "light the ship with the real sun (world star system); false = the fixed view-space cockpit.light_dir (the old look)");
+        chaseModel_ = c.get("cockpit.chase_model", true, "draw the real ShipV2 model from outside in chase view (false: the old wireframe fighter)");
         cam_ = eng.services.get<core::ICamera>();
+        sys_ = eng.services.get<world::IStarSystem>();
 
         eng.services.provide<ICockpitScreens>(this);
+        eng.services.provide<IShipModel>(this);
         hud_ = std::make_unique<HudScreens>(eng);
         registerRenderer("HUD", [this](const ScreenContext& ctx) { hud_->draw(ctx); });
 
@@ -68,16 +76,21 @@ public:
         loadShip(eng, wanted);
         if (ready_) {
             render_ = &eng.services.require<core::RenderEngine>();
-            render_->addPass("ship/cockpit", 800, [this](core::RenderEngine&) { drawPass(); });
+            render_->addPass("ship/cockpit", 800, [this](core::RenderEngine& r) { drawPass(r); });
+            render_->addPass("ship/model_chase", 110, [this](core::RenderEngine& r) { drawChasePass(r); });   // with the other ship draw (flight/ship, 110)
         }
         return true;   // a missing model is not fatal: the game runs without a cockpit
     }
 
     void shutdown(engine::Engine& eng) override {
-        if (render_) render_->removePass("ship/cockpit");
+        if (render_) { render_->removePass("ship/cockpit"); render_->removePass("ship/model_chase"); }
+        eng.services.withdraw<IShipModel>();
         deleteLists();
         eng.services.withdraw<ICockpitScreens>();
     }
+
+    // ---- IShipModel ----
+    bool drawnInChase() const override { return ready_ && chaseModel_; }
 
     // ---- ICockpitScreens ----
     void registerRenderer(const std::string& group, ScreenRenderer fn) override { renderers_[group] = std::move(fn); }
@@ -130,7 +143,28 @@ private:
         }
     }
 
-    Light light() const { return {engine::normalize(lightDir_), intensity_}; }
+    // The light for this frame, in view space (the modelview is identity when it is applied, and GL stores a light in eye space).
+    Light computeLight(const float view[16]) const {
+        Light L{engine::normalize(lightDir_), intensity_, {1, 1, 1}};
+        if (sunLight_ && sys_ && !sys_->bodies().empty()) {
+            if (auto* src = eng_->services.get<core::ITransformSource>()) {
+                core::Pose p = src->transform(eng_->alpha());
+                world::Vec3d sun = sys_->sunPosition();
+                Dir3 d = sunDirection(sun.x, sun.y, sun.z, p.pos.x, p.pos.y, p.pos.z);
+                if (d.x != 0 || d.y != 0 || d.z != 0) {
+                    L.toLight = dirToViewSpace(view, d);
+                    for (int k = 0; k < 3; k++) L.color[k] = sys_->bodies()[0].color[k];
+                }
+            }
+        }
+        return L;
+    }
+    void applyLight(const Light& L) const {
+        const float pos[4] = {L.toLight.x, L.toLight.y, L.toLight.z, 0.0f};
+        const float diff[4] = {L.color[0] * L.intensity, L.color[1] * L.intensity, L.color[2] * L.intensity, 1.0f};
+        glLightfv(GL_LIGHT0, GL_POSITION, pos);  // w = 0: a direction, transformed by the current modelview (identity here)
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, diff);
+    }
 
     // ---- drawing ----
     // Static geometry and constant GL state live in display lists (one glCallList each instead of hundreds of API calls per frame);
@@ -145,10 +179,9 @@ private:
         glEnd();
     }
 
-    // Everything that does not change between frames: depth test, one directional light + ambient, two-sided lit colour material.
-    void emitLightState(const Light& L) const {
-        const float pos[4] = {L.toLight.x, L.toLight.y, L.toLight.z, 0.0f};
-        const float diff[4] = {L.intensity, L.intensity, L.intensity, 1.0f};
+    // Everything that does not change between frames: depth test, light 0 on, ambient, two-sided lit colour material. (The light's direction and
+    // colour change with the sun and the ship's orientation, so applyLight() sets those every frame, outside the display list.)
+    void emitLightState() const {
         const float none[4] = {0, 0, 0, 1};
         const float amb[4] = {ambient_, ambient_, ambient_, 1.0f};
         glDisable(GL_BLEND);
@@ -158,8 +191,6 @@ private:
         glEnable(GL_LIGHTING);
         for (int i = 1; i < 8; i++) glDisable(GL_LIGHT0 + i);
         glEnable(GL_LIGHT0);
-        glLightfv(GL_LIGHT0, GL_POSITION, pos);  // w = 0: a direction, transformed by the (identity) view matrix
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, diff);
         glLightfv(GL_LIGHT0, GL_AMBIENT, none);
         glLightfv(GL_LIGHT0, GL_SPECULAR, none);
         glLightModelfv(GL_LIGHT_MODEL_AMBIENT, amb);
@@ -189,7 +220,13 @@ private:
         cache_.clear();
     }
 
-    void drawPass() {
+    // compiles the static display lists once (hull + constant state, glass)
+    void ensureLists() {
+        if (solidList_ && listsOk_) return;
+        listsOk_ = compile(solidList_, [&] { emitLightState(); emitBatch(solid_); }) && (glassList_ || compile(glassList_, [&] { emitGlass(); }));
+    }
+
+    void drawPass(core::RenderEngine& r) {
         if (!ready_) return;
         if (cam_ && cam_->showsShip()) return;   // chase view: the ship is seen from outside, no cockpit
 
@@ -205,13 +242,10 @@ private:
         glClear(GL_DEPTH_BUFFER_BIT);            // the cockpit never clips into the world
 
         { Sub t(*this, idSolid_);
-            Light L = light();
-            if (!solidList_ || !(L == lastLight_)) {
-                lastLight_ = L;
-                listsOk_ = compile(solidList_, [&] { emitLightState(L); emitBatch(solid_); }) && (glassList_ || compile(glassList_, [&] { emitGlass(); }));
-            }
+            ensureLists();
+            applyLight(computeLight(r.camera.view));
             if (listsOk_) glCallList(solidList_);
-            else { emitLightState(L); emitBatch(solid_); }
+            else { emitLightState(); emitBatch(solid_); }
         }
 
         { Sub t(*this, idScreens_); drawScreens(); }   // right after the opaque model, before the see-through glass
@@ -221,6 +255,36 @@ private:
             else { glEnable(GL_LIGHTING); glEnable(GL_COLOR_MATERIAL); emitGlass(); }
         }
 
+        glPopMatrix();
+        glPopAttrib();
+    }
+
+    // Chase view: the same model, drawn from OUTSIDE in world space at the ship's interpolated pose (the pose the camera uses). It is drawn with the depth
+    // test against the world (asteroids, planets), opaque hull first, then the see-through glass without depth writes. The interior screens face the pilot
+    // and are not visible from outside, so they are skipped. Lit by the same sun as the cockpit.
+    void drawChasePass(core::RenderEngine& r) {
+        if (!ready_ || !chaseModel_) return;
+        if (!cam_ || !cam_->showsShip()) return;
+        auto* src = eng_->services.get<core::ITransformSource>();
+        if (!src) return;
+        core::Pose pose = src->transform(eng_->alpha());
+        glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_CURRENT_BIT | GL_LINE_BIT | GL_POLYGON_BIT);
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_TEXTURE_2D);
+        ensureLists();
+        applyLight(computeLight(r.camera.view));           // set while the modelview is identity: the light lives in view space
+        float mv[16];
+        chaseModelView(r.camera.view, pose.pos, pose.fwd, pose.up, mv);
+        glLoadMatrixf(mv);
+        { Sub t(*this, idSolid_);
+            if (listsOk_) glCallList(solidList_); else { emitLightState(); emitBatch(solid_); }
+        }
+        if (glassTint_ && glass_.vertexCount() > 0) { Sub t(*this, idGlass_);
+            if (listsOk_) glCallList(glassList_); else { glEnable(GL_LIGHTING); glEnable(GL_COLOR_MATERIAL); emitGlass(); }
+        }
         glPopMatrix();
         glPopAttrib();
     }
@@ -291,7 +355,8 @@ private:
     std::vector<ScreenCache> cache_;
     GLuint solidList_ = 0, glassList_ = 0;
     bool listsOk_ = false;
-    Light lastLight_{};
+    world::IStarSystem* sys_ = nullptr;
+    bool chaseModel_ = true, sunLight_ = true;
     float screenHz_ = 30.0f;
     std::vector<core::TaggedQuad> tagged_;
     std::vector<ScreenDef> screens_;
