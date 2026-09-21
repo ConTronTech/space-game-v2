@@ -1,0 +1,13 @@
+TASK 3.7c - radar markers for stations and asteroids. You wrote the cockpit PROXIMITY_RADAR (radar_map.h, hud_screens.cpp) with body contacts and height stems. Add two more contact types.
+
+RULES: read docs/WORKFLOW.md, docs/COCKPIT.md, docs/STATIONS.md, docs/WORLD.md (asteroids). Edit ONLY files under OWNERSHIP. DO NOT COMMIT; leave everything uncommitted. Run package/tools/smoke.sh and make test-san at the end. DO NOT inject keys/mouse into the desktop (no xdotool/XTEST), do not ssh, and do not run the game with --quality=low or --fullscreen on this desktop except with --frames small. SCRATCH FILES only under logs/ with literal names; never rm with a variable path (it stalls the tool): list them in the report. Report per item + 3-sentence summary + manual checklist. Worktree is fast-forwarded to main; run package/tools/link_assets.sh. Perf matters: the cockpit screens are cached at cockpit.screen_hz (see docs/PERFORMANCE.md); no per-frame allocation in the draw path, keep this cheap (the laptop is GPU bound: do NOT add extra full-screen layers).
+
+CHANGE:
+1. Stations: from world::IStations (optional service, per-use get): info(i) position (double, subtract the ship position in double first), draw a distinct marker (a small hollow diamond in cyan; a filled diamond when ship::IDocking::nearestDockable says ok for that station, matching the HUD's DOCK [G] state), with the same log range mapping and height stems as bodies. Nearest station name + distance can go in a second label line under the nearest-body label ("STATION 1  420") only if space allows without shrinking the existing label; otherwise skip the text.
+2. Asteroids: from world::IAsteroids (asteroids_api.h: nearest(point, n, out)): draw up to 12 nearest asteroids within a short radar range (tunable cockpit.radar_asteroid_range default 3000 units) as tiny dim dots (size by radius tier), no stems, no labels, drawn under bodies/stations. Nothing when the module is absent or none are in range.
+3. Pure functions in radar_map.h with tests (tolerances): marker size tiers, which contacts are kept, filled-vs-hollow state, range gating. Keep the contact cap total (bodies + stations + asteroids) small and fixed-size (no heap).
+4. Docs: docs/COCKPIT.md, docs/STATIONS.md (radar section).
+
+OWNERSHIP: package/modules/ship/cockpit/**, cockpit test file(s) under package/tests/, docs/COCKPIT.md, docs/STATIONS.md. Do not touch stations, asteroids, docking or HUD.
+
+ACCEPTANCE: smoke + make test-san; saved-game screenshots (docs/WARP.md method; stations.seed_offset 2 puts two orbital stations near Planet 1; a belt/cluster position for asteroids) showing a station marker (hollow and, when docking is possible, filled) and asteroid dots on the radar scope; describe them.
