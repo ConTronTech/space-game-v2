@@ -79,7 +79,7 @@ private:
     enum class Page { Main, Load, Settings };
     enum class Main { Resume, Save, Load, Settings, Exit };
     enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Graphics, Back };   // settings rows (built in init)
-    static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 3.0f;
+    static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 10.0f;   // mouse sensitivity slider: 0.2 .. 10 (the old cap of 3 was too slow)
     static constexpr size_t kMaxSlotsShown = 6;
 
     int itemCount() const {
@@ -159,7 +159,7 @@ private:
         switch (rows_[(size_t)i]) {
             case Row::Graphics:  cycleQuality(dir); break;
             case Row::Fov:       setFov(render_->camera.fovDeg + 5.0f * dir); break;
-            case Row::Sens:      setSens(mouseSens() + 0.1f * dir); break;
+            case Row::Sens:      setSens(mouseSens() + 0.25f * dir); break;
             case Row::Master:    setVolume("audio.master", audio_->masterVolume() + 5.0f * dir); break;
             case Row::Sfx:       setVolume("audio.sfx", audio_->busVolume(core::Bus::Sfx) + 5.0f * dir); break;
             case Row::EngineVol: setVolume("audio.engine", audio_->busVolume(core::Bus::Engine) + 5.0f * dir); break;
