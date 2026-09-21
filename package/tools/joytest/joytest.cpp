@@ -124,9 +124,19 @@ static std::vector<Step> g_steps = {
     {"orbit_lock", "PRESS THE BUTTON YOU WANT FOR ORBIT LOCK", false, false},
     {"menu", "PRESS THE BUTTON YOU WANT FOR THE GAME MENU (SPACE = SKIP)", false, true},
     {"camera", "PRESS THE BUTTON YOU WANT FOR CAMERA VIEW (SPACE = SKIP)", false, true},
+    {"weapon_next", "PRESS THE BUTTON YOU WANT FOR NEXT WEAPON (CYCLES BLASTER / BEAM / MISSILES)", false, false},
+    {"weapon_prev", "PRESS THE BUTTON YOU WANT FOR PREVIOUS WEAPON (SPACE = SKIP)", false, true},
+    {"lock_target", "PRESS THE BUTTON YOU WANT FOR LOCK TARGET (MISSILES) (SPACE = SKIP)", false, true},
+    {"lock_clear", "PRESS THE BUTTON YOU WANT FOR CLEAR LOCK (SPACE = SKIP)", false, true},
+};
+// extra steps only selectable with --steps=... (wheels have ONE weapon-switch button, not one per weapon)
+static std::vector<Step> g_extraSteps = {
     {"weapon_1", "PRESS THE BUTTON YOU WANT FOR WEAPON 1 BLASTER (SPACE = SKIP)", false, true},
     {"weapon_2", "PRESS THE BUTTON YOU WANT FOR WEAPON 2 MINING BEAM (SPACE = SKIP)", false, true},
+    {"weapon_3", "PRESS THE BUTTON YOU WANT FOR WEAPON 3 MISSILES (SPACE = SKIP)", false, true},
+    {"look_reset", "PRESS THE BUTTON YOU WANT FOR ANYTHING ELSE, E.G. BRAKE ASSIST (SPACE = SKIP)", false, true},
 };
+static std::string g_outFile = "logs/joytest_guided.json";
 static bool g_guided = false;
 static int g_gDev = 0;
 static size_t g_gStep = 0;
@@ -138,7 +148,7 @@ static void guidedBegin() {
     if (g_gDev < (int)g_devs.size()) for (auto& a : g_devs[(size_t)g_gDev].axes) g_gBase.push_back(a.cur);
 }
 static void guidedWrite() {
-    FILE* f = std::fopen("logs/joytest_guided.json", "w");
+    FILE* f = std::fopen(g_outFile.c_str(), "w");
     if (!f || g_gDev >= (int)g_devs.size()) { if (f) std::fclose(f); return; }
     auto& d = g_devs[(size_t)g_gDev];
     std::fprintf(f, "{\n  \"device\": \"%s\", \"vid\": \"%04X\", \"pid\": \"%04X\", \"axes\": %zu, \"buttons\": %zu, \"hats\": %zu,\n  \"controls\": {\n", d.name.c_str(), d.vid, d.pid, d.axes.size(), d.buttons.size(), d.hats.size());
@@ -246,6 +256,16 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (!std::strcmp(argv[i], "--guided")) g_guided = true;
         else if (!std::strncmp(argv[i], "--dev=", 6)) g_gDev = std::atoi(argv[i] + 6);
+        else if (!std::strncmp(argv[i], "--out=", 6)) g_outFile = argv[i] + 6;
+        else if (!std::strncmp(argv[i], "--steps=", 8)) {   // run only these steps (comma separated keys from either list)
+            std::vector<Step> pick; std::string list = std::string(argv[i] + 8) + ",";
+            for (size_t p = 0; (p = list.find(',')) != std::string::npos; list.erase(0, p + 1)) {
+                std::string k = list.substr(0, p);
+                for (auto& st : g_steps) if (k == st.key) pick.push_back(st);
+                for (auto& st : g_extraSteps) if (k == st.key) pick.push_back(st);
+            }
+            if (!pick.empty()) g_steps = pick;
+        }
     }
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
