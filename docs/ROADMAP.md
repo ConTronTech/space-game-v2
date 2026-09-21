@@ -51,7 +51,7 @@ Done when: you can fly, burn fuel, take damage, die, respawn and save/load mid-f
 - [x] **3.2 `world/star_system`**: seeded sun, planets, moons, orbits, sun lighting. *starsystem.h*  (positions are 32-bit floats: render relative to the camera / re-origin the world so orbits of 80,000+ units and warp speeds don't jitter)
 - [ ] **3.3 `world/planet_mesh`**: icosphere terrain, FBM noise, biomes, 4 LOD levels. *planet_mesh.h*
 - [x] **3.4 Collision wiring**: sun, planets, moons register with `physics_world`; ship damage from speed; sun = death.
-- [ ] **3.5 `ship/orbit_lock`**: one `toggle_orbit_lock` action. *ship.h*
+- [x] **3.5 `ship/orbit_lock`**: one `toggle_orbit_lock` action. *ship.h*
 - [ ] **3.6 `world/asteroids`**: belts, clusters, pooled LOD meshes. *asteroids.h*
 - [ ] **3.7 `world/stations` + `ship/docking`**: orbital + planetary stations, dock/undock. *stations.h*  (**user instruction: keep docking SIMPLE - a cube and a cylinder as the platform placeholder until a proper model exists**; the old station OBJs in `assets/models/stations` can wait)
 

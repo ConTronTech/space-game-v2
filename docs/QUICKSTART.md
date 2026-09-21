@@ -40,6 +40,7 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | pitch | mouse y-axis, Down / Up |
 | brake | X or right mouse button |
 | toggle_warp | Z (engage/disengage warp drive) |
+| toggle_orbit_lock | O (circular orbit around the nearest planet/moon/sun; again to release) |
 | camera_next | V (cockpit <-> chase view) |
 | mouse_capture_toggle | Tab (free/capture cursor) |
 | pause | Escape |
