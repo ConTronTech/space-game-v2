@@ -14,6 +14,12 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 5 - 2026-09-21 (DONE, tag `good-20260921-01`): Phase 3.2 `world/star_system`
+- **Changed:** seeded system (seed 1234: sun + 6 planets + 8 moons = 15 bodies, outer orbit 352,200 units), analytic circular orbits in double, camera-relative rendering with far-body clamping, low-poly lit spheres, emissive sun + glow, saveable (seed + sim time), `IStarSystem` service. Tunables: `star_system.enabled`, `world.seed`, `planets.count`, `world.sun_distance`, `world.time_scale`, `world.sphere_detail`.
+- **Verified:** 177 tests under ASan+UBSan, full smoke (24 modules), headless run; benchmark on/off within noise (~2200 fps). Screenshots checked by the worker (sun disc, lit planet, far dot).
+- **Not verified / for the user:** looks on the laptop, moving orbits (periods are hours; try `world.time_scale` 200), moons, no collisions yet (3.4). Sun is at ~12,000 units from the spawn (behind-left, HDG ~248).
+- **Next:** 3.3 planet meshes with LOD, or 3.4 collision wiring (sun = death) - 3.4 first is cheaper and makes the system solid.
+
 ## Leap 4 - 2026-09-20 (DONE): Phase 3.1 starfield + skybox for the low-end laptop
 
 **Final state (tag `good-20260920-06`):** skybox top/bottom seam bug fixed (implicit flipV on faces 4 and 5); default set seam ratio top 3.57 -> 0.95, bottom 2.78 -> 1.33. `tools/skybox_seams.py` default threshold 2.5. 171 tests green under ASan+UBSan, full smoke OK (23 modules). Next: Phase 3.2 star system.
