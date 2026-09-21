@@ -226,6 +226,7 @@ public:
     }
     void addMaxHp(float amount) override { rules::addMaxHp(vit_, amount, maxHpCap_); sync(); }
     void installShield(bool enabled) override { rules::installShield(vit_, enabled); sync(); }
+    void setWarping(bool w) override { status_.warping = w; }   // sync() leaves it alone
     void setVelocity(const Vec3& v) override {
         vel_ = v;
         sync();
