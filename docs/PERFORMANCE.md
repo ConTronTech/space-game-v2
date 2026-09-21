@@ -21,7 +21,7 @@ At exit it prints the table and writes `logs/profile.txt`:
 
 ## On the laptop
 `package/tools/laptop_bench.sh` syncs the build and prints only the benchmark lines, so for the profile tables run it once (`SYNC=1`, any flags), then run the game there and print the file:
-`ssh <laptop> "cd ~/space-game-v2-test && export DISPLAY=:0 LD_LIBRARY_PATH=libs SDL_AUDIODRIVER=dummy && ./space_game_v2 --profile --profile-slow=20 --benchmark=20 --no-vsync > /dev/null 2>&1; cat logs/profile.txt"`
+`ssh <laptop> "cd ~/Documents/Space-Game-V2/space-game-v2 && export DISPLAY=:0 LD_LIBRARY_PATH=libs SDL_AUDIODRIVER=dummy && ./space_game_v2 --profile --profile-slow=20 --benchmark=20 --no-vsync > /dev/null 2>&1; cat logs/profile.txt"`
 and the same with `--profile=gpu`. Please send back: the table from `--profile`, the table from `--profile=gpu`, and the SLOW FRAMES list. Compare `pass:skybox`, `pass:ship/cockpit` and `core/window:present`.
 
 ## Reproducing "laptop-like" numbers on the dev PC
@@ -63,7 +63,7 @@ Round 1 did nothing on the laptop (A/B: 33.8/35.6/35.6 fps before, 36.0/35.7/35.
 starfield 6.2, star_system 1.7, everything else < 0.3; the same ~55 ms stall appears inside whichever pass blocks.
 
 ## What each fix is, and how to switch it off (for A/B runs)
-All are tunables in `config/game.json` (the laptop's `~/space-game-v2-test/config/game.json`, which `laptop_bench.sh` never overwrites) and **Low-preset defaults**; High/Ultra are unchanged.
+All are tunables in `config/game.json` (the laptop's `~/Documents/Space-Game-V2/space-game-v2/config/game.json`, which `laptop_bench.sh` never overwrites) and **Low-preset defaults**; High/Ultra are unchanged.
 Precedence: game.json > preset > code default, so a value in game.json switches one fix on or off on its own, whatever `--quality` says.
 
 | Fix | Tunable (game.json section `key`) | Low default | "off" (= round-1 behaviour) | What it does |
