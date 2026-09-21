@@ -1,0 +1,7 @@
+{
+  "_comment": "Cargo hold upgrade levels, in order (the first entry is level 0). capacity_mult multiplies inventory.capacity (default 100 cargo units): 100 / 200 / 400 / 800. Phase 5 crafting raises the level (gameplay::IInventory::setLevel). Items may also carry an optional 'volume' in data/items.json (cargo units per item, default 1); ores take 1 unit each.",
+  "level0": { "name": "Standard hold",  "capacity_mult": 1 },
+  "level1": { "name": "Extended hold",  "capacity_mult": 2 },
+  "level2": { "name": "Cargo bay",      "capacity_mult": 4 },
+  "level3": { "name": "Freighter hold", "capacity_mult": 8 }
+}

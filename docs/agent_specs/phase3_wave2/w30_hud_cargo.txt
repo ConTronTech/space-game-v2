@@ -1,0 +1,14 @@
+TASK 5.1b - HUD cargo line and ore pickup feedback. You wrote ui/ship_hud (hud_logic.h pure logic + ship_hud.cpp). gameplay/inventory and gameplay/mining are merged: read package/modules/gameplay/inventory/inventory_api.h (IInventory capacity/used/free/count; events InventoryChanged, CargoFull), package/modules/gameplay/mining/mining_api.h (OreMined{ore, amount}) and docs/INVENTORY.md, docs/MINING.md.
+
+RULES: read docs/WORKFLOW.md, docs/HUD.md, docs/PERFORMANCE.md (laptop is GPU fill-rate bound and the HUD already costs ~0.5 ms there: keep additions to a few small quads and CACHE text, no new per-frame allocation, and if you can, reduce the HUD's existing per-frame cost while you are in there (report before/after CPU numbers)). Edit ONLY files under OWNERSHIP. DO NOT COMMIT; leave everything uncommitted. Run package/tools/smoke.sh and make test-san at the end. DO NOT inject keys/mouse into the desktop (no xdotool/XTEST), do not ssh, do not run the game fullscreen or --quality=low on this desktop except with a small --frames. SCRATCH FILES only under logs/ with literal names; never rm with a variable path (it stalls the tool): list them in the report. Report per item + 3-sentence summary + manual checklist. Worktree is fast-forwarded to main; run package/tools/link_assets.sh.
+
+CHANGE (optional services, per-use get; the HUD must work without them):
+1. Cargo status: a small line in the same style as the other status lines: "CARGO 45 / 100" with a thin fill bar (calm cyan; amber above 80%, red at 100% full), placed with the weapon block area or under the ship bars (your call, keep it uncluttered); hidden when gameplay/inventory is absent.
+2. Pickup feedback: on gameplay::OreMined show a short stacked banner "+6 CRYSTAL" (ore display name from core::IData ores if easy, else the id uppercased; colour = the ore colour if available, else calm cyan), fading over ~1.5 s, merging repeated pickups of the same ore within 0.5 s into one banner with the summed amount (so scooping a chunk cloud does not spam); on gameplay::CargoFull a short amber "CARGO FULL" banner (rate-limited to once per 2 s).
+3. Mining awareness (optional, only if it is cheap): when the mining beam is selected and hits an asteroid (combat::ICombat::hitMarkerAge small), nothing more; skip anything that needs edits outside your files.
+4. Pure logic in hud_logic.h (cargo fraction/colour, banner merge/expiry, rate limiting, text) with unit tests in the HUD test file (no exact float equality).
+5. Docs: docs/HUD.md.
+
+OWNERSHIP: package/modules/ui/ship_hud/**, the HUD test file under package/tests/, docs/HUD.md. Do not touch other modules.
+
+ACCEPTANCE: smoke + make test-san; saved-game screenshots with --give=iron:90 (test cargo flag) and a scoop scenario (see docs/MINING.md, --auto-fire) showing the cargo line, a "+N ORE" banner and "CARGO FULL"; cockpit and chase views; CPU before/after for the HUD panel on this machine.
