@@ -114,3 +114,20 @@ TEST(world_box_downscale_averages_and_handles_pitch) {
     world::boxDownscale(big.data(), 7, 5, 21, 3, 3, 2, out);
     for (auto v : out) CHECK_EQ((int)v, 128);
 }
+
+TEST(world_effective_face_uv_implicit_flip_on_top_and_bottom) {
+    for (int face = 0; face < 6; face++) {
+        bool vertical = face == 4 || face == 5;
+        for (int fu = 0; fu < 2; fu++) for (int fv = 0; fv < 2; fv++) for (int rot : {0, 90, 180, 270}) {
+            world::FaceUV j; j.flipU = fu; j.flipV = fv; j.rotate = rot;
+            auto e = world::effectiveFaceUV(face, j);
+            CHECK_EQ(e.flipV, vertical ? !(bool)fv : (bool)fv);   // top/bottom toggled, sides unchanged; json flip_v cancels it
+            CHECK_EQ(e.flipU, (bool)fu);
+            CHECK_EQ(e.rotate, rot);
+        }
+    }
+    world::FaceUV none;
+    CHECK(world::effectiveFaceUV(4, none).flipV);                 // no json: implicit flip alone
+    world::FaceUV j; j.flipV = true;
+    CHECK(!world::effectiveFaceUV(5, j).flipV);                   // json flip_v cancels it
+}

@@ -77,7 +77,7 @@ public:
         double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         LOG_I("skybox", "%s: faces %dx%d (cap %d), %.1f MB of textures, %.0f ms, cache %s", names[idx].c_str(), shown.w, shown.h, cap,
               bytes / 1048576.0, ms, cached == 6 ? "USED" : cached == 0 ? "not used" : "partly used");
-        for (int i = 0; i < 6; i++) uv_[i] = set.uv[i];
+        for (int i = 0; i < 6; i++) uv_[i] = world::effectiveFaceUV(i, set.uv[i]);   // sets follow the old game convention (see docs/WORLD.md)
         render_ = &eng.services.require<core::RenderEngine>();
         render_->addPass("skybox", -100, [this](core::RenderEngine& r) { draw(r); });
         active_ = true;
