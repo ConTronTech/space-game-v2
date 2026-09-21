@@ -18,7 +18,7 @@ Code: `package/modules/gameplay/crafting/` (`crafting_rules.h` is pure and unit-
 | `max_hp` + `max_hp_cap` | `IShip::addMaxHp` (permanent, up to the cap, 200) | max HP already at the cap |
 | `shield_enabled` | `IShip::installShield(true)` (permanent) | a shield is already installed |
 | `missiles` | `combat::IAmmo::addMissiles(n)` (rack cap `combat.max_missiles`, 12; a nearly full rack takes what fits) | **missile rack full** (the pack is not consumed); `no missile rack` when `combat.enabled` is false |
-| `hud_ore_labels` | sets the inventory perk `ore_scanner` (`IInventory::addPerk`, saved; permanent) | **ore scanner already installed**. The ore labels themselves are the HUD's job (it reads `IInventory::hasPerk("ore_scanner")`) |
+| `hud_ore_labels` | sets the inventory perk `ore_scanner` (`IInventory::addPerk`, saved; permanent) | **ore scanner already installed**. With the perk the radar dots take ore colours, the lock info line shows the ore and expected yield and the lock bracket is ore-tinted (docs/MINING.md "Ore Scanner") |
 
 Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no ship`. An item with an applicable and a refused effect applies the applicable one. Permanent items apply one at a time (the shield generator refuses a second one; hull plating keeps working until the cap).
 The Missile Pack (+3 missiles, docs/COMBAT.md) and the Ore Scanner work since 4.2b; `decideUse` gets the rack (`ShipState::missiles/maxMissiles`) and the perk (`ShipState::oreScanner`) and returns `UsePlan::addMissiles` / `setOreScanner`.

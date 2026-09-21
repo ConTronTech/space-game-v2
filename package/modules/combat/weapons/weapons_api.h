@@ -40,10 +40,14 @@ public:
     virtual bool noAmmo() const { return false; }           // the selected weapon is out of ammo: the HUD shows "NO MISSILES"
     virtual int missileCount() const { return 0; }          // missiles in flight
     virtual LockStateId lockState() const { return LockStateId::Idle; }
-    virtual std::string lockTargetName() const { return {}; }   // e.g. "asteroid 412 (iron)"; empty without a target
+    virtual std::string lockTargetName() const { return {}; }   // e.g. "asteroid 412" (no ore: that needs the Ore Scanner); empty without a target
     virtual float lockTargetDistance() const { return 0; }  // units, ship to target centre
     virtual float lockTargetAngle() const { return 0; }     // degrees off the ship's nose
     virtual float lockProgress() const { return 0; }        // 0..1 while acquiring, 1 when locked
+    // ---- the raw lock target for the Ore Scanner (5.5b): the HUD decides what to show (combat/weapons/scanner_rules.h lockInfoText) ----
+    virtual int lockTargetId() const { return -1; }         // asteroid index, -1 without a target
+    virtual std::string lockTargetOre() const { return {}; }    // its ore id ("iron"); only shown to the player with the "ore_scanner" perk
+    virtual float lockTargetRadius() const { return 0; }    // units
 };
 
 // The missile rack. Crafting's Missile Pack goes through this (a full rack refuses and the pack is not consumed).

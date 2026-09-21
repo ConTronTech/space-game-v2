@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <string>
 #include "engine/math.h"
+#include "combat/weapons/scanner_rules.h"
 
 namespace cockpit {
 
@@ -109,6 +110,13 @@ constexpr int kMaxRadarMarkers = kMaxRadarContacts + kMaxRadarStations + kMaxRad
 constexpr float kDefaultAsteroidRange = 3000.0f;               // units (cockpit.radar_asteroid_range)
 inline bool asteroidInRange(float dist, float range) { return dist >= 0 && dist <= range; }   // false for NaN too
 inline int asteroidSizeTier(float radius) { return radius < 2.0f ? 0 : radius < 4.0f ? 1 : 2; }   // clusters: 0.5-4 small, 4-10 large
+// Ore Scanner: the dot's colour and size tier. No scanner (or an unknown ore) = the dim tan dot at its size tier; with it the ore colour
+// (combat::oreLook: brightened) and one tier bigger for rare ores (rarity <= 8), capped at the largest tier.
+struct RockDot { float r, g, b; int tier; };
+inline RockDot radarRockDot(int sizeTier, bool scanner, bool known, const float rgb[3], int rarity) {
+    combat::OreLook o = combat::oreLook(scanner, known, rgb, rarity);
+    return {o.r, o.g, o.b, std::min(2, sizeTier + o.tierBonus)};
+}
 inline float asteroidDotSize(int tier) { return tier <= 0 ? 0.008f : tier == 1 ? 0.011f : 0.015f; }   // scope-height fractions
 
 // ---- stations: a diamond, hollow normally, filled when the dock key would work for THIS station ----

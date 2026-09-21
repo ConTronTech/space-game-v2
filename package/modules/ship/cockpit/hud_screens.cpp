@@ -2,6 +2,8 @@
 #include <cmath>
 #include "core/camera/camera_api.h"
 #include "engine/log.h"
+#include "core/data_registry/data_api.h"
+#include "gameplay/inventory/inventory_api.h"
 #include "ship/docking/docking_api.h"
 #include "world/asteroids/asteroids_api.h"
 #include "world/star_system/star_system_api.h"
@@ -21,6 +23,20 @@ HudScreens::HudScreens(engine::Engine& eng) : eng_(eng) {
     asteroidRange_ = std::max(100.0f, eng.config.get("cockpit.radar_asteroid_range", kDefaultAsteroidRange, "radar: asteroids closer than this many units are shown as tiny dots (the 12 nearest)"));
     rockRate_.setHz(4.0f);
     range_ = std::max(1000.0f, eng.config.get("cockpit.radar_range", 400000.0f, "radar rim distance in units (logarithmic scale: near bodies stay readable, far ones clamp to the rim)"));
+}
+
+RockDot HudScreens::rockDot(const std::string& ore, int sizeTier) {
+    auto it = ores_.find(ore);
+    if (it == ores_.end()) {                                // data/ores.json colour + rarity, looked up once per ore id
+        OreDot o;
+        if (const core::IData* data = eng_.services.get<core::IData>()) {
+            const engine::Json& j = data->get("ores", ore);
+            if (j["color"].size() >= 3) { o.known = true; for (int k = 0; k < 3; k++) o.rgb[k] = (float)j["color"].at((size_t)k).num(0.5); }
+            o.rarity = (int)j["rarity"].num(100);
+        }
+        it = ores_.emplace(ore, o).first;
+    }
+    return radarRockDot(sizeTier, true, it->second.known, it->second.rgb, it->second.rarity);
 }
 
 std::string hudContentFor(const std::string& content, const std::string& quadName) {
@@ -149,15 +165,21 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
 
     // asteroids first, so bodies and stations draw over them: the 12 nearest within cockpit.radar_asteroid_range, tiny dim dots, no stems
     if (const world::IAsteroids* ast = eng_.services.get<world::IAsteroids>()) {
-        if (rockRate_.tick(eng_.time())) { rockIds_.clear(); ast->nearest({sx, sy, sz}, kMaxRadarAsteroids, rockIds_); }
+        if (rockRate_.tick(eng_.time())) {
+            rockIds_.clear(); ast->nearest({sx, sy, sz}, kMaxRadarAsteroids, rockIds_);
+            static const std::string perk = combat::kScannerPerk;
+            const gameplay::IInventory* inv = eng_.services.get<gameplay::IInventory>();
+            scanner_ = inv && inv->hasPerk(perk);                  // Ore Scanner: re-checked with the rock list, a few times a second
+        }
         int drawn = 0;
         for (int id : rockIds_) {
             if (drawn >= kMaxRadarAsteroids) break;
             world::Vec3d p = ast->position(id);
             RadarPlot pl = radarPlot({(float)(p.x - sx), (float)(p.y - sy), (float)(p.z - sz)}, frame, range_);
             if (!asteroidInRange(pl.dist, asteroidRange_)) continue;
-            float size = asteroidDotSize(asteroidSizeTier(ast->radius(id)));
-            c.rect(cx + pl.x * r - size * 0.5f, cy - pl.y * r - size * 0.5f, size, size, {0.5f, 0.45f, 0.35f, 1});
+            RockDot d = scanner_ ? rockDot(ast->ore(id), asteroidSizeTier(ast->radius(id))) : radarRockDot(asteroidSizeTier(ast->radius(id)), false, false, nullptr, 0);
+            float size = asteroidDotSize(d.tier);
+            c.rect(cx + pl.x * r - size * 0.5f, cy - pl.y * r - size * 0.5f, size, size, {d.r, d.g, d.b, 1});
             drawn++;
         }
     }

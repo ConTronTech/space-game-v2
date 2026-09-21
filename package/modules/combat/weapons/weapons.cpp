@@ -3,6 +3,8 @@
 #include <GL/gl.h>
 #include <SDL2/SDL.h>
 #include <algorithm>
+#include <array>
+#include <map>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -11,6 +13,8 @@
 #include "combat/weapons/weapons_data.h"
 #include "combat/weapons/weapons_rules.h"
 #include "combat/weapons/missile_rules.h"
+#include "combat/weapons/scanner_rules.h"
+#include "gameplay/inventory/inventory_api.h"
 #include "core/save_system/save_api.h"
 #include "core/audio/audio_api.h"
 #include "core/camera/camera_api.h"
@@ -124,6 +128,9 @@ public:
     std::string lockTargetName() const override { return lockName_; }
     float lockTargetDistance() const override { return lockDist_; }
     float lockTargetAngle() const override { return lockAngle_; }
+    int lockTargetId() const override { return lockNameId_; }
+    std::string lockTargetOre() const override { return lockNameId_ >= 0 ? lockOre_ : std::string(); }
+    float lockTargetRadius() const override { return lockNameId_ >= 0 ? lockRadius_ : 0.0f; }
     float lockProgress() const override {
         if (lock_.state == combat::LockState::Locked) return 1.0f;
         if (lock_.state != combat::LockState::Acquiring) return 0.0f;
@@ -404,10 +411,10 @@ private:
             lockDist_ = (float)combat::length(r); lockAngle_ = (float)combat::angleDeg(fwd, r);
             lockPos_ = tp; lockRadius_ = ast->radius(lock_.target);
             if (lockNameId_ != lock_.target) {
-                char b[96]; std::snprintf(b, sizeof b, "asteroid %d (%s)", lock_.target, ast->ore(lock_.target).c_str());
+                char b[48]; std::snprintf(b, sizeof b, "asteroid %d", lock_.target); lockOre_ = ast->ore(lock_.target);
                 lockName_ = b; lockNameId_ = lock_.target;
             }
-        } else { lockName_.clear(); lockNameId_ = -1; lockDist_ = lockAngle_ = 0; }
+        } else { lockName_.clear(); lockOre_.clear(); lockNameId_ = -1; lockDist_ = lockAngle_ = 0; }
         if (lock_.state != was) {
             if (lock_.state == combat::LockState::Lost && lock_.autoPicked) LOG_I("combat", "auto-lock lost %s: %s", lockName_.c_str(), lock_.why);
             if (lock_.state == combat::LockState::Lost) LOG_I("combat", "lock lost: %s (%s, %.0f units, %.1f deg)", lock_.why, lockName_.c_str(), lockDist_, lockAngle_);
@@ -441,7 +448,7 @@ private:
             if (auto* ast = eng.services.get<world::IAsteroids>()) autoPick(*ast, pos, fwd, autoParams_.instant);   // fire without a lock: pick now
         if (autoParams_.instant && lock_.state == combat::LockState::Acquiring) { lock_.state = combat::LockState::Locked; lock_.timer = 0; }
         if (lock_.state == combat::LockState::Locked && lock_.target >= 0 && lockNameId_ != lock_.target) {
-            if (auto* ast = eng.services.get<world::IAsteroids>()) { char b[96]; std::snprintf(b, sizeof b, "asteroid %d (%s)", lock_.target, ast->ore(lock_.target).c_str()); lockName_ = b; lockNameId_ = lock_.target; }
+            if (auto* ast = eng.services.get<world::IAsteroids>()) { char b[48]; std::snprintf(b, sizeof b, "asteroid %d", lock_.target); lockOre_ = ast->ore(lock_.target); lockName_ = b; lockNameId_ = lock_.target; }
         }
         int tgt = lock_.state == combat::LockState::Locked ? lock_.target : -1;
         mpool_.spawn(m, tgt, 0);
@@ -534,6 +541,27 @@ private:
     }
 
     // ---- drawing: bolts as short additive streaks, the beam as a thin line; one glDrawArrays ----
+    // With the "ore_scanner" perk: the locked rock's ore colour (data/ores.json, cached per ore id, brightened like the radar). False = keep the default colour.
+    bool scannerTint(float out[3]) {
+        static const std::string perk = combat::kScannerPerk;
+        auto* inv = eng_->services.get<gameplay::IInventory>();
+        if (!inv || lockOre_.empty() || !inv->hasPerk(perk)) return false;
+        auto it = oreTint_.find(lockOre_);
+        if (it == oreTint_.end()) {
+            float rgb[3] = {0, 0, 0};
+            bool known = false;
+            if (auto* data = eng_->services.get<core::IData>()) {
+                const engine::Json& j = data->get("ores", lockOre_);
+                if (j["color"].size() >= 3) { known = true; for (int k = 0; k < 3; k++) rgb[k] = (float)j["color"].at((size_t)k).num(0.5); }
+            }
+            combat::OreLook l = combat::oreLook(true, known, rgb, 100, 0.9f);
+            it = oreTint_.emplace(lockOre_, std::array<float, 4>{l.r, l.g, l.b, known ? 1.0f : 0.0f}).first;
+        }
+        if (it->second[3] == 0) return false;                         // unknown ore: default colour
+        out[0] = it->second[0]; out[1] = it->second[1]; out[2] = it->second[2];
+        return true;
+    }
+
     void draw(core::RenderEngine& r) {
         bool marker = lock_.target >= 0 && (lock_.state == combat::LockState::Locked || (lock_.state == combat::LockState::Acquiring && std::fmod(eng_->time() * 4.0, 1.0) < 0.6));
         if (pool_.n == 0 && mpool_.n == 0 && !beamActive_ && !marker) return;
@@ -604,6 +632,8 @@ private:
             bool locked = lock_.state == combat::LockState::Locked;
             const float amber[3] = {1.0f, 0.75f, 0.2f}, red[3] = {1.0f, 0.25f, 0.2f};
             const float* col = locked ? red : amber;
+            float oreCol[3];
+            if (scannerTint(oreCol)) col = oreCol;                 // Ore Scanner: the bracket takes the ore's colour (blink / ticks still say acquiring / locked)
             line(top, rgt, col, 0.95f, 0.95f); line(rgt, bot, col, 0.95f, 0.95f); line(bot, lft, col, 0.95f, 0.95f); line(lft, top, col, 0.95f, 0.95f);
             if (locked) {
                 line(top, combat::add(lockPos_, combat::mul(U, 0.6)), col, 0.95f, 0.95f); line(bot, combat::sub(lockPos_, combat::mul(U, 0.6)), col, 0.95f, 0.95f);
@@ -638,7 +668,8 @@ private:
     float lockDist_ = 0, lockAngle_ = 0, lockRadius_ = 0;
     double lastLockLog_ = -10, lastMissileLog_ = -10;
     combat::Vec3d lockPos_;
-    std::string lockName_;
+    std::string lockName_, lockOre_;
+    std::map<std::string, std::array<float, 4>> oreTint_;   // Ore Scanner bracket colour per ore id (rgb + known flag)
     combat::MissilePool mpool_;
     combat::Lock lock_;
     combat::LockParams lockParams_;

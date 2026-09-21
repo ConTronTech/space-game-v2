@@ -11,6 +11,7 @@
 #include "gameplay/mining/mining_api.h"
 #include "ship/cockpit/cockpit_screens_api.h"
 #include "combat/weapons/weapons_api.h"
+#include "combat/weapons/scanner_rules.h"
 #include "ship/docking/docking_api.h"
 #include "ship/orbit_lock/orbit_lock_api.h"
 #include "ship/respawn/respawn_api.h"
@@ -48,6 +49,7 @@ public:
             "flat HUD while the cockpit's own screens are visible: minimal (crosshair, warnings, hint; speed/bars live on the ship) | full (everything) | hidden (only hit vignette + destroyed screen)"));
         if (parsed.unknown) LOG_W("ship_hud", "hud.cockpit_overlay: unknown value, using 'minimal' (valid: minimal, full, hidden)");
         mode_ = parsed.mode;
+        yieldScale_ = std::max(0.0f, eng.config.get("mining.yield_scale", 0.5f, "ore units per destroyed asteroid = this * radius^2 (radius 9: about 41)"));
         hintSeconds_ = eng.config.get("hud.hint_seconds", 20.0f, "seconds the controls hint is shown at full opacity before it fades out over 2 s (0 = never fade)");
         ui_->addPanel("ui/ship_hud", 10, [this](core::UIHandler& ui) { draw(ui); });
         return true;
@@ -211,6 +213,7 @@ private:
             ui.rect(L.cx - x0 - w, y, w, segH, k.r, k.g, k.b, al);
             ui.rect(L.cx + x0, y, w, segH, k.r, k.g, k.b, al);
         }
+        drawLockInfo(ui, L, cb, dim);
         hud::HitMarker m = hud::hitMarker(cb.hitMarkerAge(), state_.killAge(now));
         if (m.alpha > 0) {
             hud::RGB k = m.kill ? hud::RGB{1.0f, 0.35f, 0.3f} : hud::RGB{1.0f, 1.0f, 1.0f};
@@ -222,6 +225,32 @@ private:
                     ui.rect(cx - t / 2, sy > 0 ? cy : cy - len, t, len, k.r, k.g, k.b, m.alpha);
                 }
         }
+    }
+
+    // One small line under the crosshair while a target is acquiring / locked: "ASTEROID  r 9.6  850 m", and with the Ore Scanner perk
+    // "ASTEROID  IRON  r 9.6  ~41 ore  850 m" (combat/weapons/scanner_rules.h). The string is rebuilt only when the target, the perk or the 10 m bucket changes.
+    void drawLockInfo(core::UIHandler& ui, const hud::Layout& L, const combat::ICombat& cb, float dim) {
+        combat::LockStateId ls = cb.lockState();
+        int id = cb.lockTargetId();
+        if ((ls != combat::LockStateId::Acquiring && ls != combat::LockStateId::Locked) || id < 0) return;
+        static const std::string perk = combat::kScannerPerk;
+        auto* inv = eng_->services.get<gameplay::IInventory>();
+        bool scanner = inv && inv->hasPerk(perk);
+        int bucket = combat::lockDistanceBucket(cb.lockTargetDistance());
+        if (id != lockInfoId_ || bucket != lockInfoBucket_ || scanner != lockInfoScanner_) {
+            lockInfoId_ = id; lockInfoBucket_ = bucket; lockInfoScanner_ = scanner;
+            std::string name;
+            if (scanner) { std::string ore = cb.lockTargetOre(); if (!ore.empty()) name = combat::oreDisplayName(ore, oreName(ore)); }
+            lockInfoText_ = combat::lockInfoText(scanner, name, cb.lockTargetRadius(), bucket * 10.0f, yieldScale_);
+        }
+        const float s = L.scale;
+        int fs = (int)std::round(13 * s);
+        hud::RGB k = ls == combat::LockStateId::Locked ? hud::RGB{1.0f, 0.45f, 0.35f} : hud::RGB{1.0f, 0.8f, 0.35f};
+        ui.textCentered(L.cx, L.cy + L.crossR + 14 * s, lockInfoText_, fs, {k.r, k.g, k.b, 0.9f * dim});
+    }
+    std::string oreName(const std::string& id) {                      // data/ores.json "name" (cached per id with the rest of the ore info)
+        if (auto* data = eng_->services.get<core::IData>()) return data->get("ores", id)["name"].str("");
+        return {};
     }
 
     // bottom-left block, one row per weapon: "BLASTER  [1]" + mini heat bar; the selected row is bright, the others dim
@@ -293,6 +322,10 @@ private:
     engine::Engine* eng_ = nullptr;
     core::UIHandler* ui_ = nullptr;
     hud::HudState state_;
+    std::string lockInfoText_;                 // the cached lock info line (drawLockInfo)
+    int lockInfoId_ = -1, lockInfoBucket_ = -1;
+    bool lockInfoScanner_ = false;
+    float yieldScale_ = 0.5f;                  // mining.yield_scale, read here too (the expected yield in the lock line; same key as gameplay/mining)
     struct OreInfo { std::string label; hud::RGB colour{0.45f, 0.85f, 1.0f}; };
     // display name and colour of an ore from data/ores.json (optional); looked up once per ore id, then cached
     const OreInfo& oreInfo(const std::string& id) {

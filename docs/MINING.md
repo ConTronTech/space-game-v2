@@ -43,3 +43,14 @@ At debug log level: the chunk count and CPU per step every 5 s. Every break-up a
 - instant: ore goes straight into the hold; a remainder that does not fit becomes a (red) capsule.
 - A rock destroyed beyond `mining.chunk_range` goes straight to the hold in any mode.
 - chunks: the old scattered chunks (`chunk_*` tunables). `mining.max_chunks` sizes both pools; the quality rows still apply.
+
+## Ore Scanner (5.5b)
+The game is meant to be strategic: **without** the scanner the player only sees "ASTEROID", its radius and its distance; **with** the `ore_scanner` perk
+(`IInventory::hasPerk`, set by using the crafted Ore Scanner item, docs/CRAFTING.md) the ore type and the expected yield show, so picking rocks worth mining needs it.
+- **Radar** (cockpit PROXIMITY_RADAR): the nearby-rock dots are coloured by ore (data/ores.json `color`, brightened so the brightest channel is at least 0.75, cached per ore id);
+  rare ores (`rarity` <= 8: gold, uranium, platinum, crystal) get one size tier more. Without the perk: the old dim tan dots.
+- **Lock info line** (ui/ship_hud, under the crosshair while acquiring / locked): `ASTEROID  r 9.6  850 m` without, `ASTEROID  IRON  r 9.6  ~46 ore  850 m` with the perk.
+- **Lock bracket** (combat/weapons): ore colour with the perk (still blinking while acquiring, ticks when locked), amber / red without.
+- Expected yield = `combat::expectedYield` in `combat/weapons/scanner_rules.h`, the same formula as `gameplay::totalYield` (`max(1, round(mining.yield_scale x r^2))`);
+  ui/ship_hud reads `mining.yield_scale` itself. **Coupling:** if the mining yield formula changes, change `expectedYield` too (test_scanner.cpp checks they agree).
+- Not done: the "NEAREST ROCK: IRON 340" radar line (no room under the body and station labels without shrinking them).
