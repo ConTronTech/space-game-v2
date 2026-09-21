@@ -128,7 +128,7 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
 
     RadarContacts contacts;
     int nearest = -1;
-    float nearestSurface = 0;
+    float nearestSurface = 0, nearestHeight = 0, nearestDist = 0;
     const auto& bodies = sys->bodies();
     for (const world::Body& b : bodies) {
         world::Vec3d p = sys->positionAt(b.id);
@@ -138,7 +138,7 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
         k.body = b.id;
         k.plot = radarPlot(rel, frame, range_);
         float surface = std::max(0.0f, k.plot.dist - b.radius);
-        if (nearest < 0 || surface < nearestSurface) { nearest = b.id; nearestSurface = surface; }
+        if (nearest < 0 || surface < nearestSurface) { nearest = b.id; nearestSurface = surface; nearestHeight = k.plot.height; nearestDist = k.plot.dist; }
         contacts.offer(k);
     }
 
@@ -153,13 +153,24 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
             default:                      col = {b.color[0] * 0.55f, b.color[1] * 0.55f, b.color[2] * 0.55f, 1}; size = 0.018f; break;
         }
         if (k.plot.clamped) size *= 0.6f;                       // beyond range: a small dot on the rim
-        float px = cx + k.plot.x * r, py = cy - k.plot.y * r;   // forward is up on the scope
+        float px = cx + k.plot.x * r, py = cy - k.plot.y * r;   // flat position; forward is up on the scope
+        if (k.plot.stem != 0) {
+            // height stem: from the flat base to the dot, brighter when the body is above the ship's plane, dimmer when below
+            const float bright = k.plot.stem > 0 ? 1.0f : 0.45f;
+            float dy = py - k.plot.stem * r;
+            c.line(px, py, px, dy, 0.009f, {col.r * bright, col.g * bright, col.b * bright, 1});
+            c.frame(px - 0.010f, py - 0.010f, 0.020f, 0.020f, 0.005f, {0.0f, 0.6f, 0.4f, 1});   // base marker on the plane
+            py = dy;
+        }
         c.rect(px - size * 0.5f, py - size * 0.5f, size, size, col);
     }
 
     if (nearest >= 0) {
         std::string label = bodies[(size_t)nearest].name + "  " + radarDistanceText(nearestSurface);
-        c.textCentered(cx, 0.86f, label, 0.07f, {0.0f, 0.8f, 0.55f, 1});
+        std::string h = radarHeightText(nearestHeight, nearestDist);
+        if (!h.empty()) label += "  " + h;
+        float th = std::min(0.07f, (c.aspect() - 0.12f) / (label.size() * kCellAspect * (1.0f + kGapRatio)));   // shrink to fit long names
+        c.textCentered(cx, 0.86f, label, th, {0.0f, 0.8f, 0.55f, 1});
     }
 }
 
