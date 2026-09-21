@@ -8,7 +8,7 @@ package/engine/            kernel: Module interface, EventBus, Services, main lo
 package/modules/core/      window, input_handler, render_engine, ui_handler, import_handler
 package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orbit_lock, respawn, fake_ship (dev)
 package/modules/ui/        pause_menu, ship_hud
-package/modules/world/     starfield, skybox, star_system (IStarSystem)
+package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids)
 package/template/          scaffold used by package/tools/new_module.sh
 ```
 
@@ -57,6 +57,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::IPhysics` | sphere bodies + `Collided` events: `addBody`, `setBody`, `teleport` - see docs/PHYSICS.md |
 | `ship::IShip` | the ship's status and actions: `status()`, `applyDamage`, `consumeWarpFuel`, `kill`, `respawn`; events `DamageTaken`, `Died`... - see docs/SHIP.md |
 | `world::IStarSystem` | the sun, planets and moons: `bodies()` (double positions), `sunPosition()`, `positionAt(id)`, `simTime()` - see docs/WORLD.md |
+| `world::IAsteroids` | the asteroid field, read-only: `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(point, n, out)` - see docs/WORLD.md |
 | `ship::OrbitLockChanged` (event) | `{locked, bodyName}` when ship/orbit_lock engages or releases - see docs/ORBIT_LOCK.md |
 | `ship::IRespawn` | `counting()` / `secondsLeft()` of the respawn countdown (HUD uses it) - see docs/RESPAWN.md |
 | `cockpit::ICockpitScreens` | put content on the cockpit model's `@` screens: `registerRenderer(group, fn)`; `showsDefaultUI()` - see docs/COCKPIT.md |

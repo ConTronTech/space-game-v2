@@ -58,7 +58,7 @@ Create `assets/skybox/bkg/<color>/<set>/` with the six face images (any resoluti
 
 ## Code map
 Pure rules (no SDL/GL): `world/skybox/skybox_rules.h` (capped size, face names, UV transform, set choice, cache path/freshness, box downscale) and `world/starfield/starfield_rules.h` (streak length), tested in `package/tests/test_world.cpp`.
-The demo rocks stay in `ship/ship_core` until the real world replaces them.
+The 150 demo rocks of `ship/ship_core` are now OFF by default (`flight.demo_rocks`, see below); the real asteroids are `world/asteroids`.
 
 ## `world/star_system` (pass `star_system`, order 50: after starfield/skybox, before the demo rocks)
 A seeded, deterministic star system: one sun, `planets.count` planets (2-10, default 6), 0-3 moons each. Provides `world::IStarSystem` (`star_system_api.h`): `sunPosition()`, `bodies()` (id, name, kind sun/planet/moon,
@@ -126,3 +126,34 @@ fits in the one-build-per-frame rule. Memory: level 3 = 31 KB, level 4 = 121 KB 
 | `world.planet_mesh_cache_seconds` | 30 | free unused levels after this |
 
 At debug log level the module prints each build (time, memory) and, every 2 s, the meshes drawn, triangles this frame, cache size and the slowest build.
+
+## `world/asteroids` (3.6, pass `asteroids`, order 60: after the star system, before the demo rocks)
+Belts and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
+indices are stable for the whole run. Without `world/star_system` nothing is generated.
+
+**Generation** (`asteroid_rules.h`, pure, seeded from `world.seed`; `generateField`): a belt is a band around the sun in the XZ plane between two planet orbits (at most `beltMaxWidth` = 3,000 units wide, about 1,000 thick, patchy: a noise field thins some parts out);
+a cluster is a flattened shell around a planet (outside its moons) or a moon. Sizes follow the old game (belts: 50% radius 1-5, 25% 5-15, 15% 15-35, 7% 35-60, 3% 60-120; clusters mostly 0.5-4); ore ids and rarity weights come from `data/ores.json` through `core::IData` (else "rock");
+each has a spin axis and rate and one of 4 shared mesh variants. Stored as struct-of-arrays (about 60 bytes each). Physics radius = radius x 0.9, so the ship damage tiers (`asteroid` radius < 5 small, < 30 medium, else big) apply to the physics radius.
+Default field (1 belt of 1,500 + 4 clusters of 60 = 1,740 asteroids, 12 shared meshes): generated in 0.8 ms on the dev machine (about 5-10 ms estimated on the laptop), 117 KB.
+
+**Drawing:** camera-relative (double subtract, then float), distance-culled (`asteroids.draw_distance`) and view-cone-culled; meshes are lumpy icospheres of 20 / 80 / 320 triangles built once (4 variants x 3 levels) and drawn with client vertex arrays,
+one push/translate/rotate(spin)/scale per asteroid. The level follows the on-screen size (`asteroids.lod_edge_px`); at most `asteroids.max_drawn` meshes are drawn, nearest first, within `asteroids.triangle_budget` triangles (the farthest are lowered first, then turned to points);
+everything smaller than 2 px, and everything past the cap, is one batch of GL points. Lit by `GL_LIGHT0` toward the sun (fixed light without a star system); all GL state is restored. Nothing is allocated per frame.
+
+**Physics pool:** static `asteroid` bodies exist only for asteroids within `asteroids.physics_radius` (1,500) of the ship: added at that radius (nearest first, at most 32 per fixed step), removed at 1.2x the radius, never more than `asteroids.max_bodies` (300) alive.
+A warp crash into a registered asteroid reports the full closing speed (checked: 2,000 m/s, fatal); a 100 m/s hit on a radius-9 asteroid does 10 damage (medium tier) and bounces.
+
+| Tunable | Default | |
+|---|---|---|
+| `asteroids.enabled` | true | |
+| `asteroids.belt_count` / `belt_asteroids` | 1 / 1500 | |
+| `asteroids.cluster_count` / `cluster_asteroids` | 4 / 60 | |
+| `asteroids.draw_distance` | 6000 | units |
+| `asteroids.max_drawn` | 400 | meshes per frame |
+| `asteroids.triangle_budget` | 15000 | per frame |
+| `asteroids.lod_edge_px` | 10 | |
+| `asteroids.physics_radius` / `max_bodies` | 1500 / 300 | |
+| `flight.demo_rocks` | **false** | the old 150 demo rocks of `ship/ship_core` (drawing and physics); saved games that referred to "the first rock" at (-23.2, -161.3, -141.6) need `flight.demo_rocks: true` |
+
+Laptop notes: a stress run with 21,500 asteroids drew 25 meshes and about 4,000 points with 300 physics bodies at 1,700 fps on the dev machine; the cost scales with the asteroids inside the draw distance, not with the field size (the culling loop is one pass over the field per frame, fine into the tens of thousands).
+The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::nearest(shipPos, N, out)` (see docs/COCKPIT.md).

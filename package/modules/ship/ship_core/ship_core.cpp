@@ -70,7 +70,8 @@ public:
         //    are mapped to devices in config/input/<profile>.json
 
         // 2. register what we draw
-        render_->addPass("flight/rocks", 100, [this](core::RenderEngine&) { drawRocks(); });
+        demoRocks_ = c.get("flight.demo_rocks", false, "the old demo rocks near the start (150 fixed rocks, for testing); the real asteroids are world/asteroids");
+        if (demoRocks_) render_->addPass("flight/rocks", 100, [this](core::RenderEngine&) { drawRocks(); });
         render_->addPass("flight/ship", 110, [this](core::RenderEngine&) { drawShip(); });
         eng_ = &eng;
         eng.services.provide<core::ITransformSource>(this);
@@ -78,10 +79,12 @@ public:
         sync();
 
         // world content
-        std::srand(1234);
-        for (int i = 0; i < 2500; i++) randomDir();   // the stars moved to world/starfield; this keeps the demo rock field identical (same random sequence)
-        for (int i = 0; i < 150; i++) {
-            rocks_.push_back({randomDir() * (60.0f + rnd() * 800.0f), 2.0f + rnd() * 14.0f});
+        if (demoRocks_) {
+            std::srand(1234);
+            for (int i = 0; i < 2500; i++) randomDir();   // the stars moved to world/starfield; this keeps the demo rock field identical (same random sequence)
+            for (int i = 0; i < 150; i++) {
+                rocks_.push_back({randomDir() * (60.0f + rnd() * 800.0f), 2.0f + rnd() * 14.0f});
+            }
         }
 
         // collisions: the ship is a moving sphere, rocks are fixed spheres (a bit smaller than their octahedron corners)
@@ -91,14 +94,14 @@ public:
             shipBody_ = physics_->addBody("ship", pos_, hullRadius_, true);
             for (auto& r : rocks_) rockBodies_.push_back(physics_->addBody("asteroid", r.pos, r.size * 0.8f, false));
             eng.events.subscribe<core::Collided>([this](const core::Collided& e) { onCollided(e); });
-            LOG_D("ship", "%zu rocks registered with physics; first at (%.1f, %.1f, %.1f) radius %.1f", rocks_.size(),
+            if (!rocks_.empty()) LOG_D("ship", "%zu rocks registered with physics; first at (%.1f, %.1f, %.1f) radius %.1f", rocks_.size(),
                   rocks_[0].pos.x, rocks_[0].pos.y, rocks_[0].pos.z, rocks_[0].size * 0.8f);
         }
         return true;
     }
 
     void shutdown(engine::Engine& eng) override {
-        render_->removePass("flight/rocks");
+        if (demoRocks_) render_->removePass("flight/rocks");
         render_->removePass("flight/ship");
         eng.services.withdraw<core::ITransformSource>();
         eng.services.withdraw<ship::IShip>();
@@ -360,6 +363,7 @@ private:
     Vec3 fwd_{0, 0, -1}, up_{0, 1, 0}, right_{1, 0, 0};
     Vec3 prevPos_{0, 0, 0}, prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
     std::vector<Rock> rocks_;
+    bool demoRocks_ = false;
 };
 
 REGISTER_MODULE(ShipCore);

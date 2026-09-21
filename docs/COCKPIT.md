@@ -100,7 +100,7 @@ The frame's forward and up come from `core::ITransformSource` (the published pos
 * Range is **logarithmic** (`radarFraction` in `radar_map.h`, scale 200 units): with the default rim of 400,000 units a body 400 units away lands at ~0.14 of the radius, one 40,000 away at ~0.70. Bodies beyond `cockpit.radar_range` sit on the rim as a smaller dot.
 * Dots: sun orange and big, planets in their body colour (brightened to stay visible), moons dim and small. At most the 20 nearest contacts are drawn (fixed array, no allocation).
 * Under the scope: the nearest body and its distance from the **surface**, e.g. `PLANET 1  1.5K` (`850`, `1.5K`, `41.9K`, `250K`, `1.2M`).
-* The old demo rocks are not on the radar (they are not exposed by any service).
+* Asteroids are not on the radar yet: `world::IAsteroids` (docs/WORLD.md) exposes `count/position/radius/ore/nearest`, so a radar layer needs only `nearest(shipPos, N, out)` each frame. The old demo rocks (`flight.demo_rocks`, off by default) are never on it.
 Pure maths (frame, mapping, nearest-N list, distance text) is in `radar_map.h`, unit-tested in `tests/test_cockpit.cpp`.
 
 ## Tunables (`config/game.json`)

@@ -28,7 +28,7 @@ the thing it hit, or it would re-collide next step).
 `optionalDependencies()` on it so it exists when they `init()`.
 - Tunable: `physics.cell_size` (default 200 m). Flight: `flight.hull_radius`, `flight.bounce`.
 
-The flight demo is the reference: ship = dynamic body, rocks = static, `onCollided` bounces the ship, plays `impact`, flashes IMPACT on the HUD.
+The flight demo (its rocks are now behind `flight.demo_rocks`, off by default; the real ones are `world/asteroids`, see docs/WORLD.md) is the reference: ship = dynamic body, rocks = static, `onCollided` bounces the ship, plays `impact`, flashes IMPACT on the HUD.
 
 ## Star system bodies
 `world/star_system` registers the sun, planets and moons as static bodies (kinds `sun`, `planet`, `moon`) and moves them every fixed step with `setBody(id, pos, vel)` (not `teleport`), so a moving static body is swept correctly and `Collided::speed`
