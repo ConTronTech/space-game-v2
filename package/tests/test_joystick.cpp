@@ -282,3 +282,22 @@ TEST(joystick_end_to_end_unknown_device_maps_nothing_and_a_bad_profile_falls_bac
     pad.profile = bad; in.onFrameBegin(eng); CHECK(close(in.value("yaw"), 0.0));
     in.unregisterMethod(&pad);
 }
+
+// A wheel that reports a wrong first value (PXN V10: +32767 = full right until the first motion event) must not steer: the axis stays 0 until it has moved.
+TEST(joystick_steering_ignores_a_wrong_first_reading_until_it_moves) {
+    Profile p; AxisMap a; a.index = 0; a.role = Role::Steering; a.action = "yaw"; a.deadzone = 0.03f; p.axes.push_back(a);
+    Mapper m; m.setWaitFirstMove(true);
+    RawState s; s.axes.assign(1, 32767);                 // the bogus startup value
+    Tuning t;
+    std::vector<Contribution> out;
+    for (int i = 0; i < 5; i++) { out.clear(); m.evaluate(p, s, t, out); CHECK(out.size() == 1); CHECK(std::fabs(out[0].value) < 1e-6f); }   // still 0 while it sits there
+    s.axes[0] = 0;                                        // the wheel moved (or settled) to the centre
+    out.clear(); m.evaluate(p, s, t, out); CHECK(std::fabs(out[0].value) < 0.05f);
+    s.axes[0] = 16000;                                    // and now it steers normally
+    out.clear(); m.evaluate(p, s, t, out); CHECK(std::fabs(out[0].value) > 0.2f);
+    // a pedal (rests at one end on purpose) is not affected, and without the option nothing changes
+    Profile q; AxisMap th; th.index = 0; th.role = Role::Throttle; th.action = "thrust"; th.rest = Rest::Min; q.axes.push_back(th);
+    Mapper m2; m2.setWaitFirstMove(true); RawState ps; ps.axes.assign(1, 32767);
+    out.clear(); m2.evaluate(q, ps, t, out); CHECK(out.size() == 1); CHECK(out[0].value > 0.9f);
+    Mapper m3; RawState s3; s3.axes.assign(1, 32767); out.clear(); m3.evaluate(p, s3, t, out); CHECK(out[0].value != 0.0f);
+}

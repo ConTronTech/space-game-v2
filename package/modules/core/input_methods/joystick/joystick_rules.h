@@ -145,7 +145,12 @@ struct Contribution { std::string action; float value = 0; };
 // Turns snapshots into action contributions. Keeps the toggle states and the previous button states (per device, so make one per device).
 class Mapper {
 public:
-    void reset() { toggles_.clear(); prev_.clear(); }
+    void reset() { toggles_.clear(); prev_.clear(); first_.clear(); moved_.clear(); }
+    // Real devices only: a steering wheel / stick axis reports a WRONG first value on some hardware (the PXN V10 read +32767 = full right until its first motion
+    // event), which the game turned into constant yaw. With this on, a Stick / Steering axis outputs 0 until its raw value has moved by kFirstMoveDelta from
+    // the first reading. Pedals rest at one END on purpose, so they are not affected.
+    void setWaitFirstMove(bool on) { waitFirstMove_ = on; }
+    static constexpr int kFirstMoveDelta = 1500;
 
     void evaluate(const Profile& p, const RawState& s, const Tuning& t, std::vector<Contribution>& out) {
         float dzs = std::clamp(t.deadzoneScale, 0.5f, 2.0f), sens = std::max(0.0f, t.sensitivity);
@@ -160,6 +165,13 @@ public:
                 continue;
             }
             if (a.action.empty()) continue;
+            if (waitFirstMove_ && (a.role == Role::Stick || a.role == Role::Steering)) {
+                size_t ai = (size_t)std::max(0, a.index);
+                if (first_.size() <= ai) { first_.resize(ai + 1, 0); moved_.resize(ai + 1, 2); }
+                if (moved_[ai] == 2) { first_[ai] = raw; moved_[ai] = 0; }                  // first sample: remember it
+                if (!moved_[ai] && std::abs(raw - first_[ai]) > kFirstMoveDelta) moved_[ai] = 1;
+                if (!moved_[ai]) { out.push_back({a.action, 0.0f}); continue; }             // not moved yet: do not trust the reading
+            }
             float v = axisValue(a, raw, dzs);
             bool pedal = a.role == Role::Throttle || a.role == Role::Brake || a.role == Role::Clutch;
             out.push_back({a.action, pedal ? v : v * sens});                    // sensitivity is for stick / steering feel, not for pedals
@@ -193,6 +205,9 @@ public:
 
 private:
     std::vector<uint8_t> toggles_, prev_;
+    std::vector<int> first_;             // first raw reading per axis (waitFirstMove)
+    std::vector<uint8_t> moved_;         // 2 = no sample yet, 0 = waiting for the first real move, 1 = moved
+    bool waitFirstMove_ = false;
 };
 
 // ---------------------------------------------------------------- hot-plug

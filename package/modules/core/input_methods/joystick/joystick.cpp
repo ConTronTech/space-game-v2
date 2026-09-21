@@ -86,6 +86,7 @@ public:
             if (!d.open) continue;
             readState(d);
             contributions_.clear();
+            d.mapper.setWaitFirstMove(!d.fake);                                      // real wheels / sticks can report a wrong first value: 0 until the axis moves (joystick_rules.h)
             d.mapper.evaluate(*d.profile, d.state, tuning_, contributions_);
             for (auto& c : contributions_) in.contribute(c.action, c.value);
         }
