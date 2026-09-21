@@ -57,6 +57,11 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `starfield.points` | false | true | true | true |
 | `cockpit.glass_tint` | false | true | true | true |
 | `cockpit.screen_hz` | 15 | 30 | 120 | 240 |
+| `fx.enabled` | true | true | true | true |
+| `fx.max_particles` | 300 | 800 | 1500 | 3000 |
+| `fx.exhaust` (0 = off, 0.5 = half the particles) | 0.5 | 1 | 1 | 1 |
+| `fx.spawn_budget` (particles per frame) | 60 | 150 | 250 | 400 |
+| `fx.size_scale` | 1 | 1 | 1 | 1 |
 
 (The skybox source faces are 1024 px today, so High/Ultra only pay off with larger face images.) Not tied to a preset: vsync (the window sets it; `--no-vsync` for benchmarks), `world.terrain_height`, gameplay tunables.
 To add a tunable, add a row to `presetTable()` in `quality_rules.h` (the table test checks monotonic growth).
