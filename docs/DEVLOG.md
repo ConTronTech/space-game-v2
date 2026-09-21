@@ -14,7 +14,9 @@ only after the full check passes, so it should always run.
 
 ---
 
-## Leap 4 - 2026-09-20 (IN PROGRESS): Phase 3.1 starfield + skybox for the low-end laptop
+## Leap 4 - 2026-09-20 (DONE): Phase 3.1 starfield + skybox for the low-end laptop
+
+**Final state (tag `good-20260920-06`):** skybox top/bottom seam bug fixed (implicit flipV on faces 4 and 5); default set seam ratio top 3.57 -> 0.95, bottom 2.78 -> 1.33. `tools/skybox_seams.py` default threshold 2.5. 171 tests green under ASan+UBSan, full smoke OK (23 modules). Next: Phase 3.2 star system.
 - **Plan:** `world/starfield` (moved out of ship_core, with warp streaks) and `world/skybox` (faces downscaled to `skybox.max_size` 1024, loaded one at a time, downscale cache in `cache/skybox/`).
   Spec: `docs/agent_specs/phase3_wave1/w6_starfield_skybox.txt`. Worker: the ship-core/warp worker (dispatch `ctx_ea162b7dcbab`). Reports skybox on/off benchmark difference.
 - **State (updated on a wake-up):** starfield + skybox are MERGED into main (170 tests under sanitizers; code reviewed; big-face path verified: a 4096 px / 7.9 MB face set loads in 3.0 s cold, 0.27 s from cache, 18 MB of textures).
