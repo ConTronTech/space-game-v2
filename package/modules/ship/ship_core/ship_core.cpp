@@ -60,6 +60,7 @@ public:
         col_.asteroidBig = c.get("ship.damage_asteroid_big", 35.0f, "full-speed damage of a hit on an asteroid over 30 m");
         col_.planet = c.get("ship.damage_planet", 50.0f, "full-speed damage of a hit on a planet or moon");
         col_.other = c.get("ship.damage_other", 10.0f, "full-speed damage of a hit on anything else");
+        col_.sunKills = c.get("ship.sun_kills", true, "touching the sun is instant death (false = it only hurts like a planet)");
         col_.minDamage = c.get("ship.damage_min", 1.0f, "every hit does at least this much (scratch)");
 
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
@@ -258,13 +259,16 @@ private:
         Vec3 otherPos = shipIsA ? c.posB : c.posA;
         float otherR = shipIsA ? c.radiusB : c.radiusA;
         pos_ = otherPos - n * (hullRadius_ + otherR + 0.02f);
-        float into = engine::dot(vel_, n);
+        // bounce off the CLOSING speed the physics reports (relative to the other body, which may be orbiting), so a planet
+        // sweeping into a parked ship knocks it away instead of swallowing it; for fixed rocks this equals the old dot(vel, n)
+        float into = c.speed;
         if (into > 0) vel_ -= n * ((1.0f + bounce_) * into);
         physics_->teleport(shipBody_, pos_);
         if (audio_ && c.speed > 1.0f) audio_->play("impact", std::clamp(c.speed / 40.0f, 0.25f, 1.0f));
         const std::string& kind = shipIsA ? c.kindB : c.kindA;
-        if (kind == "sun") { kill("sun"); return; }
-        applyDamage(rules::collisionDamage(kind, otherR, c.speed, col_), kind);
+        float dmg = rules::collisionDamage(kind, otherR, c.speed, col_);
+        LOG_D("ship", "hit %s (radius %.0f) at %.1f m/s closing: damage %.1f, now moving %.1f m/s", kind.c_str(), otherR, c.speed, dmg, engine::length(vel_));
+        applyDamage(dmg, kind);
     }
 
     // mirror the internal vitals + speed into the public status

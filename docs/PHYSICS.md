@@ -29,3 +29,7 @@ the thing it hit, or it would re-collide next step).
 - Tunable: `physics.cell_size` (default 200 m). Flight: `flight.hull_radius`, `flight.bounce`.
 
 The flight demo is the reference: ship = dynamic body, rocks = static, `onCollided` bounces the ship, plays `impact`, flashes IMPACT on the HUD.
+
+## Star system bodies
+`world/star_system` registers the sun, planets and moons as static bodies (kinds `sun`, `planet`, `moon`) and moves them every fixed step with `setBody(id, pos, vel)` (not `teleport`), so a moving static body is swept correctly and `Collided::speed`
+is the closing speed relative to it. The ship bounces using that closing speed, so an orbiting planet that runs into a parked ship knocks it away instead of swallowing it (contacts only fire when they begin). See docs/WORLD.md for the float-precision note at 350,000 units.

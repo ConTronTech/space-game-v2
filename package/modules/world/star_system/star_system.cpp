@@ -3,6 +3,7 @@
 #include <GL/gl.h>
 #include <algorithm>
 #include <cmath>
+#include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
 #include "engine/engine.h"
@@ -14,7 +15,7 @@ class StarSystemModule : public engine::Module, public world::IStarSystem, publi
 public:
     const char* name() const override { return "world/star_system"; }
     std::vector<std::string> dependencies() const override { return {"core/render_engine"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"core/save_system"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"core/save_system", "core/physics_world"}; }
 
     bool init(engine::Engine& eng) override {
         auto& c = eng.config;
@@ -28,6 +29,7 @@ public:
 
         render_ = &eng.services.require<core::RenderEngine>();
         generate();
+        if ((physics_ = eng.services.get<core::IPhysics>())) registerBodies();
         eng.services.provide<world::IStarSystem>(this);
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
         render_->addPass("star_system", 50, [this](core::RenderEngine& r) { draw(r); });   // after starfield/skybox, before the demo rocks (100)
@@ -39,6 +41,7 @@ public:
         if (!active_) return;
         render_->removePass("star_system");
         if (saves_) saves_->unregisterSaveable(this);
+        unregisterBodies();
         eng.services.withdraw<world::IStarSystem>();
     }
 
@@ -46,7 +49,15 @@ public:
     void onFixedUpdate(engine::Engine&, float dt) override {
         if (!active_) return;
         time_ += (double)dt * timeScale_;
+        if (physics_) { prev_.resize(sys_.bodies.size()); for (size_t i = 0; i < prev_.size(); i++) prev_[i] = sys_.bodies[i].position; }
         world::updatePositions(sys_, time_);
+        if (!physics_) return;
+        // move every body's collision sphere along its orbit; the velocity makes the closing speed relative to the moving body
+        // (the physics world steps after us, priority 10, and sweeps the motion since the last step)
+        for (size_t i = 0; i < sys_.bodies.size(); i++) {
+            auto v = world::finiteVelocity(prev_[i], sys_.bodies[i].position, (double)dt);
+            physics_->setBody(bodyIds_[i], toF(sys_.bodies[i].position), {(float)v.x, (float)v.y, (float)v.z});
+        }
     }
 
     // ---- world::IStarSystem ----
@@ -66,12 +77,26 @@ public:
         if (seed != params_.seed) { params_.seed = seed; generate(); }
         time_ = std::max(0.0, j["time"].num(time_));
         world::updatePositions(sys_, time_);
+        if (physics_) for (size_t i = 0; i < sys_.bodies.size(); i++) physics_->teleport(bodyIds_[i], toF(sys_.bodies[i].position));   // a jump, not a sweep
     }
 
 private:
+    static engine::Vec3 toF(const world::Vec3d& p) { return {(float)p.x, (float)p.y, (float)p.z}; }
+
+    // every body is a static sphere of the drawn radius, kind "sun" / "planet" / "moon"
+    void registerBodies() {
+        unregisterBodies();
+        for (auto& b : sys_.bodies) bodyIds_.push_back(physics_->addBody(world::physicsKind(b.kind), toF(b.position), b.radius, false));
+    }
+    void unregisterBodies() {
+        if (physics_) for (auto id : bodyIds_) physics_->removeBody(id);
+        bodyIds_.clear();
+    }
+
     void generate() {
         sys_ = world::generateSystem(params_);
         world::updatePositions(sys_, time_);
+        if (physics_) registerBodies();
         order_.resize(sys_.bodies.size());
         proj_.resize(sys_.bodies.size());
         const auto& s = sys_.bodies[0];
@@ -171,6 +196,9 @@ private:
 
     core::RenderEngine* render_ = nullptr;
     core::ISaveSystem* saves_ = nullptr;
+    core::IPhysics* physics_ = nullptr;
+    std::vector<core::BodyId> bodyIds_;
+    std::vector<world::Vec3d> prev_;
     bool active_ = false;
     world::SystemParams params_;
     world::System sys_;

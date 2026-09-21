@@ -238,3 +238,27 @@ TEST(star_system_sphere_mesh_is_valid) {
     unsigned short mx = 0; for (auto v : m.indices) mx = std::max(mx, v);
     CHECK(mx < m.verts.size() / 3);
 }
+
+// ---- star system collision wiring ----
+TEST(star_system_physics_kinds_and_orbit_velocity) {
+    CHECK_EQ(std::string(world::physicsKind(world::BodyKind::Sun)), std::string("sun"));
+    CHECK_EQ(std::string(world::physicsKind(world::BodyKind::Planet)), std::string("planet"));
+    CHECK_EQ(std::string(world::physicsKind(world::BodyKind::Moon)), std::string("moon"));
+    // the sphere the physics world follows: a planet's velocity from two steps equals its tangential orbit speed
+    world::SystemParams p;
+    auto s = world::generateSystem(p);
+    world::updatePositions(s, 1000.0);
+    auto before = s.bodies[1].position;
+    world::updatePositions(s, 1000.0 + 1.0 / 60);
+    auto v = world::finiteVelocity(before, s.bodies[1].position, 1.0 / 60);
+    double speed = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    double expect = 2.0 * 3.14159265358979 * s.bodies[1].orbitRadius / s.bodies[1].period;
+    CHECK(std::fabs(speed - expect) < 1e-3 * expect);
+    CHECK(speed > 5.0 && speed < 30.0);                                      // "10-15 units/s" order of magnitude
+    auto z = world::finiteVelocity(before, before, 0.0);                     // dt 0: no NaN
+    CHECK(z.x == 0.0 && z.y == 0.0 && z.z == 0.0);
+    // a moon moves with its planet: its position over a step is planet motion plus its own orbit
+    world::updatePositions(s, 500.0);
+    for (auto& b : s.bodies) if (b.kind == world::BodyKind::Moon)
+        CHECK(std::fabs(dist(b.position, s.bodies[b.parent].position) - b.orbitRadius) < 1e-6 * b.orbitRadius + 1e-6);
+}

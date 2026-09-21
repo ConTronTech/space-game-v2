@@ -107,6 +107,19 @@ inline void updatePositions(System& s, double t) {
     }
 }
 
+// Physics kind of a body ("sun", "planet", "moon"): what ship damage and other consumers switch on.
+inline const char* physicsKind(BodyKind k) {
+    switch (k) { case BodyKind::Sun: return "sun"; case BodyKind::Planet: return "planet"; case BodyKind::Moon: return "moon"; }
+    return "planet";
+}
+
+// Velocity of a body that moved from `prev` to `cur` in `dt` seconds (0 when dt <= 0): fed to the physics world so contacts
+// use the closing speed relative to an orbiting body.
+inline Vec3d finiteVelocity(const Vec3d& prev, const Vec3d& cur, double dt) {
+    if (dt <= 0.0) return {};
+    return {(cur.x - prev.x) / dt, (cur.y - prev.y) / dt, (cur.z - prev.z) / dt};
+}
+
 // ---- camera-relative drawing ----
 // Bodies are stored in double. To draw: subtract the camera in double, and only then go to float. Bodies farther than clampDist
 // (which must stay inside the far plane) are pulled in along the line of sight and scaled down by the same factor, so the angular size is unchanged.

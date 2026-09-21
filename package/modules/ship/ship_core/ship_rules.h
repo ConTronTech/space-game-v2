@@ -95,7 +95,8 @@ struct CollisionParams {
     float asteroidMed = 20.0f;     // radius < 30
     float asteroidBig = 35.0f;
     float planet = 50.0f;
-    float sun = 9999.0f;
+    float sun = 9999.0f;           // lethal damage of a sun hit when sunKills
+    bool sunKills = true;          // false: the sun hurts like a planet (tiered by speed)
     float other = 10.0f;
     float minDamage = 1.0f;
 };
@@ -103,11 +104,12 @@ struct CollisionParams {
 inline float baseDamage(const std::string& kind, float radius, const CollisionParams& p) {
     if (kind == "asteroid") return radius < 5.0f ? p.asteroidSmall : radius < 30.0f ? p.asteroidMed : p.asteroidBig;
     if (kind == "planet" || kind == "moon") return p.planet;
-    if (kind == "sun") return p.sun;
+    if (kind == "sun") return p.sunKills ? p.sun : p.planet;
     return p.other;
 }
 
 inline float collisionDamage(const std::string& kind, float otherRadius, float closingSpeed, const CollisionParams& p) {
+    if (kind == "sun" && p.sunKills) return p.sun;                 // lethal at any speed
     float factor = p.refSpeed > 0.0f ? closingSpeed / p.refSpeed : 0.0f;
     return std::max(p.minDamage, factor * baseDamage(kind, otherRadius, p));
 }

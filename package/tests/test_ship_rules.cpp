@@ -107,3 +107,22 @@ TEST(ship_collision_damage_formula) {
     CHECK(near(collisionDamage("asteroid", 3, 400, p), 20));      // faster than ref is worse
     CHECK(near(collisionDamage("crate", 1, 200, p), 10));         // unknown kind
 }
+
+TEST(ship_sun_hit_is_lethal_at_any_speed_unless_tunable_off) {
+    CollisionParams p;                                   // sunKills default true
+    CHECK(collisionDamage("sun", 1500, 0.5f, p) >= 9999.0f);
+    Vitals v = shielded();                               // even a full shield cannot absorb it
+    auto r = applyDamage(v, collisionDamage("sun", 1500, 1.0f, p));
+    CHECK(r.died); CHECK(!v.alive); CHECK(r.shieldBroken);
+    p.sunKills = false;                                  // tunable off: tiered like a planet
+    CHECK(near(collisionDamage("sun", 1500, 200, p), 50));
+    CHECK(near(collisionDamage("sun", 1500, 100, p), 25));
+    CHECK(near(collisionDamage("sun", 1500, 1, p), 1));   // scratch minimum
+}
+
+TEST(ship_planet_and_moon_use_the_planet_tier) {
+    CollisionParams p;
+    CHECK(near(collisionDamage("planet", 400, 100, p), 25));
+    CHECK(near(collisionDamage("moon", 60, 100, p), 25));
+    CHECK(near(collisionDamage("planet", 400, 1, p), 1));
+}

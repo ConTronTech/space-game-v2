@@ -90,3 +90,10 @@ Logging at `engine.log_level: debug` lists every body with its orbit radius and 
 
 **Adding a body kind** (e.g. asteroid belt, station): add a value to `world::BodyKind` in `star_system_api.h`, create the bodies in `generateSystem` (parent index lower than the child's, `orbitRadius`/`period`/`phase`/`tilt` describe the orbit),
 and handle the new kind in `drawBody` in `star_system.cpp`. Consumers that switch on `kind` need a case for it.
+
+### Collisions (3.4)
+With `core/physics_world` loaded, every body is registered as a static sphere of the drawn radius, kind `sun` / `planet` / `moon` (no physics module = no bodies, no crash). Each fixed step, after the orbits advance, `setBody(id, pos, vel)` moves the sphere
+(velocity = position change / dt), so the physics sweep sees the moving planet and the reported closing speed is relative to it. Loading a save teleports them instead. The physics world steps after us (priority 10).
+Float precision: the physics API is `float`. At 350,000 units one float step is 0.031 units, fine for spheres of radius 2.5+; the swept test subtracts positions of magnitude 3.5e5 (squares ~1e11), giving a contact-distance error of a few units at that range.
+That is acceptable for planets (radius 200-1200) but would matter for small objects out there; a later fix is double-precision positions in the physics world or rebasing bodies relative to the ship. Nothing was changed in `core/physics_world`.
+Ship reaction: see docs/SHIP.md (planet/moon tiered damage + bounce, sun lethal, `ship.sun_kills`).
