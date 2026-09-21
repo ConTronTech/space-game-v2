@@ -89,9 +89,19 @@ Content comes **only** through `ship::IShip` (`status()`, `forward()`). No IShip
 |---|---|
 | `FLIGHT_DATA` | speed (m/s), heading/pitch from `forward()`, HP / shield / fuel bars (green > 50%, amber > 25%, else red; shield `OFF` when not fitted/enabled) |
 | `SHIP_SYSTEMS` | HULL x/max, SHIELD (not fitted / disabled / down / x/max), WARP FUEL, DRIVE standby/engaged, STATUS alive/destroyed |
-| `PROXIMITY_RADAR` | frame, ship-centred rings, a sweeping arm and the text `NO CONTACTS`. There is no world data yet; a later phase feeds contacts (needs a contact source service) |
+| `PROXIMITY_RADAR` | top-down, forward-relative scope with the ship at the centre (ahead = up), rings at 1K / 10K / 100K units and the rim, a sweeping arm, and the contacts from `world::IStarSystem` (see below). Without `IStarSystem` (or `IShip`) it stays an empty scope with `NO CONTACTS` |
 
 If ship.json does not name a tag, `INFO`/`SYSTEMS`/`RADAR` map to the three contents above.
+
+### Radar contacts
+`hud_screens.cpp` reads `world::IStarSystem` (optional, looked up on every draw) and `ship::IShip::position()`: each body position minus the ship position is subtracted **in double**, then converted to float and put into the ship's frame.
+The frame's forward and up come from `core::ITransformSource` (the published pose); if none exists, `IShip::forward()` with world-up is used (`IShip` itself has no up/right vector).
+* Plot: top-down; x = distance along the ship's right, y = along its forward. Height above/below the ship's plane is ignored (a body straight above sits at the centre).
+* Range is **logarithmic** (`radarFraction` in `radar_map.h`, scale 200 units): with the default rim of 400,000 units a body 400 units away lands at ~0.14 of the radius, one 40,000 away at ~0.70. Bodies beyond `cockpit.radar_range` sit on the rim as a smaller dot.
+* Dots: sun orange and big, planets in their body colour (brightened to stay visible), moons dim and small. At most the 20 nearest contacts are drawn (fixed array, no allocation).
+* Under the scope: the nearest body and its distance from the **surface**, e.g. `PLANET 1  1.5K` (`850`, `1.5K`, `41.9K`, `250K`, `1.2M`).
+* The old demo rocks are not on the radar (they are not exposed by any service).
+Pure maths (frame, mapping, nearest-N list, distance text) is in `radar_map.h`, unit-tested in `tests/test_cockpit.cpp`.
 
 ## Tunables (`config/game.json`)
 | key | default | meaning |
@@ -103,6 +113,7 @@ If ship.json does not name a tag, `INFO`/`SYSTEMS`/`RADAR` map to the three cont
 | `cockpit.light_dir` | `0.35,0.75,0.55` | direction **toward** the light, view space (x right, y up, z back); stand-in until the world has a sun |
 | `cockpit.glass_opacity` | 1.0 | multiplier on the canopy alpha (0 invisible, 1 as modelled, 3 heavy tint) |
 | `cockpit.screen_brightness` | 1.0 | brightness of the content on the screens (0.2 - 2) |
+| `cockpit.radar_range` | 400000 | radar rim distance in units (logarithmic scale) |
 
 The light source lives in one function (`CockpitModule::light()` in cockpit.cpp). When the world module exists and provides the star direction through a service, that function
 is the only place to change (rotate the world direction into view space).
@@ -122,6 +133,6 @@ per-vertex RGBA from the MTL (`Kd`, `d`/`Tr`; CANOPY forced to 30% alpha), a neu
 `core::Mesh` gained `colors` (rgba per vertex, empty for custom loaders) and `tagged`; `positions`/`normals` and `ImportHandler::load<Mesh>` are unchanged.
 
 ## Not done / later
-* Radar contacts (needs the world); heading shows only `forward()` (no roll indicator).
+* Radar shows bodies only (no asteroids/stations/ships yet); heading shows only `forward()` (no roll indicator).
 * The light is a fixed direction until the world module supplies a sun direction.
 * Screens are drawn in the pass, not to a texture: text is a stroke font, sharp at any distance but plain.

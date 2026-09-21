@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "ship/cockpit/cockpit_light.h"
 #include "ship/cockpit/hud_layout.h"
+#include "ship/cockpit/radar_map.h"
 #include "ship/cockpit/ship_registry.h"
 #include "ship/cockpit/stroke_font.h"
 #include "tests/test.h"
@@ -182,4 +183,88 @@ TEST(ship_scan_and_choose) {
 }
 TEST(ship_scan_missing_folder_is_empty) {
     CHECK(cockpit::scanShips("/nonexistent/sg2/ships").empty());
+}
+
+// ---- radar map ----
+TEST(radar_fraction_is_monotonic_log_and_clamped) {
+    const float range = 400000.0f;
+    CHECK(nearf(cockpit::radarFraction(0, range), 0.0f));
+    CHECK(nearf(cockpit::radarFraction(-5, range), 0.0f));
+    CHECK(nearf(cockpit::radarFraction(range, range), 1.0f));
+    CHECK(nearf(cockpit::radarFraction(range * 10, range), 1.0f));
+    CHECK(nearf(cockpit::radarFraction(100, 0), 0.0f));                       // bad range: no NaN
+    float prev = -1;
+    for (float d : {1.0f, 10.0f, 100.0f, 400.0f, 1000.0f, 10000.0f, 40000.0f, 100000.0f, 399999.0f}) {
+        float f = cockpit::radarFraction(d, range);
+        CHECK(f > prev);
+        CHECK(f >= 0 && f <= 1);
+        prev = f;
+    }
+    // both a planet 400 units away and one 40,000 away land well inside the scope and are far apart
+    float near400 = cockpit::radarFraction(400, range), far40k = cockpit::radarFraction(40000, range);
+    CHECK(near400 > 0.1f && near400 < 0.5f);
+    CHECK(far40k > 0.6f && far40k < 0.95f);
+    CHECK(far40k - near400 > 0.3f);
+}
+TEST(radar_frame_is_orthonormal_and_survives_bad_input) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    CHECK(nearf(f.right.x, 1.0f) && nearf(f.right.y, 0.0f));                  // looking down -Z, right is +X
+    auto g = cockpit::radarFrame({1, 0, 0}, {0, 1, 0});
+    CHECK(nearf(engine::dot(g.fwd, g.right), 0.0f) && nearf(engine::dot(g.right, g.up), 0.0f) && nearf(engine::dot(g.fwd, g.up), 0.0f));
+    CHECK(nearf(g.right.z, 1.0f));                                            // facing +X, right is +Z
+    for (auto bad : {engine::Vec3{0, 0, 0}, engine::Vec3{0, 1, 0}, engine::Vec3{0, -1, 0}}) {
+        auto h = cockpit::radarFrame(bad, {0, 1, 0});
+        CHECK(nearf(engine::length(h.fwd), 1.0f) && nearf(engine::length(h.right), 1.0f) && nearf(engine::length(h.up), 1.0f));
+    }
+    auto z = cockpit::radarFrame({0, 0, -1}, {0, 0, 0});                      // no up vector
+    CHECK(nearf(engine::length(z.up), 1.0f));
+}
+TEST(radar_plot_forward_is_up_and_right_is_right) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    auto ahead = cockpit::radarPlot({0, 0, -5000}, f, 400000.0f);
+    CHECK(nearf(ahead.x, 0.0f) && ahead.y > 0.3f && !ahead.clamped);
+    auto right = cockpit::radarPlot({5000, 0, 0}, f, 400000.0f);
+    CHECK(right.x > 0.3f && nearf(right.y, 0.0f));
+    auto behind = cockpit::radarPlot({0, 0, 5000}, f, 400000.0f);
+    CHECK(behind.y < -0.3f);
+    CHECK(nearf(ahead.dist, 5000.0f));
+    // turning the ship 90 degrees right: what was to the right is now ahead
+    auto turned = cockpit::radarFrame({1, 0, 0}, {0, 1, 0});
+    auto p = cockpit::radarPlot({5000, 0, 0}, turned, 400000.0f);
+    CHECK(nearf(p.x, 0.0f) && p.y > 0.3f);
+}
+TEST(radar_plot_clamps_to_the_rim_and_handles_overhead) {
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    auto far = cockpit::radarPlot({300000, 0, -400000}, f, 100000.0f);
+    CHECK(far.clamped);
+    CHECK(nearf(std::sqrt(far.x * far.x + far.y * far.y), 1.0f, 1e-3f));
+    auto above = cockpit::radarPlot({0, 9000, 0}, f, 400000.0f);            // straight above: centre, true distance kept
+    CHECK(nearf(above.x, 0.0f) && nearf(above.y, 0.0f) && !above.clamped);
+    CHECK(nearf(above.dist, 9000.0f));
+    auto here = cockpit::radarPlot({0, 0, 0}, f, 400000.0f);
+    CHECK(nearf(here.x, 0.0f) && !std::isnan(here.y));
+}
+TEST(radar_contact_list_keeps_the_nearest_twenty) {
+    cockpit::RadarContacts list;
+    for (int i = 0; i < 50; i++) {
+        cockpit::RadarContact c;
+        c.body = i;
+        c.plot.dist = 1000.0f + (float)((i * 37) % 50) * 100.0f;   // a shuffled set of distinct distances
+        list.offer(c);
+    }
+    CHECK_EQ(list.count, cockpit::kMaxRadarContacts);
+    float worstKept = 0;
+    for (int i = 0; i < list.count; i++) worstKept = std::max(worstKept, list.items[i].plot.dist);
+    CHECK(worstKept <= 1000.0f + 19 * 100.0f + 0.5f);              // exactly the 20 nearest survive
+    cockpit::RadarContacts small;
+    small.offer({});
+    CHECK_EQ(small.count, 1);
+}
+TEST(radar_distance_text) {
+    CHECK_EQ(cockpit::radarDistanceText(850), std::string("850"));
+    CHECK_EQ(cockpit::radarDistanceText(1500), std::string("1.5K"));
+    CHECK_EQ(cockpit::radarDistanceText(41900), std::string("41.9K"));
+    CHECK_EQ(cockpit::radarDistanceText(250000), std::string("250K"));
+    CHECK_EQ(cockpit::radarDistanceText(1200000), std::string("1.2M"));
+    CHECK_EQ(cockpit::radarDistanceText(-4), std::string("0"));
 }

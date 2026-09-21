@@ -10,7 +10,7 @@ namespace cockpit {
 
 class HudScreens {
 public:
-    explicit HudScreens(engine::Engine& eng) : eng_(eng) {}
+    explicit HudScreens(engine::Engine& eng);
     void draw(const ScreenContext& ctx);
 
 private:
@@ -21,6 +21,7 @@ private:
 
     engine::Engine& eng_;
     bool warnedNoShip_ = false;
+    float range_ = 400000.0f;   // radar rim, units (cockpit.radar_range)
 };
 
 // ship.json "content" for a tag, or the default for the well-known ShipV2 names when ship.json does not say.
