@@ -166,3 +166,12 @@ TEST(hud_hint_alpha_fade_edges) {
     CHECK_EQ(hintAlpha(0.0, 0.0f), 1.0f);              // seconds = 0: never fades
     CHECK_EQ(hintAlpha(1e6, 0.0f), 1.0f);
 }
+
+TEST(hud_respawn_text_counts_3_2_1) {
+    CHECK_EQ(respawnText(3.0f), std::string("RESPAWNING IN 3"));
+    CHECK_EQ(respawnText(2.01f), std::string("RESPAWNING IN 3"));
+    CHECK_EQ(respawnText(2.0f), std::string("RESPAWNING IN 2"));
+    CHECK_EQ(respawnText(0.2f), std::string("RESPAWNING IN 1"));
+    CHECK_EQ(respawnText(0.0f), std::string(""));
+    CHECK_EQ(respawnText(-1.0f), std::string(""));
+}
