@@ -52,10 +52,12 @@ bool loadFboApi() {
 bool RenderEngine::init(engine::Engine& eng) {
     window_ = eng.services.get<Window>();
     if (!window_) return false;
-    if (auto* s = eng.services.get<ISettings>()) camera.fovDeg = std::clamp(s->get("video.fov", camera.fovDeg), 30.0f, 140.0f);
+    if (auto* s = eng.services.get<ISettings>()) camera.baseFovDeg = std::clamp(s->get("video.fov", camera.baseFovDeg), 30.0f, 140.0f);
+    camera.fovDeg = camera.baseFovDeg;
+    fovMode_ = parseFovMode(eng.config.get<std::string>("camera.fov_mode", "horplus", "vertical | horplus. video.fov is a VERTICAL fov at 16:9; horplus keeps that view's HORIZONTAL fov on narrower screens (4:3, 5:4: nothing cropped) and caps it on ultrawide; vertical uses it as is at every aspect (docs/DISPLAYS.md)"));
     eng.events.subscribe<SettingChanged>([this, &eng](const SettingChanged& e) {
         if (e.key != "video.fov") return;
-        if (auto* s = eng.services.get<ISettings>()) camera.fovDeg = std::clamp(s->get("video.fov", camera.fovDeg), 30.0f, 140.0f);
+        if (auto* s = eng.services.get<ISettings>()) camera.baseFovDeg = std::clamp(s->get("video.fov", camera.baseFovDeg), 30.0f, 140.0f);
     });
     // render.scale: draw the 3D world at a fraction of the window size and stretch it (the UI stays native). Needs framebuffer objects.
     scaleTunable_ = clampRenderScale(eng.config.get("render.scale", 0.85f, "render the 3D world at this fraction of the window size (0.5 - 1.0) and stretch it; the UI stays sharp. 1.0 = off. Presets: low 0.7, medium 0.85, high/ultra 1.0"));
@@ -185,6 +187,7 @@ void RenderEngine::onRender(engine::Engine&) {
     }
     glViewport(0, 0, rw, rh);
     glEnable(GL_DEPTH_TEST);
+    camera.fovDeg = effectiveVerticalFov(fovMode_, camera.baseFovDeg, rh > 0 ? (float)rw / (float)rh : 1.0f);   // aspect-aware: 5:4 and 4:3 keep the 16:9 view's horizontal extent
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();

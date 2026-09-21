@@ -78,3 +78,6 @@ Init order: settings (-1500) < window (-1000, creates the GL context whose strin
 With Auto, if the average over the first ~10 s of play is under 25 fps the log warns to try a lower preset; it never changes settings by itself.
 
 Round 2 rows (`render.scale`, `render.clear_color`, `starfield.points`, `cockpit.glass_tint`) are described in docs/PERFORMANCE.md; the on/off ones are 0/1 switches (only Low changes).
+
+## Display awareness
+The `[quality] hardware:` log line now reads the display the game was asked to open on (`core::IDisplays::chosen()`, docs/DISPLAYS.md), not SDL display 0, and adds its name, refresh, aspect, the "retro/CRT-like" hint and the number of displays. The preset choice is unchanged (Ironlake is still Low): the display only feeds the existing 4K cap.

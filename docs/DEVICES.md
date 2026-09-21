@@ -22,3 +22,9 @@ Consequences: the game must pick WHICH display, must cope with 5:4 / 4:3 (and 16
 
 ## Plan
 Monitor awareness (display selection, resolution/mode list, aspect-aware UI and FOV, refresh) and a joystick / wheel / pedal / shifter input method with per-device JSON profiles: see docs/ROADMAP.md (Phase 1.8 / 1.9).
+
+## What the display work learned (phase 1.8)
+* The game now lists displays itself: `./space_game_v2 --list-displays` (or `=json`) exits before a GL window exists, so it works over SSH with `DISPLAY=:0`. Use it first on the rig; expected: display 0/1 = VGA-1 (1280x1024, 5:4, `[retro/CRT-like]`) and LVDS-1 (1366x768, 16:9) in some order.
+* Display numbers are SDL's 0-based indices, in the order SDL reports them (not necessarily xrandr's); on this dev PC three monitors report `KG241Y S 24" 1920x1080 @120`, `DELL SE198WFP 1440x900`, `HP 2010 1600x900` with the primary at x = 1600. Bounds are desktop coordinates: a display's origin is not (0,0) (the laptop panel at (1280,256) in the rig), so the window is centred with `SDL_WINDOWPOS_CENTERED_DISPLAY(n)`.
+* `video.mode=exclusive` really switches the mode (a CRT wants this at 640x480 .. 1024x768): it picks the closest of the display's own modes, so an unsupported request is corrected and logged instead of failing. `borderless` keeps the desktop mode and skips the compositor.
+* Windowed at 5:4 / 4:3 works without letterboxing: the field of view is held horizontally (Hor+), the HUD and menus scale with `min(w/1280, h/720)`.

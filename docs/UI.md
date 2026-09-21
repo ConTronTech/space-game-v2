@@ -42,3 +42,7 @@ eng.events.subscribe<engine::PauseChanged>([](const engine::PauseChanged& e) { .
 
 ## Dev flags
 `--paused` / `--paused=settings` start with the menu open. `--screenshot=out.bmp [--screenshot-frame=N]` saves a frame.
+
+## Aspect ratios and small windows
+Layout follows `core::uiLayoutScale(w, h)` = min(w/1280, h/720) clamped to 0.6..3 (1.0 at 1280x720; the HUD's `uiScale` is the same formula). `UIHandler::scale` holds it for the current frame; `button`, `toggle` and `slider` scale their labels, padding and knobs with it, and a panel should size itself as `size * ui.scale`.
+The pause menu shows the pattern: scaled sizes, and a second column when a page does not fit the window height (the Settings page has up to 12 rows). Checked at 1280x1024 (5:4), 800x600 and 640x480 (4:3), 1366x768 and 1920x1080. See docs/DISPLAYS.md.

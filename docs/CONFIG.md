@@ -41,3 +41,7 @@ Precedence: **your game.json value > the preset's value > the default in code**.
   `video.fov`, `video.fullscreen`, `input.mouse_sensitivity`, `quality.preset`. Only values you changed are stored; delete the file to reset.
   The module that owns a setting reads it at startup and listens for `SettingChanged`; menus just call `set()`.
   `--settings=<file>` uses another file.
+
+## Display keys (docs/DISPLAYS.md)
+Settings (`config/settings.json`, written by the Settings page): `video.display` (`auto` or a 0-based display index), `video.mode` (`auto|borderless|exclusive|windowed`), `video.resolution` (`1024x768@85`, exclusive), `video.window_size` (`1280x720`), plus the existing `video.fullscreen` and `video.fov`.
+Tunable (`config/game.json`): `camera.fov_mode` = `horplus` (default) or `vertical`.

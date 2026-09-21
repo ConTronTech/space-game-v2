@@ -112,6 +112,7 @@ void UIHandler::onFrameEnd(engine::Engine&) { clicked_ = false; }
 void UIHandler::onRenderUI(engine::Engine&) {
     w_ = window_->width();
     h_ = window_->height();
+    scale = uiLayoutScale(w_, h_);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_LIGHTING);
@@ -331,26 +332,30 @@ bool UIHandler::hovered(float x, float y, float w, float h) const {
 }
 
 static const int kLabelSize = 18;
+static int labelSize(float scale) { return std::max(9, (int)std::lround(kLabelSize * scale)); }
 
 bool UIHandler::button(const std::string& label, float x, float y, float w, float h, bool focused) {
     bool hot = hovered(x, y, w, h);
     bool held = hot && mouseDown_;
     glass(x, y, w, h, held ? 0.7f : (hot || focused ? 1.0f : 0.8f), focused || hot, 10);
-    textCentered(x + w / 2, y + (h - kLabelSize * 1.3f) / 2, label, kLabelSize, focused || hot ? theme.text : theme.textDim);
+    const int ls = labelSize(scale);
+    textCentered(x + w / 2, y + (h - ls * 1.3f) / 2, label, ls, focused || hot ? theme.text : theme.textDim);
     return hot && clicked_;
 }
 
 bool UIHandler::toggle(const std::string& label, float x, float y, float w, float h, bool value, bool focused) {
     bool hot = hovered(x, y, w, h);
     glass(x, y, w, h, hot || focused ? 1.0f : 0.8f, focused || hot, 10);
-    text(x + 18, y + (h - kLabelSize * 1.3f) / 2, label, kLabelSize, focused || hot ? theme.text : theme.textDim);
+    const int ls = labelSize(scale);
+    const float m = 18 * scale;
+    text(x + m, y + (h - ls * 1.3f) / 2, label, ls, focused || hot ? theme.text : theme.textDim);
     // pill switch on the right
-    float pw = 44, ph = 22, px = x + w - pw - 18, py = y + (h - ph) / 2;
+    float pw = 44 * scale, ph = 22 * scale, px = x + w - pw - m, py = y + (h - ph) / 2;
     Color off{0.3f, 0.36f, 0.45f, 0.5f}, on = scaleAlpha(theme.accent, 0.8f);
     Color track = value ? on : off;
     roundedRect(px, py, pw, ph, ph / 2, track, track);
-    float kx = value ? px + pw - ph + 3 : px + 3;
-    roundedRect(kx, py + 3, ph - 6, ph - 6, (ph - 6) / 2, {1, 1, 1, 0.95f}, {0.85f, 0.9f, 1, 0.95f});
+    float kx = value ? px + pw - ph + 3 * scale : px + 3 * scale;
+    roundedRect(kx, py + 3 * scale, ph - 6 * scale, ph - 6 * scale, (ph - 6 * scale) / 2, {1, 1, 1, 0.95f}, {0.85f, 0.9f, 1, 0.95f});
     return (hot && clicked_) ? !value : value;
 }
 
@@ -360,24 +365,26 @@ float UIHandler::slider(const std::string& label, float x, float y, float w, flo
     glass(x, y, w, h, hot || focused ? 1.0f : 0.8f, focused || hot, 10);
     char buf[32];
     std::snprintf(buf, sizeof buf, fmt, value);
-    text(x + 18, y + 8, label, kLabelSize, focused || hot ? theme.text : theme.textDim);
+    const int ls = labelSize(scale);
+    const float m = 18 * scale;
+    text(x + m, y + 8 * scale, label, ls, focused || hot ? theme.text : theme.textDim);
     std::string v = buf;
-    text(x + w - 18 - textWidth(v, kLabelSize), y + 8, v, kLabelSize, theme.accent);
+    text(x + w - m - textWidth(v, ls), y + 8 * scale, v, ls, theme.accent);
 
-    float tx = x + 18, tw = w - 36, ty = y + h - 16;
+    float tx = x + m, tw = w - 2 * m, ty = y + h - 16 * scale;
     Color track{0.3f, 0.36f, 0.45f, 0.5f};
-    roundedRect(tx, ty - 2, tw, 4, 2, track, track);
+    roundedRect(tx, ty - 2 * scale, tw, 4 * scale, 2 * scale, track, track);
 
     std::string id = label + "@" + std::to_string((int)y);
-    if (hot && clicked_ && my_ >= ty - 12) activeSlider_ = id;
+    if (hot && clicked_ && my_ >= ty - 12 * scale) activeSlider_ = id;
     if (activeSlider_ == id && mouseDown_ && pointerFree()) {
         float t = std::clamp((mx_ - tx) / tw, 0.0f, 1.0f);
         value = lo + t * (hi - lo);
     }
     float t = std::clamp((value - lo) / (hi - lo), 0.0f, 1.0f);
     Color fill = scaleAlpha(theme.accent, 0.85f);
-    roundedRect(tx, ty - 2, tw * t, 4, 2, fill, fill);
-    roundedRect(tx + tw * t - 7, ty - 7, 14, 14, 7, {1, 1, 1, 0.95f}, {0.85f, 0.9f, 1, 0.95f});
+    roundedRect(tx, ty - 2 * scale, tw * t, 4 * scale, 2 * scale, fill, fill);
+    roundedRect(tx + tw * t - 7 * scale, ty - 7 * scale, 14 * scale, 14 * scale, 7 * scale, {1, 1, 1, 0.95f}, {0.85f, 0.9f, 1, 0.95f});
     return value;
 }
 

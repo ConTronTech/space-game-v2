@@ -10,6 +10,7 @@
 //     });
 // Colors/radius come from config/ui/theme.json (optional) - see docs/UI.md.
 #include <SDL2/SDL_ttf.h>
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <string>
@@ -20,6 +21,13 @@
 namespace core {
 
 struct Color { float r = 1, g = 1, b = 1, a = 1; };
+
+// Layout scale for any window size: 1.0 at 1280x720, follows the SMALLER of width/720-relative and height ratios so 5:4 (1280x1024), 4:3 (800x600, 640x480) and
+// ultrawide windows never overflow; clamped to 0.6..3 (the HUD uses the same formula, ship_hud/hud_logic.h uiScale).
+inline float uiLayoutScale(int w, int h) {
+    float s = std::min(w / 1280.0f, h / 720.0f);
+    return s < 0.6f ? 0.6f : (s > 3.0f ? 3.0f : s);
+}
 
 struct Theme {
     Color glassTop    {0.16f, 0.22f, 0.34f, 0.55f};   // fill, top of panel
@@ -51,6 +59,7 @@ public:
     void removePanel(const std::string& name);
 
     Theme theme;
+    float scale = 1.0f;                       // uiLayoutScale of the current window, updated every frame: widgets and panels size themselves with it
     bool loadTheme(const std::string& path = "config/ui/theme.json");
 
     // ---- primitives ----

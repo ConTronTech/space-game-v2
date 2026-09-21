@@ -33,8 +33,17 @@ public:
         hw.maxTexture = (int)maxTex;
         hw.cpuThreads = SDL_GetCPUCount();
         hw.ramMb = SDL_GetSystemRAM();
-        SDL_DisplayMode dm;
-        if (SDL_GetDesktopDisplayMode(0, &dm) == 0) { hw.displayW = dm.w; hw.displayH = dm.h; }
+        // the display the game was asked to open on (core/window's IDisplays), not display 0; SDL's display 0 only when there is no such service
+        std::string displayNote;
+        if (auto* dsp = eng.services.get<IDisplays>(); dsp && dsp->chosen() >= 0 && dsp->chosen() < (int)dsp->list().size()) {
+            const auto& d = dsp->list()[(size_t)dsp->chosen()];
+            hw.displayW = d.w; hw.displayH = d.h;
+            displayNote = " (display " + std::to_string(d.index) + " " + d.name + " @ " + std::to_string(d.refreshHz) + " Hz, " + display::aspectName(display::classifyAspect(d.w, d.h)) +
+                          (display::isRetro(d) ? ", retro/CRT-like" : "") + ", " + std::to_string(dsp->list().size()) + " display(s))";
+        } else {
+            SDL_DisplayMode dm;
+            if (SDL_GetDesktopDisplayMode(0, &dm) == 0) { hw.displayW = dm.w; hw.displayH = dm.h; }
+        }
         detected_ = quality::detect(hw);
 
         // 2. which preset: --quality flag > settings (the pause menu) > game.json "quality.preset" > auto
@@ -59,8 +68,8 @@ public:
             applied += b;
         }
 
-        LOG_I("quality", "hardware: %s | %s | max texture %d | %d CPU threads | %d MB RAM | display %dx%d", hw.renderer.c_str(), hw.vendor.c_str(),
-              hw.maxTexture, hw.cpuThreads, hw.ramMb, hw.displayW, hw.displayH);
+        LOG_I("quality", "hardware: %s | %s | max texture %d | %d CPU threads | %d MB RAM | display %dx%d%s", hw.renderer.c_str(), hw.vendor.c_str(),
+              hw.maxTexture, hw.cpuThreads, hw.ramMb, hw.displayW, hw.displayH, displayNote.c_str());
         LOG_I("quality", "auto would pick '%s' (%s)", quality::presetName(detected_.preset), detected_.reason.c_str());
         LOG_I("quality", "preset in use: %s%s (chosen by %s); game.json values still override it", quality::presetName(active_),
               want == quality::Preset::Auto ? " (auto)" : "", source.c_str());

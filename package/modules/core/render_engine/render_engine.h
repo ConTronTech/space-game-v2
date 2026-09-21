@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "core/render_engine/fov_rules.h"
 #include "core/render_engine/render_scale.h"
 #include "engine/module.h"
 #include "engine/profiler.h"
@@ -17,7 +18,9 @@ namespace core {
 
 struct Camera {
     float view[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}; // column-major view matrix
-    float fovDeg = 90.0f, nearZ = 0.1f, farZ = 20000.0f;
+    // fovDeg = the EFFECTIVE vertical field of view used this frame (what every pass and gluPerspective read); baseFovDeg = the setting (video.fov, vertical at 16:9).
+    // RenderEngine derives fovDeg from baseFovDeg and the render aspect every frame (camera.fov_mode, see fov_rules.h).
+    float fovDeg = 90.0f, baseFovDeg = 90.0f, nearZ = 0.1f, farZ = 20000.0f;
 };
 
 class RenderEngine : public engine::Module {
@@ -50,6 +53,7 @@ private:
     bool ensureWorldBuffer(int w, int h);      // (re)creates the offscreen buffer; false = fall back to the window
     void freeWorldBuffer();
     void compositeWorldBuffer(int windowW, int windowH);
+    FovMode fovMode_ = FovMode::HorPlus;
     float scaleTunable_ = 1.0f;
     bool fboOk_ = false, clearTunable_ = true, sceneCovers_ = false;
     ScaledSize scaled_;
