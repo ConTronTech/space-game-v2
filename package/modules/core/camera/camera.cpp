@@ -19,8 +19,8 @@ public:
         render_ = &eng.services.require<RenderEngine>();
         input_ = &eng.services.require<IInput>();
         settings_ = eng.services.get<ISettings>();
-        chaseDistance_ = eng.config.get("camera.chase_distance", 24.0f, "chase camera: metres behind the pilot's eye, along the ship's forward (the ShipV2 model is 11.8 m long and reaches 8.7 m behind the eye)");
-        chaseHeight_ = eng.config.get("camera.chase_height", 6.0f, "chase camera: metres above the pilot's eye, along the ship's up");
+        chaseDistance_ = eng.config.get("camera.chase_distance", 27.0f, "chase camera: metres behind the pilot's eye, along the ship's forward (the ShipV3 model is 13.6 m long and reaches 10.1 m behind the eye)");
+        chaseHeight_ = eng.config.get("camera.chase_height", 7.0f, "chase camera: metres above the pilot's eye, along the ship's up");
         if (settings_) mode_ = (CameraMode)std::clamp(settings_->get("camera.mode", 0), 0, 1);
         eng.services.provide<ICamera>(this);
         return true;

@@ -46,7 +46,7 @@ scaled or offset. If the model does not load (or no ship exists) there is **one 
 | `showDefaultUI` | `false` = the model draws its own screens, the flat 2D HUD may hide (see below) | `true` |
 | `screens[]` | `tag` = the `@` material name, `content` = what to show on it (passed to the group's renderer) | none |
 
-The ship named by tunable `cockpit.ship` (default `ShipV2`) is used; if there is no such ship the first one (sorted by folder name) is used
+The ship named by tunable `cockpit.ship` (default `ShipV3`; `ShipV2` and `ShipV1` stay selectable) is used; if there is no such ship the first one (sorted by folder name) is used
 and a warning says so. The log line `[cockpit] ship 'X' (folder/model)` tells which was chosen. `shipv1` (plain, no screens) works.
 
 ## The `@` convention (custom materials)
@@ -58,9 +58,10 @@ Tag format `@GROUP-NAME`: GROUP is the text before the first `-`, NAME the rest.
 
 | material | group | name | note |
 |---|---|---|---|
-| `@HUD-INFO` | `HUD` | `INFO` | ShipV2 flight-data screen |
-| `@HUD-SYSTEMS` | `HUD` | `SYSTEMS` | ShipV2 ship-systems screen |
-| `@HUD-RADAR` | `HUD` | `RADAR` | ShipV2 radar screen |
+| `@HUD-INFO` | `HUD` | `INFO` | ShipV2 / ShipV3 flight-data screen |
+| `@HUD-SYSTEMS` | `HUD` | `SYSTEMS` | ShipV2 / ShipV3 ship-systems screen |
+| `@HUD-RADAR` | `HUD` | `RADAR` | ShipV2 / ShipV3 radar screen |
+| `@THRUST-JET` | `THRUST` | `JET` | engine exhaust origin (ShipV3), NOT a screen: see "Thruster jets" below |
 | `@SCREEN-MAP-LEFT` | `SCREEN` | `MAP-LEFT` | only the first dash splits |
 | `@GLOW` | `GLOW` | *(empty)* | no dash: whole text is the group |
 | `NOTA@TAG` | – | – | `@` not first: an ordinary material |
@@ -68,6 +69,19 @@ Tag format `@GROUP-NAME`: GROUP is the text before the first `-`, NAME the rest.
 A tagged quad carries `tag, group, name, corners[4], normal, centre, width, height` and `at(u, v)` (u 0..1 left->right, v 0..1 top->bottom).
 Corners are as the modeller wrote them: bottom-left, bottom-right, top-right, top-left (counter-clockwise seen from the front).
 A tagged face with more than four vertices uses the first four, a triangle is completed to a parallelogram; both add a warning. Bad faces are skipped, never a crash.
+Every tagged face except the `THRUST` group becomes a screen.
+
+## Thruster jets: `@THRUST-JET`
+Paint the spot where the engine exhaust comes out with a material named `@THRUST-JET` (a flat disc or quad on the nozzle, facing backwards). Any shape works:
+triangles, quads, n-gons, a triangle fan. Faces that share a vertex or lie within 0.5 m of each other are one **emitter**; two engines far apart are two
+emitters (they share the exhaust particles). The faces are not drawn. Because the parser's tagged quads cannot tell a triangle from a parallelogram, the
+jet faces are read straight from the OBJ text (`jetPolygonsFromObj`, `model_thrusters.h`, pure, tested in `tests/test_thrusters.cpp`).
+Per emitter (`cockpit::ThrusterJet`, ship frame: eye at origin, +x right, +y up, -z forward, metres): `position` = area-weighted centre, `direction` =
+the area-weighted face normal from the vertex winding (counter-clockwise seen from behind the ship), flipped if it points toward the hull's
+bounding-box centre (the exhaust always leaves the body), `radius` = farthest jet vertex from the centre.
+`cockpit::IShipModel::thrusters()` returns them (empty before the model loads or when the model has no tag: fx/particles then uses its old
+`fx.nozzle_back` / `fx.nozzle_down` constants). They are logged once at load, e.g. ShipV3:
+`[cockpit] thruster jet 0: pos (0.00, -0.38, 7.83) dir (0.00, 0.00, 1.00) radius 0.91` (the disc sits 0.9 m inside the nozzle, whose rim is at z = 8.72).
 The tag needs no entry in the `.mtl`.
 
 ## Putting content on a screen: `cockpit::ICockpitScreens`
@@ -121,12 +135,12 @@ Pure maths (frame, mapping, height offset/level test, nearest-N list, distance a
 | key | default | meaning |
 |---|---|---|
 | `cockpit.enabled` | true | draw the cockpit at all |
-| `cockpit.ship` | `ShipV2` | ship `name` from ship.json (falls back to the first ship) |
+| `cockpit.ship` | `ShipV3` | ship `name` from ship.json (falls back to the first ship) |
 | `cockpit.ambient` | 0.25 | ambient light 0..1 |
 | `cockpit.light_intensity` | 1.0 | directional light strength |
 | `cockpit.sun_light` | true | light the model with the REAL sun (`world::IStarSystem`); false = the fixed view-space `cockpit.light_dir` (the old look) |
 | `cockpit.light_dir` | `0.35,0.75,0.55` | fallback direction **toward** the light, view space (x right, y up, z back), used without a star system or with `sun_light` false |
-| `cockpit.chase_model` | true | draw the real ShipV2 in chase view (false: the old wireframe fighter from ship_core) |
+| `cockpit.chase_model` | true | draw the real ship model in chase view (false: the old wireframe fighter from ship_core) |
 | `cockpit.glass_opacity` | 1.0 | multiplier on the canopy alpha (0 invisible, 1 as modelled, 3 heavy tint) |
 | `cockpit.screen_brightness` | 1.0 | brightness of the content on the screens (0.2 - 2) |
 | `cockpit.screen_hz` | 30 (by preset: low 15, medium 30, high 120, ultra 240) | how often the screens are redrawn per second; between redraws the cached geometry is drawn. At or above the frame rate = every frame; 0 = every frame |
@@ -156,11 +170,13 @@ per-vertex RGBA from the MTL (`Kd`, `d`/`Tr`; CANOPY forced to 30% alpha), a neu
 * Screens are drawn in the pass, not to a texture: text is a stroke font, sharp at any distance but plain.
 
 ## Chase view (V)
-* **Camera** (`core/camera`, `cam::chasePose`): a **rigid offset camera in the ship frame**. Its orientation is exactly the ship's (roll included) and it sits `camera.chase_distance` (24) behind and `camera.chase_height` (6) above the pilot's eye, measured along the ship's own forward and up, looking parallel to the ship's forward.
+* **Camera** (`core/camera`, `cam::chasePose`): a **rigid offset camera in the ship frame**. Its orientation is exactly the ship's (roll included) and it sits `camera.chase_distance` (27) behind and `camera.chase_height` (7) above the pilot's eye, measured along the ship's own forward and up, looking parallel to the ship's forward.
   The skybox, stars and planets are all drawn with the camera's view rotation, so the sky is identical to cockpit view (verified pixel for pixel with a rolled and pitched ship): pressing V only moves the eye.
   **What was wrong:** the old chase camera aimed at a point `0.6 x distance` ahead of the ship, which tilted the whole view down by `atan(3.5 / (12 x 1.6))` = about 10.3 degrees relative to the ship, so the sky (and every star and planet) was rotated by that pitch compared with cockpit view; nothing in the skybox or the passes was at fault.
-  Defaults changed from 12 / 3.5 to 24 / 6 because the real model is 11.8 m long and reaches 8.7 m behind the eye: at 12 m the camera sat inside the hull's tail.
+  Defaults changed from 12 / 3.5 to 24 / 6 because the real model is 11.8 m long and reaches 8.7 m behind the eye: at 12 m the camera sat inside the hull's tail. With ShipV3 (13.6 m long, 10.1 m behind the eye, 1.38 m above it) they are 27 / 7.
 * **Model** (`ship/model_chase` pass, order 110, `drawChasePass`): the ShipV2 display lists drawn in world space with `modelview = view x shipToWorld`, the columns of shipToWorld being (right, up, -forward, position) of the pose the camera uses (`ITransformSource::transform(alpha)`). The model is authored in view space (eye at the origin, +X right, +Y up, -Z forward, metres), so this puts the pilot's eye at the ship position and the nose forward.
   `chaseModelView` computes the matrix in double relative to the camera (the ship can be 40,000+ units from the origin). Depth test against the world; opaque hull first, then the see-through glass without depth writes (same lists as cockpit view, drawn once). The '@' screens face the pilot and are not visible from outside: skipped.
 * **Wireframe fighter:** `ship/cockpit` provides `cockpit::IShipModel` (`ship_model_api.h`): `drawnInChase()` is true when the model is loaded and `cockpit.chase_model` is on; `ship_core`'s placeholder fighter is skipped then and stays as the fallback (no model, cockpit off).
-* Model facts for other modules (from ShipV2.obj): belly at y = -1.38 (a docked ship needs `docking.rest_height` about 1.4 to rest ON the pad; the default 0.6 sinks it 0.8 m in), nose at z = -3.1, rear tip at z = +8.74, thruster jets at z = +7.85, y = -0.38, wingspan 11.5 m.
+* Model facts for other modules (logged at load as `[cockpit] hull x .. y .. z ..`). ShipV3: belly y = -1.38 (the same as ShipV2, so `docking.rest_height` stays 1.4),
+  top y = +1.38, nose z = -3.51, rear tip z = +10.13, wingspan 11.5 m, 456 triangles (ShipV2: 178); the cockpit pass costs the same as with ShipV2
+  (`--profile=gpu` on the dev PC: 0.33 vs 0.36 ms, CPU 0.035 ms both; one display list), so there is no LOD. ShipV2.obj: belly at y = -1.38 (a docked ship needs `docking.rest_height` about 1.4 to rest ON the pad; the default 0.6 sinks it 0.8 m in), nose at z = -3.1, rear tip at z = +8.74, thruster jets at z = +7.85, y = -0.38, wingspan 11.5 m.

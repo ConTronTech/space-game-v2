@@ -1,7 +1,7 @@
 #pragma once
 // Pure maths for drawing the ship model and lighting it (no GL, unit-tested in tests/test_cockpit.cpp).
 //
-// The ShipV2 model is authored in VIEW space: the pilot's eye is the origin, +X right, +Y up, -Z forward, 1 unit = 1 metre. In cockpit view it is drawn
+// The ship models (ShipV2, ShipV3) are authored in VIEW space: the pilot's eye is the origin, +X right, +Y up, -Z forward, 1 unit = 1 metre. In cockpit view it is drawn
 // with an identity modelview (glued to the camera). In chase view it is drawn in world space: modelview = view * shipToWorld, where shipToWorld has the columns
 // (right, up, -forward, position) of the ship's pose (the same convention ship_core's wireframe fighter used).
 #include <cmath>

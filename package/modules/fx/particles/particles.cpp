@@ -14,6 +14,7 @@
 #include "engine/log.h"
 #include "fx/particles/particles_api.h"
 #include "fx/particles/particles_rules.h"
+#include "ship/cockpit/ship_model_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ship/warp_drive/warp_api.h"
 
@@ -31,8 +32,8 @@ public:
         int cap = std::clamp(c.get("fx.max_particles", 800, "most live particles at once; spawns beyond it are dropped"), 16, 20000);
         spawnBudget_ = std::max(1, c.get("fx.spawn_budget", 150, "most particles spawned per frame (a big burst is spread over frames by dropping the excess)"));
         sizeScale_ = std::max(0.0f, c.get("fx.size_scale", 1.0f, "multiplier on every particle's size"));
-        nozzleBack_ = c.get("fx.nozzle_back", 7.9f, "exhaust origin: metres behind the pilot's eye (ShipV2's thrusters)");
-        nozzleDown_ = c.get("fx.nozzle_down", 0.4f, "exhaust origin: metres below the pilot's eye");
+        nozzleBack_ = c.get("fx.nozzle_back", 7.9f, "exhaust origin fallback (model without @THRUST-JET faces): metres behind the pilot's eye (ShipV2's thrusters)");
+        nozzleDown_ = c.get("fx.nozzle_down", 0.4f, "exhaust origin fallback (model without @THRUST-JET faces): metres below the pilot's eye");
         exhaust_ = std::clamp(c.get("fx.exhaust", 1.0f, "engine exhaust amount: 0 = off, 0.5 = half as many particles, 1 = full"), 0.0f, 2.0f);
         limits_.maxDist = c.get("fx.max_distance", 2500.0f, "particles farther than this are not drawn, units");
         soft_ = c.get("fx.soft_dots", true, "draw particles as soft round dots with one tiny 32x32 texture (false = plain hard squares, no texture)");
@@ -177,8 +178,24 @@ private:
         if (n <= 0) return;
         engine::Vec3 back = accel * (-1.0f / level);                 // the exhaust goes opposite to the push
         auto v = ship->velocity();
-        // the nozzle: at the rear for forward thrust, else at the ship's centre
-        // (ShipV2: the thruster jets sit ~7.9 m behind the pilot's eye and ~0.4 m below it; both are tunables)
+        // Forward thrust: from the model's '@THRUST-JET' emitters (cockpit::IShipModel, ship frame: x right, y up, -z forward), along each jet's
+        // normal, the particle count shared between the jets. No service / no tag: the old nozzle constants (fx.nozzle_back / fx.nozzle_down).
+        // Other pushes (strafe, lift, reverse) come from the ship's centre, opposite to the push.
+        const cockpit::IShipModel* model = eng.services.get<cockpit::IShipModel>();
+        const std::vector<cockpit::ThrusterJet>* jets = model ? &model->thrusters() : nullptr;
+        if (t > 0.05f && jets && !jets->empty()) {
+            auto toWorld = [&](const engine::Vec3& l) { return right * l.x + ps.up * l.y - ps.fwd * l.z; };
+            int per = n / (int)jets->size(), extra = n % (int)jets->size();
+            for (size_t i = 0; i < jets->size(); i++) {
+                int k = per + ((int)((i + jetTurn_) % jets->size()) < extra ? 1 : 0);   // the remainder rotates between the jets
+                if (k <= 0) continue;
+                const auto& j = (*jets)[i];
+                engine::Vec3 o = toWorld(j.position), d = toWorld(j.direction);
+                emit("exhaust", {ps.pos.x + o.x, ps.pos.y + o.y, ps.pos.z + o.z}, {d.x, d.y, d.z}, {v.x, v.y, v.z}, k);
+            }
+            jetTurn_++;
+            return;
+        }
         float rear = t > 0.05f ? nozzleBack_ : 0.0f, drop = t > 0.05f ? nozzleDown_ : 0.0f;
         world::Vec3d origin{ps.pos.x - ps.fwd.x * rear - ps.up.x * drop, ps.pos.y - ps.fwd.y * rear - ps.up.y * drop, ps.pos.z - ps.fwd.z * rear - ps.up.z * drop};
         emit("exhaust", origin, {back.x, back.y, back.z}, {v.x, v.y, v.z}, n);
@@ -247,6 +264,7 @@ private:
     bool active_ = false, warned_ = false, wasWarping_ = false, testLoop_ = false, fakeThrust_ = false;
     int spawnBudget_ = 150;
     float sizeScale_ = 1.0f, exhaust_ = 1.0f, exhaustCarry_ = 0, nozzleBack_ = 7.9f, nozzleDown_ = 0.4f;
+    size_t jetTurn_ = 0;
     long testFrame_ = -1;
     fx::QuadLimits limits_;
     std::vector<fx::Preset> presets_;

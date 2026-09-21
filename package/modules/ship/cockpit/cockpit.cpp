@@ -3,9 +3,11 @@
 #include <GL/gl.h>
 #include <algorithm>
 #include <exception>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include "core/camera/camera_api.h"
 #include "core/import_handler/import_handler.h"
 #include "core/render_engine/render_engine.h"
@@ -53,7 +55,7 @@ public:
         if (prof_) { idSolid_ = prof_->intern("cockpit:solid"); idScreens_ = prof_->intern("cockpit:screens"); idGlass_ = prof_->intern("cockpit:glass"); idSetup_ = prof_->intern("cockpit:setup"); }
         auto& c = eng.config;
         enabled_ = c.get("cockpit.enabled", true, "draw the 3D cockpit model in cockpit view");
-        std::string wanted = c.get<std::string>("cockpit.ship", "ShipV2", "ship folder to use: the 'name' in assets/models/ship/*/ship.json (falls back to the first ship found)");
+        std::string wanted = c.get<std::string>("cockpit.ship", "ShipV3", "ship folder to use: the 'name' in assets/models/ship/*/ship.json (falls back to the first ship found)");
         ambient_ = std::clamp(c.get("cockpit.ambient", 0.25f, "cockpit ambient light, 0 (pitch black shadows) .. 1"), 0.0f, 1.0f);
         intensity_ = std::max(0.0f, c.get("cockpit.light_intensity", 1.0f, "strength of the directional light on the cockpit"));
         std::string dir = c.get<std::string>("cockpit.light_dir", "0.35,0.75,0.55", "direction TOWARD the light in view space, x,y,z (x right, y up, z back); until the world has a sun");
@@ -63,7 +65,7 @@ public:
         glassScale_ = std::clamp(c.get("cockpit.glass_opacity", 1.0f, "canopy glass opacity multiplier: 0 = invisible glass, 1 = as modelled (30%), 3 = heavy tint"), 0.0f, 3.0f);
         screenHz_ = std::clamp(c.get("cockpit.screen_hz", 30.0f, "how often the cockpit screens redraw, per second (they are cached between redraws); 0 = every frame. Quality presets: low 15, medium 30, high 120, ultra 240 (= every frame)"), 0.0f, 240.0f);
         sunLight_ = c.get("cockpit.sun_light", true, "light the ship with the real sun (world star system); false = the fixed view-space cockpit.light_dir (the old look)");
-        chaseModel_ = c.get("cockpit.chase_model", true, "draw the real ShipV2 model from outside in chase view (false: the old wireframe fighter)");
+        chaseModel_ = c.get("cockpit.chase_model", true, "draw the real ship model from outside in chase view (false: the old wireframe fighter)");
         cam_ = eng.services.get<core::ICamera>();
         sys_ = eng.services.get<world::IStarSystem>();
 
@@ -91,6 +93,7 @@ public:
 
     // ---- IShipModel ----
     bool drawnInChase() const override { return ready_ && chaseModel_; }
+    const std::vector<ThrusterJet>& thrusters() const override { return jets_; }
 
     // ---- ICockpitScreens ----
     void registerRenderer(const std::string& group, ScreenRenderer fn) override { renderers_[group] = std::move(fn); }
@@ -117,11 +120,29 @@ private:
             return;
         }
         buildBatches(*mesh);
-        tagged_ = mesh->tagged;
+        // '@' faces: THRUST-group faces are exhaust emitters (model_thrusters.h), everything else is a screen
+        engine::Vec3 lo{1e30f, 1e30f, 1e30f}, hi{-1e30f, -1e30f, -1e30f};
+        for (size_t i = 0; i + 2 < mesh->positions.size(); i += 3) {
+            const float* p = &mesh->positions[i];
+            lo = {std::min(lo.x, p[0]), std::min(lo.y, p[1]), std::min(lo.z, p[2])};
+            hi = {std::max(hi.x, p[0]), std::max(hi.y, p[1]), std::max(hi.z, p[2])};
+        }
+        {   // the jet faces come from the OBJ text itself: the parser's TaggedQuads cannot tell a triangle from a parallelogram
+            std::ifstream f("assets/models/ship/" + def->folder + "/" + def->model);
+            std::stringstream ss;
+            ss << f.rdbuf();
+            jets_ = thrusterJets(jetPolygonsFromObj(ss.str()), (lo + hi) * 0.5f);
+        }
+        for (auto& q : mesh->tagged) if (q.group != "THRUST") tagged_.push_back(q);
+        LOG_I("cockpit", "hull x %.2f..%.2f  y %.2f..%.2f (belly %.2f below the eye)  z %.2f..%.2f", lo.x, hi.x, lo.y, hi.y, -lo.y, lo.z, hi.z);
+        if (jets_.empty()) LOG_I("cockpit", "no @THRUST-JET faces: the exhaust uses fx.nozzle_back / fx.nozzle_down");
+        for (size_t i = 0; i < jets_.size(); i++)
+            LOG_I("cockpit", "thruster jet %zu: pos (%.2f, %.2f, %.2f) dir (%.2f, %.2f, %.2f) radius %.2f", i, jets_[i].position.x, jets_[i].position.y,
+                  jets_[i].position.z, jets_[i].direction.x, jets_[i].direction.y, jets_[i].direction.z, jets_[i].radius);
         screens_ = def->screens;
         showDefaultUI_ = def->showDefaultUI;
         ready_ = true;
-        LOG_I("cockpit", "%zu triangles, %zu screens, showDefaultUI=%s", mesh->positions.size() / 9, tagged_.size(), showDefaultUI_ ? "true" : "false");
+        LOG_I("cockpit", "%zu triangles, %zu screens, %zu jets, showDefaultUI=%s", mesh->positions.size() / 9, tagged_.size(), jets_.size(), showDefaultUI_ ? "true" : "false");
     }
 
     void buildBatches(const core::Mesh& m) {
@@ -358,7 +379,8 @@ private:
     world::IStarSystem* sys_ = nullptr;
     bool chaseModel_ = true, sunLight_ = true;
     float screenHz_ = 30.0f;
-    std::vector<core::TaggedQuad> tagged_;
+    std::vector<core::TaggedQuad> tagged_;   // the screens ('@' faces minus the THRUST group)
+    std::vector<ThrusterJet> jets_;
     std::vector<ScreenDef> screens_;
     std::string empty_;
     bool enabled_ = true, ready_ = false, showDefaultUI_ = true, glassTint_ = true;
