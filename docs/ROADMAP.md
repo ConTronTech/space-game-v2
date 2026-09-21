@@ -53,7 +53,7 @@ Done when: you can fly, burn fuel, take damage, die, respawn and save/load mid-f
 - [x] **3.4 Collision wiring**: sun, planets, moons register with `physics_world`; ship damage from speed; sun = death.
 - [x] **3.5 `ship/orbit_lock`**: one `toggle_orbit_lock` action. *ship.h*
 - [x] **3.6 `world/asteroids`**: belts, clusters, pooled LOD meshes. *asteroids.h*
-- [ ] **3.7 `world/stations` + `ship/docking`**: orbital + planetary stations, dock/undock. *stations.h*  (**user instruction: keep docking SIMPLE - a cube and a cylinder as the platform placeholder until a proper model exists**; the old station OBJs in `assets/models/stations` can wait)**
+- [ ] **3.7 `world/stations` + `ship/docking`**: orbital + planetary stations, dock/undock. *stations.h*  (**user instruction: keep docking SIMPLE - a cube and a cylinder as the platform placeholder until a proper model exists**; the old station OBJs in `assets/models/stations` can wait)
   **Decisions (user, 2026-09-21):** docking is a KEY PRESS; refilling fuel/hull/shield on docking exists ONLY as a test tunable (`docking.test_refill`, default false) - in the real game the player makes fuel and shield by mining asteroids (4.3 -> 5.1 -> 5.5).
 
 Done when: a generated system with planets, belts and stations that you can fly around, collide with and dock at.
