@@ -60,6 +60,13 @@ struct FaceUV {
     }
 };
 
+// The old game's per-set skybox.json flips are relative to an implicit vertical flip of the top (4) and bottom (5) faces
+// (measured: without it every shipped set has visible seams there). effective flipV = implicit XOR json flip_v; everything else untouched.
+inline FaceUV effectiveFaceUV(int face, FaceUV json) {
+    if (face == 4 || face == 5) json.flipV = !json.flipV;
+    return json;
+}
+
 // Anything that is not 0/90/180/270 (after wrapping) counts as 0.
 inline int normalizeRotate(int deg) {
     deg %= 360;
