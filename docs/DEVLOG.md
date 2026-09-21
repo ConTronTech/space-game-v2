@@ -26,6 +26,11 @@ only after the full check passes, so it should always run.
 - **Not verified:** planetary stations on screen, a real flown approach; key label is a fixed "G" (IInput exposes no bindings).
 - **Next:** perf pass (in flight), then station + asteroid radar markers (cockpit worker, after perf), then Phase 4.
 
+## Leap 20 - 2026-09-21 (DONE, tag `good-20260921-15`): radar markers for stations and asteroids
+- **Changed:** the cockpit radar draws stations as cyan diamonds (same log range, rim clamp and height stems as bodies; FILLED only for the station where docking works right now = the HUD "DOCK [G]" state) with a second label line "STATION 1  96", and the 12 nearest asteroids within `cockpit.radar_asteroid_range` (3000) as tiny dim dots (query throttled to 4 Hz). Fixed-size contact lists, no heap in the draw path, no extra full-screen layers.
+- **Verified:** 273 tests under ASan+UBSan, smoke, headless clean; saved-game screenshots (filled/hollow diamonds at 96 m / 500 m, asteroid dots in a cluster, far station on the rim).
+- **Not verified:** the filled state while actually docking, moving flight, stems on station diamonds at large offsets.
+
 ## Leap 19 - 2026-09-21 (DONE, tag `good-20260921-14`): perf round 2 (GPU/fill rate) - laptop 42 -> 80 fps
 - **Changed (worker, merged):** `render.scale` offscreen FBO path, colour-clear skip (`render.clear_color`), star-quad path (`starfield.points`), optional canopy tint (`cockpit.glass_tint`), swap-interval logging, `--fullscreen` flag. **Then set from the laptop A/B (coordinator):** A/B of each switch on the real laptop (baseline 45.3 fps): glass tint off +5 fps, clear skip +2, star quads -4 (worse), render.scale 0.7 -1.4 (worse), 0.5 +5.8 (blurry). So the Low preset is: scale 1.0, quads OFF (GL_POINTS), glass tint OFF, clear skip ON, plus new **`window.fullscreen` = 1 on Low** (borderless fullscreen skips the desktop compositor; a Settings choice always wins).
 - **Laptop, out of the box (auto Low, no game.json): 80.0 fps average, 1% low 29.0 fps (99th pct frame 34.5 ms), worst 39 ms** (was 42.7 / 14.9 / 67). Windowed with the same settings: 56 fps / 16 fps 1% low -> the Cinnamon compositor was the main stutter source.
