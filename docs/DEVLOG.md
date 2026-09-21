@@ -26,6 +26,11 @@ only after the full check passes, so it should always run.
 - **Not verified:** planetary stations on screen, a real flown approach; key label is a fixed "G" (IInput exposes no bindings).
 - **Next:** perf pass (in flight), then station + asteroid radar markers (cockpit worker, after perf), then Phase 4.
 
+## Leap 21 - 2026-09-21 (DONE, tag `good-20260921-16`): Phase 4.1 `fx/particles`
+- **Changed:** `fx::SpawnParticles` event (how weapons/mining will spawn effects later), data-driven presets in `data/particles.json` (exhaust, spark, debris, warp_flash, muzzle), fixed-capacity pool (no allocation after init), one render pass with at most two `glDrawArrays(GL_QUADS)` (alpha + additive, depth write off) and one shared 32x32 soft-dot texture. Sources: exhaust (chase view only, from the input actions), sparks + debris on collisions, sparks on damage, blue-white flash when warp engages. Tunables/preset rows: `fx.enabled`, `fx.max_particles` (300/800/1500/3000), `fx.exhaust` (0..1 amount, 0.5 on Low), `fx.spawn_budget`, `fx.size_scale`, `fx.soft_dots`. Dev flags `--fx-test`, `--fx-test-loop`, `--fx-test-thrust`. Docs `docs/FX.md`.
+- **Verified:** 285 tests under ASan+UBSan, smoke (30 modules), headless clean; screenshots of each effect; 2,000 live particles = 0.046 ms CPU. **Laptop A/B with the particle loop running: fx on 79.7 / 79.7 fps vs fx off 79.5 / 79.5 (1% low 29 vs 26-29): no measurable cost.**
+- **Not verified:** real exhaust with the keyboard (forced with a dev flag), cockpit-view culling by eye, the muzzle preset (unused until weapons).
+
 ## Leap 20 - 2026-09-21 (DONE, tag `good-20260921-15`): radar markers for stations and asteroids
 - **Changed:** the cockpit radar draws stations as cyan diamonds (same log range, rim clamp and height stems as bodies; FILLED only for the station where docking works right now = the HUD "DOCK [G]" state) with a second label line "STATION 1  96", and the 12 nearest asteroids within `cockpit.radar_asteroid_range` (3000) as tiny dim dots (query throttled to 4 Hz). Fixed-size contact lists, no heap in the draw path, no extra full-screen layers.
 - **Verified:** 273 tests under ASan+UBSan, smoke, headless clean; saved-game screenshots (filled/hollow diamonds at 96 m / 500 m, asteroid dots in a cluster, far station on the rim).
