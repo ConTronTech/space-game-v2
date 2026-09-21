@@ -157,6 +157,12 @@ inline float hintAlpha(double now, float seconds) {
     return clamp01(1.0f - (float)((now - seconds) / kHintFadeSeconds));
 }
 
+// "RESPAWNING IN 3": N = ceil(secondsLeft); empty when nothing is left to count.
+inline std::string respawnText(float secondsLeft) {
+    if (secondsLeft <= 0) return "";
+    return "RESPAWNING IN " + std::to_string((int)std::ceil(secondsLeft));
+}
+
 inline std::string impactText(float amount, const std::string& source, bool shielded = false) {
     char b[96];
     std::snprintf(b, sizeof b, "IMPACT  %.0f", amount);

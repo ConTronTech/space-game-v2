@@ -50,3 +50,7 @@ An unknown value logs one warning and uses `minimal`.
 The hint shows at full opacity for the first `hud.hint_seconds` (default 20, engine time) and then fades out over 2 s. `0` = never fade.
 
 The decisions are pure functions in `hud_logic.h` (`parseOverlayMode`, `overlayPlan`, `hintAlpha`), unit-tested for every mode x `showsDefaultUI` combination and the fade edges.
+
+## Respawn countdown
+While the ship is destroyed and `ship::IRespawn` (`ship/respawn`, see docs/RESPAWN.md) is counting, "RESPAWNING IN N" (N = ceil of seconds left, 3, 2, 1)
+is shown under SHIP DESTROYED. Without the service, or with `respawn.enabled=false`, only SHIP DESTROYED shows. Formatting: `hud::respawnText` in `hud_logic.h`.

@@ -6,6 +6,7 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "ship/cockpit/cockpit_screens_api.h"
+#include "ship/respawn/respawn_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/ship_hud/hud_logic.h"
 
@@ -13,7 +14,7 @@ class ShipHud : public engine::Module {
 public:
     const char* name() const override { return "ui/ship_hud"; }
     std::vector<std::string> dependencies() const override { return {"core/ui_handler"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship", "ship/cockpit"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"ship/ship_core", "ship/fake_ship", "ship/cockpit", "ship/respawn"}; }
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
@@ -117,6 +118,9 @@ private:
             ui.vignette({0.8f, 0.0f, 0.0f, 0.75f}, std::min(W, H) * 0.45f);
             ui.rect(0, 0, (float)W, (float)H, 0.25f, 0.0f, 0.0f, 0.25f);
             ui.textCentered(W / 2.0f, H * 0.42f, "SHIP DESTROYED", (int)std::round(44 * s), {1.0f, 0.3f, 0.25f, 1.0f});
+            auto* rs = eng_->services.get<ship::IRespawn>();
+            std::string rt = rs && rs->counting() ? hud::respawnText(rs->secondsLeft()) : "";
+            if (!rt.empty()) ui.textCentered(W / 2.0f, H * 0.42f + 60 * s, rt, (int)std::round(22 * s), ui.theme.text);
         }
     }
 
