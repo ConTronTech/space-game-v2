@@ -17,7 +17,7 @@ bright at the star and dim at the tail, with length `starfield.warp_streak_lengt
 | `starfield.point_size` | 1.5 | pixels |
 | `starfield.brightness` | 1.0 | multiplier |
 | `starfield.warp_streak_length` | 300 | world units at full warp speed; 0 = no streaks |
-| `starfield.warp_ref_speed` | 2000 | m/s for full-length streaks |
+| `starfield.warp_ref_speed` | 5000 | m/s for full-length streaks |
 
 ## `world/skybox` (pass `skybox`, order -100: behind everything)
 Six textured quads around the camera (view translation removed, depth test/writes off, lighting off; state restored afterwards).
