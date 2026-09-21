@@ -22,8 +22,22 @@ bool Window::init(engine::Engine& eng) {
     if (!win_) { LOG_E("window", "SDL_CreateWindow: %s", SDL_GetError()); return false; }
     gl_ = SDL_GL_CreateContext(win_);
     if (!gl_) { LOG_E("window", "SDL_GL_CreateContext: %s", SDL_GetError()); return false; }
-    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetSwapInterval(eng.hasFlag("no-vsync") ? 0 : 1);   // --no-vsync: measure what the machine can really do (see --benchmark)
     SDL_GetWindowSize(win_, &w_, &h_);
+
+    // Hardware log: lets the target laptop's real renderer / GL version / texture limit be confirmed from logs/game.log.
+    {
+        const char* ver = (const char*)glGetString(GL_VERSION);
+        const char* ren = (const char*)glGetString(GL_RENDERER);
+        const char* ven = (const char*)glGetString(GL_VENDOR);
+        GLint maxTex = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
+        LOG_I("window", "OpenGL %s | %s | %s | max texture %d", ver ? ver : "?", ven ? ven : "?", ren ? ren : "?", (int)maxTex);
+        LOG_I("window", "display driver %s, window %dx%d, %d CPU threads, %d MB RAM", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?", w_, h_, SDL_GetCPUCount(), SDL_GetSystemRAM());
+        int major = 0, minor = 0;
+        if (ver && std::sscanf(ver, "%d.%d", &major, &minor) == 2 && (major < 2 || (major == 2 && minor < 1)))
+            LOG_W("window", "OpenGL %d.%d is older than the 2.1 this game needs: rendering may be wrong", major, minor);
+    }
 
     auto* settings = eng.services.get<ISettings>();
     if (settings && settings->get("video.fullscreen", false)) setFullscreen(true);

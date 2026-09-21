@@ -14,6 +14,13 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 3 - 2026-09-20: hardware log + `--benchmark` (built while Wave 2 runs)
+- **Changed:** startup log of GL version/vendor/renderer/max texture, display driver, CPU threads and RAM (`core/window`); `--no-vsync`; new inert-unless-flagged
+  `core/benchmark` module (`--benchmark[=seconds]`: avg fps, 1% low, worst frame, writes `logs/benchmark.txt`); `docs/BENCHMARK.md` (how the user runs it on the laptop);
+  target-hardware rules in `docs/VISION.md`.
+- **Verified:** 144 tests under ASan/UBSan (4 new for the statistics); the real game ran a 4 s benchmark (dev machine: RTX 2060 SUPER, ~2,260 fps, so not comparable to the laptop); a normal run prints no benchmark line.
+- **Known:** no laptop numbers yet - the user needs to run `./space_game_v2 --benchmark=20 --no-vsync` on it and send `logs/benchmark.txt` and the first lines of `logs/game.log`.
+
 ## Leap 2 - 2026-09-20 (IN PROGRESS): Phase 2 Wave 2 - warp drive + respawn
 - **Plan:** `ship/warp_drive` (2.2) by the ship-core worker; `ship/respawn` (2.4) + HUD "RESPAWNING IN N" by the HUD worker. Specs: `docs/agent_specs/phase2_wave2/`.
   Contract additions already on main: `IShip::setWarping` (non-pure), `ship::IRespawn`, input action `toggle_warp` (Z).

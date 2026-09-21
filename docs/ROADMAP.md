@@ -46,7 +46,7 @@ Wave 1 (2.1, 2.3, 2.5) is done and merged; Wave 2 (warp drive 2.2, respawn 2.4) 
 Done when: you can fly, burn fuel, take damage, die, respawn and save/load mid-flight.
 
 ## Phase 3 - World
-- [ ] **3.0 Benchmark + hardware log** (do first): startup log of GL renderer/version/max texture size; `--benchmark[=seconds]` prints frame-time avg / 1%-low / worst and exits, so the user can run it on the target laptop (docs/VISION.md, "Target hardware").
+- [x] **3.0 Benchmark + hardware log** (done, see docs/BENCHMARK.md): startup log of GL renderer/version/max texture size; `--benchmark[=seconds]` prints frame-time avg / 1%-low / worst and exits, so the user can run it on the target laptop (docs/VISION.md, "Target hardware").
 - [ ] **3.1 `world/starfield` + `world/skybox`** (move the demo starfield out of flight). *starfield.h, skybox.h*  (skybox faces are 4-8 MB PNGs: cap/downscale them at load for the target laptop's shared graphics memory)
 - [ ] **3.2 `world/star_system`**: seeded sun, planets, moons, orbits, sun lighting. *starsystem.h*  (positions are 32-bit floats: render relative to the camera / re-origin the world so orbits of 80,000+ units and warp speeds don't jitter)
 - [ ] **3.3 `world/planet_mesh`**: icosphere terrain, FBM noise, biomes, 4 LOD levels. *planet_mesh.h*
