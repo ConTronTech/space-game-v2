@@ -208,7 +208,7 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
         c.rect(px - size * 0.5f, py - size * 0.5f, size, size, col);
     }
 
-    // anomalies (world/anomalies): only the DETECTED ones (scanner perk + in range + not investigated): a pulsing violet 4-point star, no stem
+    // anomalies (world/anomalies): only the DETECTED ones (scanner perk + in range + not investigated): a pulsing violet 4-point star, with the same height stem as bodies/stations
     if (const world::IAnomalies* an = eng_.services.get<world::IAnomalies>()) {
         const int n = std::min(an->count(), kMaxRadarAnomalies);
         const float s = anomalyMarkerSize(ctx.time);
@@ -218,6 +218,13 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
             world::Vec3d p = an->position(i);
             RadarPlot pl = radarPlot({(float)(p.x - sx), (float)(p.y - sy), (float)(p.z - sz)}, frame, range_);
             float px = cx + pl.x * r, py = cy - pl.y * r;
+            if (pl.stem != 0) {
+                const float bright = pl.stem > 0 ? 1.0f : 0.45f;
+                float dy = py - pl.stem * r;
+                c.line(px, py, px, dy, 0.009f, {violet.r * bright, violet.g * bright, violet.b * bright, 1});
+                c.frame(px - 0.010f, py - 0.010f, 0.020f, 0.020f, 0.005f, {0.0f, 0.6f, 0.4f, 1});
+                py = dy;
+            }
             c.line(px - s, py, px + s, py, 0.007f, violet);
             c.line(px, py - s, px, py + s, 0.007f, violet);
             c.diamond(px, py, s * 0.55f, 0.006f, violet, false);

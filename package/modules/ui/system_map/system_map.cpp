@@ -11,6 +11,7 @@
 #include "ship/ship_core/ship_api.h"
 #include "ui/game_menu/game_menu_api.h"
 #include "ui/system_map/system_map_rules.h"
+#include "world/anomalies/anomalies_api.h"
 #include "world/asteroids/asteroids_api.h"
 #include "world/star_system/star_system_api.h"
 #include "world/stations/stations_api.h"
@@ -194,6 +195,21 @@ private:
                 float s = sysmap::markerSize(sysmap::Mark::Station, 0) * us;
                 diamond(ui, p, s, sc);
                 if (ui.hovered(p.x - s - 3, p.y - s - 3, 2 * s + 6, 2 * s + 6)) hoverInfo = info(si.name, si.kind == world::StationKind::Orbital ? "orbital station" : "planetary station", si.position, sp, ship != nullptr);
+            }
+        }
+        // anomalies (world/anomalies, optional): only the DETECTED ones (scanner perk + in range + not investigated), exactly like the radar
+        if (auto* an = eng_->services.get<world::IAnomalies>()) {
+            const float s = sysmap::markerSize(sysmap::Mark::Anomaly, 0) * us, t = std::max(1.0f, 1.5f * us);
+            for (int i = 0; i < an->count(); i++) {
+                if (!an->detected(i)) continue;
+                world::Vec3d ap = an->position(i);
+                if (beyond(ap.x, ap.z)) continue;
+                sysmap::P2 p = proj(ap.x, ap.z);
+                if (!inside(p)) continue;
+                const float* vc = sysmap::kAnomalyColor;   // a small 4-point star: two thin crossed bars
+                ui.rect(p.x - s, p.y - t * 0.5f, 2 * s, t, vc[0], vc[1], vc[2], 1);
+                ui.rect(p.x - t * 0.5f, p.y - s, t, 2 * s, vc[0], vc[1], vc[2], 1);
+                if (ui.hovered(p.x - s - 3, p.y - s - 3, 2 * s + 6, 2 * s + 6)) hoverInfo = info("Anomaly", "unidentified signal", ap, sp, ship != nullptr);
             }
         }
         if (ship) {

@@ -64,7 +64,7 @@ constexpr double kPanStep = 0.25;
 inline View panned(View v, int dx, int dz, Limits L) { v.fx += dx * kPanStep * v.range; v.fz += dz * kPanStep * v.range; return clampView(v, L); }
 
 // ---- markers ----
-enum class Mark { Sun, Planet, Moon, Station, Ship };
+enum class Mark { Sun, Planet, Moon, Station, Ship, Anomaly };
 
 // Marker half size in pixels, times the UI scale by the caller. Planets grow with the body radius (200 -> 4 px, 1,134 -> 7 px), moons stay small.
 inline float markerSize(Mark m, double bodyRadius) {
@@ -74,9 +74,13 @@ inline float markerSize(Mark m, double bodyRadius) {
         case Mark::Moon: return (float)std::clamp(1.5 + bodyRadius / 150.0, 1.5, 3.0);
         case Mark::Station: return 3.5f;
         case Mark::Ship: return 4.5f;
+        case Mark::Anomaly: return 4.0f;   // half-length of the violet star's arms
     }
     return 3.0f;
 }
+
+// Anomaly marker colour: the radar's violet star (hud_screens.cpp), for consistency.
+constexpr float kAnomalyColor[3] = {0.85f, 0.35f, 1.0f};
 
 // A body's own colour, lifted so its brightest channel is at least `minPeak` (a dark planet must still read on the dark glass). Writes out[3].
 inline void markerColor(const float in[3], float minPeak, float out[3]) {

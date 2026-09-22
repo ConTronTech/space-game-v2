@@ -53,10 +53,15 @@ energy_signature (loud, x1.6), ancient_artifact (quiet, x0.6, platinum/gold), un
 Using it sets the inventory perk `anomaly_scanner` (docs/CRAFTING.md); a second one is refused (`anomaly scanner already installed`).
 
 ## Radar
-Detected sites: a violet (0.85, 0.35, 1.0) 4-point star with a hollow diamond, pulsing size, same log range as bodies, flat (no height stem in this
-first pass), at most 16 looked at. See docs/COCKPIT.md. Cost: 3 canvas primitives per detected site inside the existing cached screen batch (no extra
+Detected sites: a violet (0.85, 0.35, 1.0) 4-point star with a hollow diamond, pulsing size, same log range as bodies, with the same height stem
+bodies/stations get (`radarPlot`; done 2026-09-22, w48), at most 16 looked at. See docs/COCKPIT.md. Cost: 3 canvas primitives per detected site inside the existing cached screen batch (no extra
 draw call, no allocation); measured `cockpit:screens` 0.130 ms with a site shown vs 0.129 ms without (`--profile`, noise). The module's per-frame
 work is 8 distance tests.
+
+## System map
+Detected sites also show on the MAP tab as a small violet cross (docs/SYSTEM_MAP.md; done 2026-09-22, w48). Same rule: nothing without the perk.
+Verified with a save 2500 below and 1500 short of site 2 (`logs/w48_mksaves.py`): radar stem visible, map marker shown; without the perk and with
+`--disable=world/anomalies` neither shows, no crash.
 
 ## Save (`world/anomalies`)
 `{"investigated": [2, 5]}`: only which ids are done. On load the sites are already regenerated from the seed; the ids are applied
