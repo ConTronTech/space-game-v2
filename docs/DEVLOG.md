@@ -95,6 +95,13 @@ only after the full check passes, so it should always run.
 - **Caveat:** `craft()` actually refusing a locked recipe is proven only by unit tests (the greyed-out button never calls it in a scripted run).
 - **Phase 6 items 1 and 2 are both done.** Next per docs/GAME_LOOPS.md: item 3 (ore tiers by zone, data-only) or further polish, or the still-parked combat depth/NPCs decision.
 
+## Leap 62 - 2026-09-22 (DONE, tag `good-20260922-22`, LOCAL ONLY - not pushed): agent control adapter v1 (user dare: "actualy play the game... make a adapter")
+- **Changed:** new `core/input_methods/agent` module - a file-driven input device so an external controller (a script, another process, an AI agent) can genuinely play: `logs/agent_cmd.json` (held action->number, contributed every frame exactly like a real device), `logs/agent_control.json` (one-shot commands, currently `{"craft": "<id>"}` calling `gameplay::ICrafting::craft` directly since crafting is a menu click, not a flight input), `logs/agent_status.json` (ship/docking/cargo/perks + the 12 nearest asteroids with ore type and distance - a sensor readout, not a screenshot). No profile entry needed: `core/input_handler` polls every registered device every frame regardless of the loaded profile. docs/AGENT_CONTROL.md.
+- **Verified live, not just unit-tested:** launched the game in the background, drove it via the command file (ship genuinely accelerated from a live file write), and confirmed the craft control path correctly refused ("dock at a station to craft") with no ore/station involved yet.
+- **Verified:** 569 tests under ASan+UBSan (47 modules), smoke, headless clean.
+- **This is v1, local-only, deliberately not pushed to GitHub yet** - the user's stated plan is a proper networked/API interface later (for LLMs and other API-driven controllers generally, not just local file-based scripts). The file protocol here is a working foundation, not the final design.
+- **Next:** actually use this adapter to fly out, mine cobalt/crystal/gold, dock at a station, and craft the Ore Scanner - the goal of the dare.
+
 ## Leap 61 - 2026-09-22 (DONE, tag `good-20260922-21`): verified fresh-slate on both machines - ready for GitHub (user: "prepare for the github blasting")
 - **Pre-publish audit:** no secrets/keys/tokens found anywhere in history or working tree; git author identity already a safe GitHub noreply address; repo size small (1.9 MB before assets), no oversized tracked files.
 - **Added:** `README.md`, `LICENSE` (GPL-3.0 - user's explicit choice: a real OSI license, but "not sold for profit" in spirit since every derivative must also stay open source).
