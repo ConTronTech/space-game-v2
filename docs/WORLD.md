@@ -22,7 +22,14 @@ bright at the star and dim at the tail, with length `starfield.warp_streak_lengt
 ## `world/skybox` (pass `skybox`, order -100: behind everything)
 Six textured quads around the camera (view translation removed, depth test/writes off, lighting off; state restored afterwards).
 It scans `skybox.dir` (default `assets/skybox/bkg`) for `<color>/<set>/` folders holding all six faces (`front back left right top bot`, also `_ft _bk _lf _rt _up _dn`, `.png/.jpg/.bmp`).
-`skybox.set` (default `dark/set1`) picks one; if missing the first set (alphabetical) is used and a warning says so. No sets or an unreadable face: one warning and no skybox.
+`skybox.set` picks one (`color/set`); if missing the first set (alphabetical) is used and a warning says so. No sets or an unreadable face: one warning and no skybox.
+
+**Sky matches the star (default).** `skybox.set` defaults to `auto`: the set whose sampled colour is closest to the seeded sun's colour (`IStarSystem::bodies()[0].color`, read once at init; `world/star_system` is an *optional* dependency) is used, so a blue star gets a blue sky.
+- Each set's colour is the average RGB of its **front** face (decoded once and box-downscaled to 1x1, then cached as `cache/skybox/<color>_<set>_avg.txt`; fresh while not older than the face). The folder name is not used. First start: ~0.6 s extra for 18 sets on the desktop, later starts read 18 tiny text files (nothing per frame).
+- Compared as chromaticity (r,g,b divided by r+g+b), because the skies are dark and the star is bright. The star's faint tint is boosted away from grey by `skybox.star_tint_gain` (3) first; then plain Euclidean distance, nearest wins (`world::chroma`, `boostTint`, `nearestColor`, `resolveWantedSet` in `skybox_rules.h`, unit-tested).
+- Measured with the shipped sets: pale blue -> `lightblue/set1`, orange -> `orange/set2`, red-orange -> `red/set2`, near-white -> `dark/set3`, warm white -> `green/set3` (its average is a warm yellow-brown). Log line: `star colour (r,g,b) -> chosen set 'X/Y' (distance D of N sets)`.
+- **An explicit choice always wins:** any `skybox.set` value other than `"DEFAULT"`/missing/`auto` is used exactly as written (the config returns the code default `auto` only for a missing key or `"DEFAULT"`). `skybox.match_star_color` false, no star system (`--disable=world/star_system`, `star_system.enabled` false) or no set that could be sampled: `dark/set1`, the old fixed default.
+- A matched set can have bigger faces than `dark/set1` (e.g. `red/set2` is 2048 px = 72 MB at cap 2048); `skybox.max_size` from the quality preset still caps it (Low = 512).
 
 **Per-set orientation:** optional `skybox.json` in the set folder, e.g. `{ "top": {"flip_v": true}, "bottom": {"rotate": 90} }` (faces `front back left right top bottom`;
 keys `flip_u`, `flip_v`, `rotate` 0/90/180/270; `flipU`/`flipV` also accepted). Applied as in the old game.
@@ -48,7 +55,9 @@ otherwise the original is loaded again. Faces already at or below the cap are no
 | Tunable | Default | |
 |---|---|---|
 | `skybox.enabled` | true | |
-| `skybox.set` | dark/set1 | `color/set` |
+| `skybox.set` | auto | `color/set`, or `auto` = match the star (see above) |
+| `skybox.match_star_color` | true | off = `dark/set1` when `skybox.set` is auto |
+| `skybox.star_tint_gain` | 3 | star tint boost before matching (1 = raw) |
 | `skybox.max_size` | 1024 | longest side, pixels |
 | `skybox.dir` | assets/skybox/bkg | scan folder |
 | `skybox.cache_dir` | cache | |
@@ -57,7 +66,7 @@ otherwise the original is loaded again. Faces already at or below the cap are no
 Create `assets/skybox/bkg/<color>/<set>/` with the six face images (any resolution; big ones are downscaled once and cached), add a `skybox.json` only if a face looks flipped or rotated, and set `skybox.set` to `<color>/<set>`.
 
 ## Code map
-Pure rules (no SDL/GL): `world/skybox/skybox_rules.h` (capped size, face names, UV transform, set choice, cache path/freshness, box downscale) and `world/starfield/starfield_rules.h` (streak length), tested in `package/tests/test_world.cpp`.
+Pure rules (no SDL/GL): `world/skybox/skybox_rules.h` (capped size, face names, UV transform, set choice, star colour matching, cache path/freshness, box downscale) and `world/starfield/starfield_rules.h` (streak length), tested in `package/tests/test_world.cpp`.
 The 150 demo rocks of `ship/ship_core` are now OFF by default (`flight.demo_rocks`, see below); the real asteroids are `world/asteroids`.
 
 ## `world/star_system` (pass `star_system`, order 50: after starfield/skybox, before the demo rocks)
