@@ -7,10 +7,13 @@
 // Positions are DOUBLES (the system spans hundreds of thousands of units). Convert to float only after subtracting a nearby origin.
 #include <string>
 #include <vector>
+#include "engine/math.h"
 
 namespace world {
 
-struct Vec3d { double x = 0, y = 0, z = 0; };
+// The double vector now lives in engine/math.h (core modules - physics, the camera pose - need it too, and core must not depend on world).
+// world::Vec3d stays as the name every world / ship module already uses. See docs/PRECISION.md.
+using Vec3d = engine::Vec3d;
 
 enum class BodyKind { Sun, Planet, Moon };
 

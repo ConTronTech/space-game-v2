@@ -35,7 +35,7 @@ public:
     virtual ~IShip() = default;
 
     virtual const ShipStatus& status() const = 0;
-    virtual engine::Vec3 position() const = 0;
+    virtual engine::Vec3 position() const = 0;       // float APPROXIMATION of positionD(): fine for display and km-scale checks, not for metre-scale math far out
     virtual engine::Vec3 velocity() const = 0;
     virtual engine::Vec3 forward() const = 0;
 
@@ -54,6 +54,11 @@ public:
     virtual void setHeld(bool) {}
     virtual void setPose(const engine::Vec3& /*pos*/, const engine::Vec3& /*fwd*/, const engine::Vec3& /*up*/) {}
     virtual void setWarping(bool) {}                                          // the warp drive tells the ship it is engaged (ShipStatus::warping); default: ignored
+    // ---- double-precision position (docs/PRECISION.md): additive, non-pure (the defaults widen / narrow the float calls) ----
+    // The ship's authoritative position is a double. Use positionD() for anything combined with another absolute double position (gravity, orbit lock,
+    // docking, collision), and setPoseD() to place the ship without rounding it through a float. Far from the origin a float is metres to hundreds of metres off.
+    virtual engine::Vec3d positionD() const { engine::Vec3 p = position(); return {p.x, p.y, p.z}; }
+    virtual void setPoseD(const engine::Vec3d& pos, const engine::Vec3& fwd, const engine::Vec3& up) { setPose({(float)pos.x, (float)pos.y, (float)pos.z}, fwd, up); }
     virtual void kill(const std::string& cause) = 0;                          // instant death (sun, ...): emits Died
     virtual void respawn() = 0;                                               // full reset at the spawn point: emits Respawned
 };

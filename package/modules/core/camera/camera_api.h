@@ -7,8 +7,14 @@
 
 namespace core {
 
+// 'pos' is the float approximation of 'posD' (kept: every existing consumer draws or measures something ship-relative with it).
+// 'posD' is the true double position of whoever published the pose - use it for anything combined with another absolute position
+// (station pads, bodies, the render eye). A source that only has a float position leaves posD at the same value (see fromFloat).
 struct Pose {
     engine::Vec3 pos, fwd{0, 0, -1}, up{0, 1, 0};
+    engine::Vec3d posD;
+
+    void fromFloat(const engine::Vec3& p) { pos = p; posD = {p.x, p.y, p.z}; }
 };
 
 class ITransformSource {

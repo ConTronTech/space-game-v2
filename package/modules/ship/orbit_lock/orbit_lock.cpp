@@ -121,18 +121,18 @@ public:
             }
         } else offset = orbit::offsetAt(orbit_, elapsed_);
         world::Vec3d target = orbit::add(orbit::add(bp, orbit::mul(bv, dt)), offset);
-        auto p = ship->position();
-        world::Vec3d v = orbit::mul(orbit::sub(target, {p.x, p.y, p.z}), 1.0 / dt);
+        world::Vec3d p = ship->positionD();          // double: (target - position) / dt is a metre-scale difference of two huge numbers
+        world::Vec3d v = orbit::mul(orbit::sub(target, p), 1.0 / dt);
         ship->setVelocity({(float)v.x, (float)v.y, (float)v.z});
         if ((logTimer_ += dt) >= 1.0f) {
             logTimer_ = 0;
-            world::Vec3d rel = orbit::sub({p.x, p.y, p.z}, bp);
+            world::Vec3d rel = orbit::sub(p, bp);
             world::Vec3d sv = {v.x - bv.x, v.y - bv.y, v.z - bv.z};
             LOG_D("orbit", "%s: radius %.3f (start %.3f), speed %.2f m/s relative to the body", name_.c_str(), orbit::length(rel), orbit_.radius, orbit::length(sv));
         }
         if (elapsed_ < settleSeconds_used_ + 0.3 && (settleLog_ += dt) >= 0.25f) {   // the settle, at info level: the speed error shrinks to ~0
             settleLog_ = 0;
-            world::Vec3d rel = orbit::sub({p.x, p.y, p.z}, bp);
+            world::Vec3d rel = orbit::sub(p, bp);
             world::Vec3d sv = {v.x - bv.x, v.y - bv.y, v.z - bv.z};
             double r = orbit::length(rel), radial = r > 0 ? orbit::dot(sv, rel) / r : 0.0;
             LOG_I("orbit", "settle %.2f s: radius %.1f (lock %.1f), radial speed %+.2f m/s, speed error vs the circular orbit %.2f m/s", elapsed_, r, lockRadius_, radial, orbit::speedErrorVsCircular(orbit_, rel, sv));
@@ -152,8 +152,7 @@ private:
         auto* sys = eng.services.get<world::IStarSystem>();
         if (!ship || !sys) return false;
         const auto& bodies = sys->bodies();
-        auto sp = ship->position();
-        out.pos = {sp.x, sp.y, sp.z};
+        out.pos = ship->positionD();
         cand_.clear();
         for (auto& b : bodies) cand_.push_back({b.position, (double)b.radius});
         auto n = orbit::nearestBody(cand_, out.pos);

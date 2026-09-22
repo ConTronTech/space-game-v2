@@ -8,6 +8,18 @@
 
 namespace ship::rules {
 
+// ---- double-precision position (docs/PRECISION.md) ----
+// The ship's position is a double; its velocity stays a float (m/s-scale values lose nothing). One fixed step of flight: position += velocity * dt,
+// the product and the sum in double, so the step is exact to ~1e-16 relative wherever the ship is. (A float position at 5e9 moves in 512 m jumps.)
+inline void integrate(engine::Vec3d& pos, const engine::Vec3& vel, float dt) {
+    pos.x += (double)vel.x * dt; pos.y += (double)vel.y * dt; pos.z += (double)vel.z * dt;
+}
+inline engine::Vec3d toD(const engine::Vec3& v) { return {v.x, v.y, v.z}; }
+inline engine::Vec3 toF(const engine::Vec3d& v) { return {(float)v.x, (float)v.y, (float)v.z}; }
+inline engine::Vec3d lerpD(const engine::Vec3d& a, const engine::Vec3d& b, double t) { return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t}; }
+// b + v (a small float offset added in double)
+inline engine::Vec3d offsetD(const engine::Vec3d& b, const engine::Vec3& v) { return {b.x + v.x, b.y + v.y, b.z + v.z}; }
+
 // The mutable part of the ship that damage / healing / fuel act on.
 struct Vitals {
     float hp = 100.0f, maxHp = 100.0f;

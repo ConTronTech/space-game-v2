@@ -1,7 +1,7 @@
 # Orbit lock (`ship/orbit_lock`)
 
 `toggle_orbit_lock` (key **O**) puts the ship on a stable circular orbit around the body whose **surface** is nearest (planet, moon or sun); pressing it again releases the ship.
-Read with `IInput::pressed` in `onUpdate`, ignored while the game is paused. Newtonian rules for everyone: the module only uses `IShip::position()`, `velocity()`, `status()` and `setVelocity()`; nothing in `ship_core` or the `IShip` contract changed.
+Read with `IInput::pressed` in `onUpdate`, ignored while the game is paused. Newtonian rules for everyone: the module uses `IShip::positionD()` (double - docs/PRECISION.md; the guide's `(target - position) / dt` is a metre-scale difference of two huge numbers far from the origin), `velocity()`, `status()` and `setVelocity()`.
 
 ## Aligning with the guide (3.5c)
 Near a body (within max(`orbit.guide_range` x radius, `orbit.guide_min_range`) = max(6 radii, 2,500 units) above the nearest **surface**) the game draws, **with no key press** (pure rule `guideVisible`), the orbit the lock WOULD give from your current state, and O only locks when you are lined up with it.

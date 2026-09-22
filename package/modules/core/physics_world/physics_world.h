@@ -18,12 +18,16 @@ public:
     void shutdown(engine::Engine&) override;
     void onFixedUpdate(engine::Engine&, float) override { step(); }
 
-    BodyId addBody(const std::string& kind, const engine::Vec3& pos, float radius, bool dynamic) override;
+    using IPhysics::addBody;          // keep the float convenience overloads visible through this type (tests, callers holding a PhysicsWorld&)
+    using IPhysics::setBody;
+    using IPhysics::teleport;
+    using IPhysics::query;
+    BodyId addBody(const std::string& kind, const engine::Vec3d& pos, float radius, bool dynamic) override;
     void removeBody(BodyId id) override;
     bool alive(BodyId id) const override { return id >= 0 && id < (BodyId)bodies_.size() && bodies_[(size_t)id].alive; }
-    void setBody(BodyId id, const engine::Vec3& pos, const engine::Vec3& vel) override;
-    void teleport(BodyId id, const engine::Vec3& pos) override;
-    void query(const engine::Vec3& center, float radius, std::vector<BodyId>& out) const override;
+    void setBody(BodyId id, const engine::Vec3d& pos, const engine::Vec3& vel) override;
+    void teleport(BodyId id, const engine::Vec3d& pos) override;
+    void query(const engine::Vec3d& center, float radius, std::vector<BodyId>& out) const override;
     int aliveBodyCount() const override { return (int)liveCount_; }
 
     void step();                                   // one collision pass (called every fixed update; public for tests)
@@ -33,7 +37,8 @@ public:
 private:
     struct Body {
         std::string kind;
-        engine::Vec3 pos, prev, vel;
+        engine::Vec3d pos, prev;      // absolute positions: double (docs/PRECISION.md). Only differences are ever narrowed to float.
+        engine::Vec3 vel;            // m/s: float is plenty
         float radius = 0;
         bool dynamic = false, alive = false;
     };
@@ -41,7 +46,7 @@ private:
 
     struct Cell { int x, y, z; };
     static uint64_t key(int x, int y, int z);
-    int cellOf(float v) const;
+    int cellOf(double v) const;
     void bounds(const Body& b, Cell& lo, Cell& hi) const;
     void buildGrid();
 

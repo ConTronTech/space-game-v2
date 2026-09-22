@@ -2,6 +2,8 @@
 
 Module: `package/modules/ship/gravity/` (`gravity.cpp` wiring, `gravity_rules.h` pure logic, tests in `package/tests/test_gravity.cpp`). Rationale: docs/PHYSICS_RESEARCH.md section 3 and docs/QUESTIONS.md #14.
 
+Reads the ship's position through `IShip::positionD()` (double), not the float `position()` - see docs/PRECISION.md. This matters far from the origin (the planned realistic-scale rescale): the dominant-body search and the orbit/SOI math both combine the ship's position with a body's absolute double position.
+
 ## The model: single-body sphere of influence ("patched conics", as in Kerbal Space Program)
 - The ship feels gravity from **exactly one body at a time**: the innermost sphere of influence (SOI) it is inside. A moon's SOI wins over its planet's, which wins over the sun's. Among equals the nearest wins.
 - The sun is the fallback out to `gravity.sun_range` x the outermost planet's orbit radius (default 2x). Beyond that, **no gravity at all**: deep space stays pure Newtonian float.

@@ -7,6 +7,15 @@
 namespace core {
 
 using engine::Vec3;
+using engine::Vec3d;
+
+// Small double helpers (the same camera-relative discipline the renderer uses: subtract in double, narrow only the difference).
+namespace {
+inline Vec3d sub(const Vec3d& a, const Vec3d& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+inline double dot(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+inline double len(const Vec3d& a) { return std::sqrt(dot(a, a)); }
+inline Vec3d lerpD(const Vec3d& a, const Vec3d& b, double t) { return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t}; }
+}
 
 bool PhysicsWorld::init(engine::Engine& eng) {
     eng_ = &eng;
@@ -17,7 +26,7 @@ bool PhysicsWorld::init(engine::Engine& eng) {
 
 void PhysicsWorld::shutdown(engine::Engine& eng) { eng.services.withdraw<IPhysics>(); }
 
-BodyId PhysicsWorld::addBody(const std::string& kind, const Vec3& pos, float radius, bool dynamic) {
+BodyId PhysicsWorld::addBody(const std::string& kind, const Vec3d& pos, float radius, bool dynamic) {
     Body b;
     b.kind = kind; b.pos = b.prev = pos; b.radius = std::max(0.0f, radius); b.dynamic = dynamic; b.alive = true;
     liveCount_++;
@@ -38,22 +47,22 @@ void PhysicsWorld::removeBody(BodyId id) {
     }
 }
 
-void PhysicsWorld::setBody(BodyId id, const Vec3& pos, const Vec3& vel) {
+void PhysicsWorld::setBody(BodyId id, const Vec3d& pos, const Vec3& vel) {
     if (!alive(id)) return;
     bodies_[(size_t)id].pos = pos;
     bodies_[(size_t)id].vel = vel;
 }
 
-void PhysicsWorld::teleport(BodyId id, const Vec3& pos) {
+void PhysicsWorld::teleport(BodyId id, const Vec3d& pos) {
     if (!alive(id)) return;
     bodies_[(size_t)id].pos = bodies_[(size_t)id].prev = pos;
 }
 
-void PhysicsWorld::query(const Vec3& c, float r, std::vector<BodyId>& out) const {
+void PhysicsWorld::query(const Vec3d& c, float r, std::vector<BodyId>& out) const {
     out.clear();
     for (size_t i = 0; i < bodies_.size(); i++) {
         const Body& b = bodies_[i];
-        if (b.alive && engine::length(b.pos - c) <= r + b.radius) out.push_back((BodyId)i);
+        if (b.alive && len(sub(b.pos, c)) <= (double)r + b.radius) out.push_back((BodyId)i);
     }
 }
 
@@ -61,7 +70,7 @@ void PhysicsWorld::query(const Vec3& c, float r, std::vector<BodyId>& out) const
 uint64_t PhysicsWorld::key(int x, int y, int z) {
     return ((uint64_t)(x & 0x1FFFFF) << 42) | ((uint64_t)(y & 0x1FFFFF) << 21) | (uint64_t)(z & 0x1FFFFF);
 }
-int PhysicsWorld::cellOf(float v) const { return (int)std::floor(v / cell_); }
+int PhysicsWorld::cellOf(double v) const { return (int)std::floor(v / cell_); }
 
 // grid cells covered by the body's swept volume (previous -> current position, plus radius)
 void PhysicsWorld::bounds(const Body& b, Cell& lo, Cell& hi) const {
@@ -98,25 +107,30 @@ void PhysicsWorld::step() {
         const Body& C = bodies_[(size_t)ic];
         // Motion of A relative to C over the step is a straight line rel0 -> rel1. Find the FIRST time t in [0,1] when the
         // distance equals the radii sum (solve |rel0 + t d|^2 = R^2), so the contact point is where they first touched.
-        Vec3 rel0 = A.prev - C.prev, rel1 = A.pos - C.pos, d = rel1 - rel0;
-        float R = A.radius + C.radius;
-        float c = engine::dot(rel0, rel0) - R * R;
-        float t = 0.0f;
-        if (c > 0.0f) {                                      // not overlapping at the start of the step
-            float a = engine::dot(d, d), bq = engine::dot(rel0, d);
-            if (a < 1e-12f) return;                          // no relative motion, still apart
-            float disc = bq * bq - a * c;
-            if (disc < 0.0f) return;                         // path never gets close enough
+        // In DOUBLE: the two absolute positions are subtracted first, so the relative motion keeps full sub-millimetre accuracy however far
+        // from the origin the pair is (in float at 5e9 the difference alone was already hundreds of metres out).
+        Vec3d rel0 = sub(A.prev, C.prev), rel1 = sub(A.pos, C.pos), d = sub(rel1, rel0);
+        double R = (double)A.radius + C.radius;
+        double c = dot(rel0, rel0) - R * R;
+        double t = 0.0;
+        if (c > 0.0) {                                       // not overlapping at the start of the step
+            double a = dot(d, d), bq = dot(rel0, d);
+            if (a < 1e-12) return;                           // no relative motion, still apart
+            double disc = bq * bq - a * c;
+            if (disc < 0.0) return;                          // path never gets close enough
             t = (-bq - std::sqrt(disc)) / a;
-            if (t < 0.0f || t > 1.0f) return;                // touches only before or after this step
+            if (t < 0.0 || t > 1.0) return;                  // touches only before or after this step
         }
 
         Collided e;
         e.a = ia; e.b = ic; e.kindA = A.kind; e.kindB = C.kind;
-        e.posA = engine::lerp(A.prev, A.pos, t);
-        e.posB = engine::lerp(C.prev, C.pos, t);
-        Vec3 n = e.posB - e.posA;
-        if (engine::length(n) < 1e-6f) n = engine::length(d) > 1e-6f ? d * -1.0f : Vec3{0, 1, 0};   // exactly overlapping: use the motion direction
+        e.posAd = lerpD(A.prev, A.pos, t);
+        e.posBd = lerpD(C.prev, C.pos, t);
+        e.posA = {(float)e.posAd.x, (float)e.posAd.y, (float)e.posAd.z};   // float approximations for consumers that only draw / log them
+        e.posB = {(float)e.posBd.x, (float)e.posBd.y, (float)e.posBd.z};
+        Vec3d nd = sub(e.posBd, e.posAd);                                  // the contact normal is a DIFFERENCE: computed in double, then narrowed
+        if (len(nd) < 1e-6) nd = len(d) > 1e-6 ? Vec3d{-d.x, -d.y, -d.z} : Vec3d{0, 1, 0};   // exactly overlapping: use the motion direction
+        Vec3 n{(float)nd.x, (float)nd.y, (float)nd.z};
         e.normal = engine::normalize(n);
         e.speed = std::max(0.0f, engine::dot(A.vel - C.vel, e.normal));
         e.radiusA = A.radius; e.radiusB = C.radius;
