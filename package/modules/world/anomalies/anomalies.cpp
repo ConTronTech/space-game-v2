@@ -6,6 +6,7 @@
 #include "core/save_system/save_api.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "gameplay/blueprints/blueprints_api.h"
 #include "gameplay/inventory/inventory_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "ui/toast/toast_api.h"
@@ -34,7 +35,7 @@ public:
     const char* name() const override { return "world/anomalies"; }
     std::vector<std::string> dependencies() const override { return {"world/star_system"}; }
     std::vector<std::string> optionalDependencies() const override {
-        return {"core/data_registry", "core/save_system", "gameplay/inventory", "ui/toast", "ship/ship_core", "world/asteroids", "world/stations"};
+        return {"core/data_registry", "core/save_system", "gameplay/inventory", "ui/toast", "ship/ship_core", "world/asteroids", "world/stations", "gameplay/blueprints"};
     }
 
     bool init(engine::Engine& eng) override {
@@ -145,10 +146,11 @@ private:
     }
 
     void investigate(engine::Engine& eng, size_t i, gameplay::IInventory* inv) {
-        done_[i] = true;
-        detected_[i] = false;
         const world::AnomalySite& s = sites_[i];
         const world::AnomalyKind& k = kinds_[(size_t)s.kind];
+        auto* bps = eng.services.get<gameplay::IBlueprints>();
+        world::BlueprintGrant bp = world::investigateSite(done_, i, k, bps);   // marks it done; the blueprint only if gameplay/blueprints is on
+        detected_[i] = false;
         world::AnomalyRoll roll = world::rollAnomaly(k, s.seed);
         int got = 0;
         if (!roll.ore.empty()) {
@@ -156,7 +158,9 @@ private:
             else LOG_W("anomalies", "site %d: no inventory, %d %s not given", s.id, roll.amount, roll.ore.c_str());
         }
         LOG_I("anomalies", "AnomalyInvestigated: site %d (%s): +%d %s (rolled %d)", s.id, k.id.c_str(), got, roll.ore.c_str(), roll.amount);
-        eng.events.emit(world::AnomalyInvestigated{s.id, k.id, roll.ore, got});
+        if (!bp.id.empty())
+            LOG_I("anomalies", "site %d: blueprint '%s' %s", s.id, bp.id.c_str(), !bps ? "not granted (gameplay/blueprints off)" : bp.unlocked ? "unlocked" : "already known");
+        eng.events.emit(world::AnomalyInvestigated{s.id, k.id, roll.ore, got, bp.unlocked ? bp.id : std::string()});
         if (auto* t = eng.services.get<core::IToast>()) {
             std::string text = k.name + ": " + k.messages[(size_t)roll.message];
             if (!roll.ore.empty()) {
@@ -167,6 +171,7 @@ private:
                 if (got < roll.amount) text += " (hold full)";
             }
             t->show(text, core::IToast::Level::Info, 7.0f);
+            if (bp.unlocked) t->show("Blueprint unlocked: " + bps->displayName(bp.id), core::IToast::Level::Warning, 9.0f);   // its own toast, amber
         }
     }
 

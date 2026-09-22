@@ -9,7 +9,7 @@ flavour-text toast (`ui/toast`, its first real caller), an event, and the site i
 `package/modules/world/anomalies/`: `anomalies.cpp` (module, `world::IAnomalies`, `core::ISaveable`), `anomalies_api.h` (service + event),
 `anomaly_rules.h` (pure: data parsing, generation, range tests, reward roll, saved-id helpers; unit-tested in `package/tests/test_anomalies.cpp`).
 - Requires `world/star_system`. Optional: `core/data_registry`, `core/save_system`, `gameplay/inventory`, `ui/toast`, `ship/ship_core`,
-  `world/asteroids`, `world/stations`. Each missing one just does less: no data = one built-in kind; no inventory = the site is still marked
+  `world/asteroids`, `world/stations`, `gameplay/blueprints`. Each missing one just does less: no data = one built-in kind; no inventory = the site is still marked
   investigated and a warning says nothing was given; no toast = log + event only; no ship = nothing is detected.
 - Delete the folder and the game runs as before (the radar code only looks the service up).
 
@@ -31,6 +31,9 @@ Clearance is best-effort (checked at t = 0 in the tests), not collision avoidanc
 - Reward: `rollAnomaly(kind, site seed)` picks a reward entry (weighted) and an amount in its [min, max], and a flavour message: fixed per site, never
   re-rolled. The amount goes to `IInventory::add` (a full hold accepts less; the toast says `(hold full)`).
 - Emits `world::AnomalyInvestigated{siteId, kind, oreGiven, amount}` (amount = what the hold accepted); logs `AnomalyInvestigated: site N (...)`.
+- Blueprint reward (optional, docs/BLUEPRINTS.md): a kind with `"blueprint": "<id>"` unlocks it through `gameplay::IBlueprints` (optional
+  dependency; absent = not granted, the site is still investigated), sets `AnomalyInvestigated::blueprint`, and adds an amber toast
+  `Blueprint unlocked: <name>`.
 - Toast (Info, 7 s): `Derelict Wreckage: Twisted hull plates and a cold reactor. Someone never made it home.  +6 COBALT`.
 
 ## Data: `data/anomalies.json`
@@ -42,7 +45,8 @@ Clearance is best-effort (checked at t = 0 in the tests), not collision avoidanc
 ```
 Missing / bad fields: `name` = the id; no `messages` = `message` or "Anomaly investigated."; a reward without `ore` is dropped, `min` >= 1,
 `max` >= `min` (<= 1000), `weight` >= 0; `detect_mult` default 1 clamped 0.1..5; kind `weight` default 1, >= 0. Shipped kinds: derelict_wreckage,
-energy_signature (loud, x1.6), ancient_artifact (quiet, x0.6, platinum/gold), unstable_phenomenon.
+energy_signature (loud, x1.6), ancient_artifact (quiet, x0.6, platinum/gold), unstable_phenomenon, ancient_blueprint_cache (`"blueprint": "missile_pack"`
++ a little cobalt). Optional `blueprint` = a blueprint id (blank / non-string = none).
 
 ## The scanner item
 `data/items.json` `anomaly_scanner` (permanent, `effect: {"anomaly_scan": true}`), recipe crystal 6 + platinum 3 + gold 3 (Ore Scanner tier).

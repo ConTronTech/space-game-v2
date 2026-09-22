@@ -16,6 +16,10 @@ inline Recipe recipeFromJson(const std::string& id, const engine::Json& j) {
         int need = (int)ing[key].num(0);
         if (need > 0) r.ingredients.push_back({key, need});
     }
+    // optional "requires_blueprint": "<id>" - anything but a non-blank string means no gate (trimmed; the name is resolved by the caller)
+    const std::string bp = j["requires_blueprint"].str();
+    size_t a = bp.find_first_not_of(" \t\r\n"), b = bp.find_last_not_of(" \t\r\n");
+    if (a != std::string::npos) r.requiresBlueprint = bp.substr(a, b - a + 1);
     return r;
 }
 

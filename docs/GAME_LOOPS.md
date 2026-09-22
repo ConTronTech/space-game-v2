@@ -9,7 +9,7 @@ combat depth is parked until the user is around to steer it; see docs/QUESTIONS.
    star system, hidden until the player crafts and uses an Anomaly Scanner (a permanent perk item, same pattern as the Ore Scanner), then shown as
    a marker on the radar/map within a detection range; flying close investigates one (one-time, saved), giving ore and/or a flavour-text discovery
    via `ui/toast` (the first real thing wired to it). See docs/ANOMALIES.md once built.
-2. `gameplay/blueprints` - unlocks that gate crafting.
+2. **`gameplay/blueprints`** - BUILT (2026-09-22, docs/BLUEPRINTS.md). Unlocks that gate crafting.
 3. Ore tiers by zone (mostly data).
 4. `gameplay/solar_flares`.
 5. Distress beacons + black boxes.

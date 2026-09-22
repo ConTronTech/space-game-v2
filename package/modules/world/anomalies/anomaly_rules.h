@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "engine/json.h"
+#include "gameplay/blueprints/blueprints_api.h"  // gameplay::IBlueprints (an interface only: the optional blueprint reward)
 #include "world/star_system/star_system_api.h"     // world::Vec3d, BodyKind
 #include "world/star_system/planet_mesh.h"         // mixSeed
 #include "world/star_system/star_system_rules.h"   // detail::Rng (the same deterministic generator the star system uses)
@@ -21,6 +22,7 @@ struct AnomalyKind {
     std::vector<AnomalyReward> rewards;    // one entry is picked per site (weighted), then an amount in [min, max]
     float detectMul = 1.0f;                // x anomalies.detect_range: "louder" kinds are seen from farther away (0.1 .. 5)
     float weight = 1.0f;                   // how often generation picks this kind (>= 0; all zero = uniform)
+    std::string blueprint;                 // optional: a blueprint id unlocked on investigation (docs/BLUEPRINTS.md), "" = none
 };
 
 inline AnomalyKind anomalyKindFromJson(const std::string& id, const engine::Json& j) {
@@ -46,6 +48,9 @@ inline AnomalyKind anomalyKindFromJson(const std::string& id, const engine::Json
     k.detectMul = std::isfinite(dm) ? std::clamp(dm, 0.1f, 5.0f) : 1.0f;
     float w = (float)j["weight"].num(1.0);
     k.weight = std::isfinite(w) ? std::max(0.0f, w) : 1.0f;
+    const std::string bp = j["blueprint"].str();
+    size_t b0 = bp.find_first_not_of(" \t\r\n"), b1 = bp.find_last_not_of(" \t\r\n");
+    if (b0 != std::string::npos) k.blueprint = bp.substr(b0, b1 - b0 + 1);
     return k;
 }
 
@@ -191,6 +196,18 @@ inline AnomalyRoll rollAnomaly(const AnomalyKind& k, uint32_t siteSeed) {
     int w = weightedPick((int)k.rewards.size(), [&](int i) { return k.rewards[(size_t)i].weight; }, rng.f());
     if (w >= 0) { const AnomalyReward& rw = k.rewards[(size_t)w]; r.ore = rw.ore; r.amount = rng.irange(rw.min, rw.max); }
     return r;
+}
+
+// ---- blueprint reward (optional service) ----
+struct BlueprintGrant { std::string id; bool unlocked = false; };   // id = the kind's blueprint ("" = none); unlocked = newly unlocked now
+// Marks site i done and unlocks the kind's blueprint through bp. bp == nullptr (gameplay/blueprints off): nothing is granted, the site is
+// still investigated. An already-unlocked blueprint gives unlocked = false.
+inline BlueprintGrant investigateSite(std::vector<bool>& done, size_t i, const AnomalyKind& k, gameplay::IBlueprints* bp) {
+    if (i < done.size()) done[i] = true;
+    BlueprintGrant g;
+    g.id = k.blueprint;
+    if (!g.id.empty() && bp) g.unlocked = bp->unlock(g.id);
+    return g;
 }
 
 // ---- save: which ids are done ----

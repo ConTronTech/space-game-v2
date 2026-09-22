@@ -12,7 +12,11 @@
 namespace gameplay {
 
 struct Ingredient { std::string id; int need = 0; };
-struct Recipe { std::string id, name, result; std::vector<Ingredient> ingredients; };
+struct Recipe {
+    std::string id, name, result; std::vector<Ingredient> ingredients;
+    std::string requiresBlueprint;   // "" = anyone can craft it; else a blueprint id (gameplay::IBlueprints, docs/BLUEPRINTS.md)
+    std::string blueprintName;       // display name for the refusal ("blueprint required: <name>"); filled by gameplay/crafting
+};
 
 // ---- crafting ----
 struct Decision { bool ok = false; std::string reason; };
@@ -20,8 +24,13 @@ struct Decision { bool ok = false; std::string reason; };
 // countOf(id) = how many are in the hold. Ingredients (ores) come out of their own resource holds; the RESULT needs room only in the GENERAL hold:
 // generalFree = free volume in it now, isGeneral(id) says whether an ingredient lives there too (then its volume is freed for the result),
 // volumeOf(id) = volume per item. `docked` only matters when requireDock is on.
+// hasBlueprint(id) = is that blueprint unlocked; NULL = gameplay/blueprints is not loaded, and then the blueprint gate does not exist (no softlock).
+// The blueprint is checked first: docking or mining will not help without it.
 inline Decision decideCraft(const Recipe& r, const std::function<int(const std::string&)>& countOf, const std::function<float(const std::string&)>& volumeOf,
-                            float generalFree, float resultVolume, bool requireDock, bool docked, const std::function<bool(const std::string&)>& isGeneral = nullptr) {
+                            float generalFree, float resultVolume, bool requireDock, bool docked, const std::function<bool(const std::string&)>& isGeneral = nullptr,
+                            const std::function<bool(const std::string&)>& hasBlueprint = nullptr) {
+    if (!r.requiresBlueprint.empty() && hasBlueprint && !hasBlueprint(r.requiresBlueprint))
+        return {false, "blueprint required: " + (r.blueprintName.empty() ? r.requiresBlueprint : r.blueprintName)};
     if (requireDock && !docked) return {false, "dock at a station to craft"};
     if (r.ingredients.empty()) return {false, "recipe has no ingredients"};
     for (auto& ing : r.ingredients) {

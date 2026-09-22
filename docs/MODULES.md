@@ -10,7 +10,7 @@ package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orb
 package/modules/ui/        pause_menu, ship_hud
 package/modules/combat/    weapons (blaster + mining beam, ICombat)
 package/modules/core/input_methods/  keyboard, mouse, joystick (joysticks / wheels / pedals / shifters: docs/CONTROLLERS.md)
-package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore chunks from destroyed asteroids), crafting (ICrafting)
+package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore chunks from destroyed asteroids), crafting (ICrafting), blueprints (IBlueprints: recipe unlocks, docs/BLUEPRINTS.md)
 package/modules/ui/game_menu  the tabbed game menu (IGameMenu)
 package/modules/ui/system_map  the MAP tab of the game menu (star system schematic, docs/SYSTEM_MAP.md)
 package/modules/fx/        particles (engine exhaust, sparks, debris, warp flash; fx::SpawnParticles event)
@@ -70,6 +70,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::IControllers` | the connected joysticks / wheels: `devices()`, `deviceCount()`, `rawAxis(dev, i)`, `rawButton`, `rawHat`, `lastEvent()` - see docs/CONTROLLERS.md |
 | `ui::IGameMenu` | `addTab(name, order, drawFn)`, `removeTab`, `open()`, `close()`, `isOpen()`: the game menu on the I key; other modules add tabs - see docs/GAME_MENU.md |
 | `gameplay::ICrafting` (+ events `CraftResult`, `ItemUsed`) | `recipes()`, `canCraft`, `craft`, `use`: turn ore into items and use them - see docs/CRAFTING.md |
+| `gameplay::IBlueprints` (+ event `BlueprintUnlocked`) | `unlocked(id)`, `unlock(id)`, `list()`, `displayName(id)`: recipe unlocks from exploration; absent = no gate - see docs/BLUEPRINTS.md |
 | `gameplay::IInventory` (+ events `InventoryChanged`, `CargoFull`, `OreMined`) | the cargo hold: `capacity()`, `used()`, `free()`, `count(id)`, `add(id, n)` (partial accept), `remove(id, n)` (atomic), `stacks()`, upgrade levels - see docs/INVENTORY.md, docs/MINING.md |
 | `combat::ICombat` (+ events `ProjectileHit`, `WeaponChanged`, `Overheated`) | selected weapon, heat, overheat, firing, hit-marker age: what a crosshair heat bar needs - see docs/COMBAT.md |
 | `fx::SpawnParticles` (event) | emit it to spawn a particle burst: `{kind, position, direction, velocity, count, ...}` - see docs/FX.md |

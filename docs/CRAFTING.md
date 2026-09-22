@@ -4,8 +4,8 @@ Ore becomes items, and items become fuel, repairs and upgrades. **Fuel, shield a
 Code: `package/modules/gameplay/crafting/` (`crafting_rules.h` is pure and unit-tested by `test_crafting.cpp`). The UI is the CRAFTING tab of the game menu (docs/GAME_MENU.md) and the USE buttons of the CARGO tab.
 
 ## Recipes (`data/recipes.json`)
-`"id": { "name": ..., "result": <item id from items.json>, "ingredients": { <ore or item id>: amount, ... } }`. Adding a recipe is adding an entry (a unit test checks every recipe makes a real item from real ores).
-**`craft(id)`** is atomic: it works only if **all** ingredients are in the hold **and** the result fits (ingredients leave first, so their space counts as free; the result's volume is the optional `"volume"` in `data/items.json`, default 1), otherwise nothing changes. Refusal reasons: `missing N <ore>` (the first missing ingredient), `cargo full`, `dock at a station to craft` (only with `crafting.require_dock`), `unknown recipe`, `no cargo hold`.
+`"id": { "name": ..., "result": <item id from items.json>, "ingredients": { <ore or item id>: amount, ... } }`, optional `"requires_blueprint": "<blueprint id>"` (docs/BLUEPRINTS.md; Missile Pack is gated). Adding a recipe is adding an entry (a unit test checks every recipe makes a real item from real ores).
+**`craft(id)`** is atomic: it works only if **all** ingredients are in the hold **and** the result fits (ingredients leave first, so their space counts as free; the result's volume is the optional `"volume"` in `data/items.json`, default 1), otherwise nothing changes. Refusal reasons: `blueprint required: <name>` (checked first; only while `gameplay/blueprints` is loaded, docs/BLUEPRINTS.md), `missing N <ore>` (the first missing ingredient), `cargo full`, `dock at a station to craft` (only with `crafting.require_dock`), `unknown recipe`, `no cargo hold`.
 
 ## Items and effects (`data/items.json`, `effect`)
 `use(item)` applies the effect **only through `ship::IShip`** and consumes one item **only after** it has been applied. A refused use keeps the item. Effect table:

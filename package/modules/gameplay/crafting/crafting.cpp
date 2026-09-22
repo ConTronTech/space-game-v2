@@ -9,6 +9,8 @@
 #include "core/ui_handler/ui_handler.h"
 #include "engine/engine.h"
 #include "engine/log.h"
+#include "gameplay/blueprints/blueprints_api.h"
+#include "gameplay/blueprints/blueprints_rules.h"
 #include "gameplay/crafting/crafting_api.h"
 #include "gameplay/crafting/crafting_data.h"
 #include "gameplay/crafting/crafting_rules.h"
@@ -21,7 +23,7 @@ class Crafting : public engine::Module, public gameplay::ICrafting {
 public:
     const char* name() const override { return "gameplay/crafting"; }
     std::vector<std::string> dependencies() const override { return {"gameplay/inventory", "core/data_registry"}; }
-    std::vector<std::string> optionalDependencies() const override { return {"ui/game_menu", "ship/ship_core", "ship/fake_ship", "ship/docking", "core/audio"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"ui/game_menu", "ship/ship_core", "ship/fake_ship", "ship/docking", "core/audio", "gameplay/blueprints"}; }
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
@@ -29,6 +31,9 @@ public:
         data_ = &eng.services.require<core::IData>();
         for (auto& id : data_->ids("recipes")) recipes_.push_back(gameplay::recipeFromJson(id, data_->get("recipes", id)));
         for (auto& id : data_->ids("items")) effects_[id] = gameplay::effectFromJson(data_->get("items", id));
+        for (auto& r : recipes_) if (!r.requiresBlueprint.empty())          // blueprint display name: data/blueprints.json, else the title-cased id
+            r.blueprintName = data_->has("blueprints", r.requiresBlueprint) ? gameplay::blueprintName(r.requiresBlueprint, data_->get("blueprints", r.requiresBlueprint))
+                                                                            : gameplay::blueprintTitle(r.requiresBlueprint);
         for (auto& r : recipes_) if (!data_->has("items", r.result)) LOG_W("crafting", "recipe '%s' makes unknown item '%s'", r.id.c_str(), r.result.c_str());
         eng.services.provide<gameplay::ICrafting>(this);
         if (auto* menu = eng.services.get<ui::IGameMenu>()) {
@@ -62,8 +67,11 @@ public:
         auto* i = inv();
         if (!i) { reason = "no cargo hold"; return false; }
         auto* dock = eng_->services.get<ship::IDocking>();
+        auto* bp = eng_->services.get<gameplay::IBlueprints>();            // absent = no blueprint gate at all
+        std::function<bool(const std::string&)> hasBp;
+        if (bp) hasBp = [bp](const std::string& k) { return bp->unlocked(k); };
         auto d = gameplay::decideCraft(*r, [&](const std::string& k) { return i->count(k); }, [&](const std::string& k) { return volumeOf(k); },
-                                       i->free(r->result), volumeOf(r->result), requireDock_, dock && dock->docked(), [&](const std::string& k) { return !i->isResource(k); });
+                                       i->free(r->result), volumeOf(r->result), requireDock_, dock && dock->docked(), [&](const std::string& k) { return !i->isResource(k); }, hasBp);
         reason = d.reason;
         return d.ok;
     }

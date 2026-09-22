@@ -1,0 +1,4 @@
+{
+  "_comment": "Blueprints (gameplay/blueprints, docs/BLUEPRINTS.md): id -> display name. A recipe with requires_blueprint = one of these ids cannot be crafted until it is unlocked; unlocks come only from exploration (anomalies.json \"blueprint\"), never from buying.",
+  "missile_pack": { "name": "Missile Pack" }
+}

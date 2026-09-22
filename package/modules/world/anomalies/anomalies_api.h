@@ -25,6 +25,7 @@ struct AnomalyInvestigated {
     std::string kind;       // data/anomalies.json id
     std::string oreGiven;   // "" when the kind has no reward entry
     int amount = 0;         // what the hold actually accepted (0 without gameplay/inventory, or when that ore's hold is full)
+    std::string blueprint;  // blueprint newly unlocked here ("" = none: the kind has none, gameplay/blueprints is off, or it was already known)
 };
 
 } // namespace world

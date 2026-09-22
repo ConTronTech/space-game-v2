@@ -136,7 +136,7 @@ TEST(anomalies_shipped_data_file_is_valid) {
         for (const auto& r : k.rewards) CHECK(ores.has(r.ore));                 // every reward is a real ore
         CHECK(k.messages.size() >= 2);
     }
-    CHECK(kinds >= 2 && kinds <= 4);
+    CHECK(kinds >= 2 && kinds <= 5);                                  // 5: + ancient_blueprint_cache (docs/BLUEPRINTS.md)
 }
 
 TEST(anomalies_scanner_item_sets_the_perk_once) {
