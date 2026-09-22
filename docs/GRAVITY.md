@@ -46,7 +46,7 @@ Note: the moons' SOIs are small (a few hundred units above their surfaces) becau
 | `gravity.sun_range` | 2 | The sun pulls out to this many times the outermost planet's orbit radius. |
 
 ## Interactions
-- **Orbit lock** (docs/ORBIT_LOCK.md): while locked, gravity is **not** applied: the lock already steers the ship on the exact analytic circle with `setVelocity`; adding gravity would fight it. The lock state comes from the existing `ship::OrbitLockChanged` event (no change to orbit_lock was needed). When the lock releases, the ship leaves with the circular velocity and simply stays in that orbit under real gravity.
+- **Orbit lock** (docs/ORBIT_LOCK.md): while locked, gravity is **not** applied: the lock already steers the ship on the exact analytic circle with `setVelocity`; adding gravity would fight it. The lock state comes from the existing `ship::OrbitLockChanged` event (no change to orbit_lock was needed). Gravity does not tilt the orbit guide's plane (it pulls within it); the guide's old jitter was its vertex anchoring, see docs/ORBIT_LOCK.md "Guide look". When the lock releases, the ship leaves with the circular velocity and simply stays in that orbit under real gravity.
 - **Docking**: skipped while `ship::IDocking::busy()` (approach or docked: the ship is held).
 - **Warp**: skipped while `status().warping`.
 - **Dead / paused**: skipped (fixed steps do not run while paused anyway).

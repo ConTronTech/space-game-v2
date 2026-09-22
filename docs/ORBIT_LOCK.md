@@ -39,6 +39,20 @@ The lock is **not saved**: after loading a game the ship is simply flying with t
 ## Event for the HUD
 `ship::OrbitLockChanged{locked, bodyName}` (`orbit_lock_api.h`) on every engage/release, e.g. `ORBIT LOCKED: PLANET 1`. `bodyName` is also set on release. The HUD/cockpit is not touched by this module.
 
+## Guide look: a stable ring and a colour gradient (w50)
+- **Why the ring "recast"**: the ring used to be built with vertex 0 AT THE SHIP, so every frame all 96 vertices, the 30-degree ticks and the bright
+  arc slid round the circle by the ship's travel (~1.5 units per frame at 90 m/s): the chords visibly crawled. Gravity (on by default) was the suspect,
+  but measured while coasting under gravity (`--gravity-scenario=orbit`) the raw plane normal moves only ~1e-5 degrees per frame (rms; gravity pulls
+  toward the body, i.e. inside the orbit plane, so it does not tilt it). Now the vertices and ticks sit at fixed angles from a fixed in-plane reference
+  (`orbit::stableCirclePoints` / `planeReference`) and the bright arc is picked by angle ahead of the ship (`aheadAngle`): vertex motion dropped to
+  ~0.45 units per frame, which is only the real change in orbit radius. The ring still passes through the ship.
+- **Display smoothing of the plane**: `orbit::smoothNormal` eases the DRAWN plane toward the raw one (time constant 0.15 s) and takes any change over
+  10 degrees at once, so noise (e.g. the nose-driven radial-approach plane) is damped and real turns never lag. The lock, the alignment check and
+  the HUD numbers use the raw state, unchanged.
+- **Colour**: `orbit::alignmentCloseness` (0 = perfect, 1 = at the tolerance edge; also used by `settleSecondsFor`) is evaluated against 3x the lock
+  tolerances, and `orbit::guideColour` smoothsteps amber -> green over it; the ring, arc, ticks, markers and the HUD block's second line all share it.
+  Aligned sits in the green third; far off (or outside the lock band) is full amber. Pressing O still uses the binary latched check.
+
 ## Tunables
 `orbit.gravity_scale` 60, `orbit.engage_range` 3 (radii above the surface), `orbit.min_altitude` 20, `orbit.release_on_thrust` true.
 

@@ -187,6 +187,7 @@ private:
         if (ok) ok = orbit::guideVisible(showGuide_, locked_, st->alive, st->warping, docking, probe_.altitude, probe_.radius, guideRange_, guideMinRange_);
         if (!ok) {
             latch_ = {};
+            drawNormal_ = {};                                                  // next time the guide shows, its plane starts from the raw one
             if (was) LOG_D("orbit", "guide off");
             return;
         }
@@ -195,6 +196,12 @@ private:
         if (aligned) align_.reason = orbit::Refusal::None;
         if (guideName_ != probe_.name) guideName_ = probe_.name;
         guideActive_ = true;
+        // the drawn plane: eased toward the raw one (small wobble damped, a real turn or a new body taken at once). Display only: the lock
+        // and the alignment check use the raw orbit.
+        if (probe_.index != drawBody_) { drawBody_ = probe_.index; drawNormal_ = {}; }
+        drawNormal_ = orbit::smoothNormal(drawNormal_, probe_.orbit.normal, eng.paused() ? 0.0 : (double)dt);
+        closeness_ = align_.reason == orbit::Refusal::TooClose || align_.reason == orbit::Refusal::TooFar
+                   ? 1.0 : orbit::alignmentCloseness(probe_.align, orbit::widened(tol_, kColourSpan));
         if (!was) LOG_D("orbit", "guide on: %s, altitude %.0f (shows within %.0f)", guideName_.c_str(), probe_.altitude, orbit::guideRange(probe_.radius, guideRange_, guideMinRange_));
         if (planeFallback_ != loggedFallback_) {
             loggedFallback_ = planeFallback_;
@@ -258,10 +265,16 @@ private:
         world::Vec3d center = sys->positionAt(probe_.index);
         orbit::Orbit o = probe_.orbit;
         o.rel0 = orbit::sub(probe_.pos, center);                       // the body moved a little since the update
-        orbit::circlePoints(center, o, segments_, ring_);
-        const bool ok = align_.aligned();
-        const float cr = ok ? 0.30f : 1.00f, cg = ok ? 1.00f : 0.75f, cb = ok ? 0.45f : 0.20f;
-        const int ahead = orbit::arcAheadSegments(segments_, 90.0);
+        o.radius = orbit::length(o.rel0);
+        if (orbit::length(drawNormal_) > 0.5) o.normal = drawNormal_;
+        o.rel0 = orbit::sub(o.rel0, orbit::mul(o.normal, orbit::dot(o.rel0, o.normal)));   // the ship's point in the drawn plane
+        // vertices at fixed angles in the plane (not from the ship): they stay put as the ship moves round, nothing crawls
+        orbit::stableCirclePoints(center, o.normal, o.radius, segments_, ring_);
+        const world::Vec3d ref = orbit::planeReference(o.normal);
+        const double shipAngle = orbit::planeAngle(o.normal, ref, o.rel0), step = 2.0 * 3.14159265358979 / segments_;
+        const orbit::Rgb col = orbit::guideColour(closeness_);
+        const float cr = col.r, cg = col.g, cb = col.b, green = (float)orbit::smoothstep01(1.0 - closeness_);
+        const double ahead = 3.14159265358979 / 2.0;
         // calm at range: dimmer the farther the ship is from the ring's centre point of view (fades over 4 orbit radii)
         double fadeDist = std::max(1.0, 4.0 * o.radius);
         const int n = (int)ring_.size();
@@ -270,8 +283,9 @@ private:
             verts_[(size_t)i * 3] = (float)d.x; verts_[(size_t)i * 3 + 1] = (float)d.y; verts_[(size_t)i * 3 + 2] = (float)d.z;
             float dist = (float)orbit::length(d);
             float fade = std::clamp(1.2f - dist / (float)fadeDist, 0.12f, 1.0f);
-            float base = ok ? 0.55f : 0.32f;
-            float a = i <= ahead ? (0.95f - 0.45f * (float)i / (float)ahead) : base;   // the arc ahead: brightest at the ship, still clear at its far end
+            float base = 0.32f + (0.55f - 0.32f) * green;
+            double ah = orbit::aheadAngle(step * (i % segments_), shipAngle);
+            float a = ah <= ahead ? (0.95f - 0.45f * (float)(ah / ahead)) : base;   // the arc ahead: brightest at the ship, still clear at its far end
             cols_[(size_t)i * 4] = cr; cols_[(size_t)i * 4 + 1] = cg; cols_[(size_t)i * 4 + 2] = cb; cols_[(size_t)i * 4 + 3] = a * fade;
         }
 
@@ -288,7 +302,7 @@ private:
         if (segments_ >= 96) {
             double tick = std::clamp(o.radius * 0.025, 4.0, 80.0);
             for (int k = 0; k < 12; k++) {
-                world::Vec3d rel = orbit::rotateAbout(o.rel0, o.normal, k * 3.14159265358979 / 6.0);
+                world::Vec3d rel = orbit::rotateAbout(orbit::mul(ref, o.radius), o.normal, k * 3.14159265358979 / 6.0);
                 world::Vec3d u = orbit::normalized(rel);
                 addLine(orbit::add(center, orbit::add(rel, orbit::mul(u, -tick))), orbit::add(center, orbit::add(rel, orbit::mul(u, tick))), cr, cg, cb, 0.55f);
             }
@@ -335,8 +349,8 @@ private:
         float x = W - 16 * s - w, y = 16 * s;
         ui.glass(x, y, w, h, 0.9f);
         core::Color c1 = ui.theme.accent;
-        bool ok = align_.aligned();
-        core::Color c2 = ok ? core::Color{0.40f, 1.0f, 0.55f, 1.0f} : core::Color{1.0f, 0.75f, 0.25f, 1.0f};
+        const orbit::Rgb col = orbit::guideColour(closeness_);
+        core::Color c2{col.r, col.g, col.b, 1.0f};
         ui.text(x + 16 * s, y + 8 * s, line1_, f1, c1);
         ui.text(x + 16 * s, y + 8 * s + f1 * 1.5f, line2_, f2, c2);
     }
@@ -357,6 +371,11 @@ private:
     float guideRange_ = 6.0f, guideMinRange_ = 2500.0f, settleSeconds_ = 1.5f, settleLog_ = 0;
     double settleSeconds_used_ = 0, textAt_ = -1;
     int segments_ = 96;
+    // the ring's colour spans 0..kColourSpan x the lock tolerances (aligned sits in the green third; far off is full amber)
+    static constexpr double kColourSpan = 3.0;
+    world::Vec3d drawNormal_{};
+    int drawBody_ = -1;
+    double closeness_ = 1.0;
     orbit::Tolerances tol_;
     orbit::Alignment align_;
     orbit::AlignLatch latch_;

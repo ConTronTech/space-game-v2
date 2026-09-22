@@ -267,15 +267,69 @@ inline bool guideVisible(bool enabled, bool locked, bool alive, bool warping, bo
 // ---- settling onto the orbit ----
 // The settle takes longer for a bigger error (a curve, not a snap): `base` at a perfect entry up to max(base, maxSeconds) at the edge of the
 // tolerances (the latch lets it lock a little beyond). The commanded acceleration of the blend peaks at 1.5 x (velocity error) / seconds.
-inline double settleSecondsFor(double base, const Alignment& a, const Tolerances& tol, double maxSeconds = 3.0) {
-    if (base <= 0.0) return 0.0;
+// How far from aligned, normalized: 0 = perfect (tangent, circular speed), 1 = at or beyond the edge of a tolerance (the worse of heading and speed).
+inline double alignmentCloseness(const Alignment& a, const Tolerances& tol) {
     double eh = tol.angleDeg > 0 ? a.headingDeg / tol.angleDeg : 0.0;
     double es = tol.speedFrac > 0 && a.needSpeed > 0 ? std::fabs(a.speedError) / (tol.speedFrac * a.needSpeed) : 0.0;
-    double e = std::clamp(std::max(eh, es), 0.0, 1.0);
-    return base + (std::max(base, maxSeconds) - base) * e;
+    return std::clamp(std::max(eh, es), 0.0, 1.0);
+}
+
+inline double settleSecondsFor(double base, const Alignment& a, const Tolerances& tol, double maxSeconds = 3.0) {
+    if (base <= 0.0) return 0.0;
+    return base + (std::max(base, maxSeconds) - base) * alignmentCloseness(a, tol);
 }
 
 inline double smoothstep01(double x) { x = std::max(0.0, std::min(1.0, x)); return x * x * (3.0 - 2.0 * x); }
+
+// ---- the guide's look (w50): a colour gradient and a ring that does not crawl ----
+// Amber (1.00, 0.75, 0.20) at closeness 1 to green (0.30, 1.00, 0.45) at 0, smoothstepped. Display only: locking still uses the latched boolean.
+struct Rgb { float r = 0, g = 0, b = 0; };
+inline Rgb guideColour(double closeness) {
+    float k = (float)smoothstep01(1.0 - closeness);   // 1 = green
+    return {1.00f + (0.30f - 1.00f) * k, 0.75f + (1.00f - 0.75f) * k, 0.20f + (0.45f - 0.20f) * k};
+}
+
+// Display smoothing of the plane normal: small changes ease in (exponential, time constant `tau` seconds), a big one (> snapDeg, a real turn or
+// a new body) is taken at once so the ring never lags a manoeuvre. Always returns a unit vector (raw when `cur` is unusable).
+constexpr double kNormalTau = 0.15, kNormalSnapDeg = 10.0;
+inline Vec3d smoothNormal(const Vec3d& cur, const Vec3d& raw, double dt, double tau = kNormalTau, double snapDeg = kNormalSnapDeg) {
+    Vec3d r = normalized(raw);
+    if (length(r) < 0.5) return length(cur) > 0.5 ? normalized(cur) : Vec3d{0, 1, 0};
+    Vec3d c = normalized(cur);
+    if (length(c) < 0.5 || !(dt > 0.0) || tau <= 0.0) return r;
+    double d = std::clamp(dot(c, r), -1.0, 1.0);
+    if (std::acos(d) * 180.0 / 3.14159265358979323846 > snapDeg) return r;
+    double k = 1.0 - std::exp(-dt / tau);
+    Vec3d m = normalized(add(c, mul(sub(r, c), k)));   // nlerp: fine for the small angles that reach here
+    return length(m) > 0.5 ? m : r;
+}
+
+// A fixed direction in the plane (world X projected into it, else Z): ring vertices are placed at fixed angles from it, not from the ship, so
+// they stay put while the ship moves along the ring (anchoring vertex 0 at the ship made every chord and tick slide each frame: the "recast").
+inline Vec3d planeReference(const Vec3d& normal) {
+    Vec3d u = sub(Vec3d{1, 0, 0}, mul(normal, normal.x));
+    if (length(u) < 0.3) u = sub(Vec3d{0, 0, 1}, mul(normal, normal.z));
+    return normalized(u);
+}
+// Angle of `rel` round the normal from the reference, in [0, 2 pi), in the direction of travel.
+inline double planeAngle(const Vec3d& normal, const Vec3d& ref, const Vec3d& rel) {
+    double a = std::atan2(dot(cross(ref, rel), normal), dot(ref, rel));
+    return a < 0 ? a + 2.0 * 3.14159265358979323846 : a;
+}
+// segments + 1 points of the circle of `radius` about `center` in the plane, vertex i at angle 2 pi i / segments from planeReference().
+inline void stableCirclePoints(const Vec3d& center, const Vec3d& normal, double radius, int segments, std::vector<Vec3d>& out) {
+    segments = std::max(3, segments);
+    out.resize((size_t)segments + 1);
+    Vec3d u = mul(planeReference(normal), radius);
+    const double step = 2.0 * 3.14159265358979323846 / segments;
+    for (int i = 0; i <= segments; i++) out[(size_t)i] = add(center, rotateAbout(u, normal, step * (i % segments)));
+}
+// How far AHEAD of the ship (radians, [0, 2 pi)) a vertex at angle `vertexAngle` is, the ship being at `shipAngle`.
+inline double aheadAngle(double vertexAngle, double shipAngle) {
+    const double tau = 2.0 * 3.14159265358979323846;
+    double d = std::fmod(vertexAngle - shipAngle, tau);
+    return d < 0 ? d + tau : d;
+}
 
 // Circular velocity at offset `off` for this orbit's body and plane: the circular speed at |off| (not the lock radius), along the orbit tangent.
 inline double orbitMu(const Orbit& o) { return o.speed * o.speed * o.radius; }

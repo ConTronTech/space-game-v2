@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include "ship/orbit_lock/orbit_lock_rules.h"
 #include "tests/test.h"
@@ -375,4 +376,108 @@ TEST(guide_settle_is_continuous_when_the_guide_plane_changes) {
             CHECK(std::isfinite(length(off)) && length(off) > 0.8 * o.radius);
         }
     }
+}
+
+// ---- w50: colour gradient, closeness, display smoothing, a ring that does not crawl ----
+namespace {
+Alignment alignWith(double headingDeg, double speedError, double needSpeed = 100) {
+    Alignment a; a.headingDeg = headingDeg; a.speedError = speedError; a.needSpeed = needSpeed; return a;
+}
+double angleDeg(const Vec3d& a, const Vec3d& b) { return std::acos(std::clamp(dot(normalized(a), normalized(b)), -1.0, 1.0)) * 180.0 / kPi; }
+}
+
+TEST(alignment_closeness_scales_and_clamps) {
+    Tolerances tol;   // 25 deg, 25 %
+    CHECK(near(alignmentCloseness(alignWith(0, 0), tol), 0.0, 1e-9));
+    CHECK(near(alignmentCloseness(alignWith(25, 0), tol), 1.0, 1e-9));          // heading at the edge
+    CHECK(near(alignmentCloseness(alignWith(0, -25), tol), 1.0, 1e-9));         // speed at the edge
+    CHECK(near(alignmentCloseness(alignWith(12.5, 0), tol), 0.5, 1e-9));
+    CHECK(near(alignmentCloseness(alignWith(5, 20), tol), 0.8, 1e-9));          // the worse of the two
+    CHECK(near(alignmentCloseness(alignWith(90, 500), tol), 1.0, 1e-9));        // clamped
+    CHECK(alignmentCloseness(alignWith(10, 0), tol) < alignmentCloseness(alignWith(20, 0), tol));
+    CHECK(near(alignmentCloseness(alignWith(75, 0), widened(tol, 3.0)), 1.0, 1e-9));
+}
+
+TEST(settle_seconds_unchanged_by_the_refactor) {
+    Tolerances tol;
+    auto old = [&](double base, const Alignment& a, double maxS = 3.0) {   // the pre-w50 formula, verbatim
+        if (base <= 0.0) return 0.0;
+        double eh = tol.angleDeg > 0 ? a.headingDeg / tol.angleDeg : 0.0;
+        double es = tol.speedFrac > 0 && a.needSpeed > 0 ? std::fabs(a.speedError) / (tol.speedFrac * a.needSpeed) : 0.0;
+        double e = std::clamp(std::max(eh, es), 0.0, 1.0);
+        return base + (std::max(base, maxS) - base) * e;
+    };
+    const double cases[][3] = {{0, 0, 100}, {10, 3, 100}, {25, 0, 84}, {3, -30, 84}, {40, 50, 188}, {0, 0, 0}};
+    for (double base : {0.0, 0.5, 1.2, 4.0})
+        for (auto& c : cases) {
+            Alignment a = alignWith(c[0], c[1], c[2]);
+            CHECK(near(settleSecondsFor(base, a, tol), old(base, a), 1e-12));
+        }
+}
+
+TEST(guide_colour_is_a_smooth_gradient) {
+    Rgb g = guideColour(0.0), am = guideColour(1.0), mid = guideColour(0.5);
+    CHECK(near(g.r, 0.30, 1e-6) && near(g.g, 1.00, 1e-6) && near(g.b, 0.45, 1e-6));
+    CHECK(near(am.r, 1.00, 1e-6) && near(am.g, 0.75, 1e-6) && near(am.b, 0.20, 1e-6));
+    CHECK(near(mid.r, 0.65, 1e-6));                                               // smoothstep(0.5) = 0.5
+    float prev = guideColour(0.0).r;
+    for (int i = 1; i <= 20; i++) { float r = guideColour(i / 20.0).r; CHECK(r >= prev - 1e-6f); CHECK(r - prev < 0.08f); prev = r; }   // monotonic, no jump
+}
+
+TEST(smooth_normal_converges_to_a_step) {
+    Vec3d cur{0, 1, 0}, target = rotateAbout({0, 1, 0}, {1, 0, 0}, 5.0 * kPi / 180.0);   // a 5 deg step (under the snap)
+    int frames = 0;
+    while (angleDeg(cur, target) > 0.05 && frames < 1000) { cur = smoothNormal(cur, target, 1.0 / 60.0); frames++; }
+    CHECK(frames < 60);                                                            // under a second
+    CHECK(near(length(cur), 1.0, 1e-9));
+    Vec3d big = rotateAbout({0, 1, 0}, {1, 0, 0}, 30.0 * kPi / 180.0);              // a real turn: taken at once
+    CHECK(angleDeg(smoothNormal({0, 1, 0}, big, 1.0 / 60.0), big) < 1e-6);
+}
+
+TEST(smooth_normal_damps_jitter) {
+    Vec3d base{0, 1, 0}, cur = base;
+    unsigned seed = 12345;
+    auto rnd = [&]() { seed = seed * 1103515245u + 12345u; return ((seed >> 8) & 0xffff) / 65535.0 * 2.0 - 1.0; };
+    double rawSq = 0, outSq = 0; Vec3d prevRaw = base, prevOut = base;
+    for (int i = 0; i < 2000; i++) {
+        Vec3d raw = normalized(add(base, {rnd() * 0.005, 0, rnd() * 0.005}));    // ~0.3 deg of noise
+        cur = smoothNormal(cur, raw, 1.0 / 60.0);
+        double dr = angleDeg(raw, prevRaw), dO = angleDeg(cur, prevOut);
+        rawSq += dr * dr; outSq += dO * dO; prevRaw = raw; prevOut = cur;
+        CHECK(std::isfinite(cur.x) && std::isfinite(cur.y) && std::isfinite(cur.z));
+    }
+    CHECK(outSq < 0.05 * rawSq);                                                   // frame-to-frame motion well damped
+    CHECK(angleDeg(cur, base) < 0.3);                                              // no net drift
+}
+
+TEST(smooth_normal_degenerate_inputs) {
+    Vec3d n = smoothNormal({0, 0, 0}, {0, 0, 3}, 1.0 / 60.0);
+    CHECK(near(length(n), 1.0, 1e-9) && near(n.z, 1.0, 1e-9));
+    n = smoothNormal({0, 1, 0}, {0, 0, 0}, 1.0 / 60.0);                            // no raw plane: keep the current
+    CHECK(near(n.y, 1.0, 1e-9));
+    n = smoothNormal({0, 0, 0}, {0, 0, 0}, 1.0 / 60.0);
+    CHECK(near(length(n), 1.0, 1e-9));
+    n = smoothNormal({0, 1, 0}, {0, -1, 0}, 1.0 / 60.0);                           // flipped: snaps, no NaN
+    CHECK(near(n.y, -1.0, 1e-9));
+    n = smoothNormal({0, 1, 0}, {0.01, 1, 0}, 0.0);                                // paused: raw
+    CHECK(std::isfinite(n.x) && near(length(n), 1.0, 1e-9));
+}
+
+TEST(stable_ring_does_not_crawl_as_the_ship_moves) {
+    Vec3d normal = normalized({0.2, 1, 0.1}), centre{10, 20, 30};
+    std::vector<Vec3d> a, b;
+    stableCirclePoints(centre, normal, 1000, 96, a);
+    stableCirclePoints(centre, normal, 1000, 96, b);   // the ship has moved round the ring; same radius: identical vertices
+    CHECK_EQ(a.size(), 97u);
+    for (size_t i = 0; i < a.size(); i++) {
+        CHECK(near(length(sub(a[i], b[i])), 0.0, 1e-9));
+        CHECK(near(length(sub(a[i], centre)), 1000.0, 1e-6));
+        CHECK(near(dot(sub(a[i], centre), normal), 0.0, 1e-6));
+    }
+    CHECK(near(length(sub(a.front(), a.back())), 0.0, 1e-9));
+    Vec3d ref = planeReference(normal);
+    CHECK(near(planeAngle(normal, ref, mul(ref, 5.0)), 0.0, 1e-9));
+    CHECK(near(planeAngle(normal, ref, rotateAbout(ref, normal, 1.0)), 1.0, 1e-9));   // measured in the direction of travel
+    CHECK(near(aheadAngle(0.1, 6.2), 0.1 + 2 * kPi - 6.2, 1e-9));
+    CHECK(near(aheadAngle(1.0, 0.5), 0.5, 1e-9));
 }
