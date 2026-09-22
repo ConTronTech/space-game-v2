@@ -43,8 +43,8 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `skybox.max_size` (px) | 512 | 1024 | 2048 | 2048 |
 | `starfield.count` | 1200 | 2500 | 4000 | 6000 |
 | `world.sphere_detail` | 0 | 1 | 1 | 1 |
-| `world.planet_max_lod` | 2 | 3 | 3 | 4 |
-| `world.planet_triangle_budget` | 8000 | 20000 | 40000 | 80000 |
+| `world.planet_max_lod` | 2 | 3 | 3 | 5 |
+| `world.planet_triangle_budget` | 8000 | 20000 | 40000 | 160000 |
 | `world.planet_lod_edge_px` (smaller = finer) | 20 | 12 | 8 | 6 |
 | `asteroids.belt_asteroids` | 600 | 1500 | 2500 | 4000 |
 | `asteroids.cluster_asteroids` | 30 | 60 | 100 | 150 |
@@ -66,6 +66,11 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `fx.exhaust` (0 = off, 0.5 = half the particles) | 0.5 | 1 | 1 | 1 |
 | `fx.spawn_budget` (particles per frame) | 60 | 150 | 250 | 400 |
 | `fx.size_scale` | 1 | 1 | 1 | 1 |
+
+**Ultra planet detail (3.3c):** the mesh code had a hard ceiling (`world::kMaxMeshLevel` = 4, 5,120 triangles), so Ultra planets looked coarse up close. The ceiling is now **5** (20,480 triangles) and only Ultra's column uses it: `planet_max_lod` 4 -> 5, `planet_triangle_budget` 80,000 -> 160,000 (four planets at level 5 before the budget bites); `planet_lod_edge_px` stays 6, which already asks for level 5 once a planet is ~110 px in radius on screen.
+Measured cost of building one planet mesh on the dev PC (`-O2`, best of 10): level 4 **1.5 ms**, level 5 **6.3 ms** (10.3 ms in-game, first build at startup), level 6 **26 ms**. Meshes are built on the main thread, at most one per frame (`StarSystem::planMeshes`), so level 6 would drop at least one frame each time a planet climbs to it: level 5 is the highest that fits in a 16.7 ms frame. 16-bit indices would also allow level 6 (40,962 vertices) but not 7.
+In game (`--gravity-scenario=orbit`, 612 above Planet 1): Ultra now builds Planet 1 at level 5 and draws 22,112 planet triangles (was level 4, 6,752); Low / Medium / High reach level 2 / 3 / 3 with 1,760 / 2,912 / 2,912 triangles, byte-for-byte the same as before (their `planet_max_lod` is below the old ceiling, so the ceiling never applied to them). Tests: `quality_planet_rows_low_medium_high_unchanged`, `quality_ultra_planets_reach_level_5_close_up`.
+`world.terrain_height` was left alone for Ultra: it is also read by `world/stations` to sit surface stations on the ground and it changes the planet's silhouette, so it stays one value for every preset.
 
 (The skybox source faces are 1024 px today, so High/Ultra only pay off with larger face images.) Not tied to a preset: vsync (the window sets it; `--no-vsync` for benchmarks), `world.terrain_height`, gameplay tunables.
 To add a tunable, add a row to `presetTable()` in `quality_rules.h` (the table test checks monotonic growth).

@@ -1,6 +1,6 @@
 #pragma once
 // Pure planet terrain meshes and level-of-detail rules: no GL, no SDL, no engine types. Unit-tested in package/tests/test_planet_mesh.cpp.
-//   * icosphere of subdivision level 0..4 (10*4^L + 2 shared vertices, 20*4^L triangles), unit radius
+//   * icosphere of subdivision level 0..kMaxMeshLevel=5 (10*4^L + 2 shared vertices, 20*4^L triangles), unit radius
 //   * seeded value-noise FBM displacement (a few percent of the radius) and biome colours from height + latitude
 //   * per-vertex normals of the displaced mesh (smooth, no seams)
 //   * LOD choice from the projected size with hysteresis, and a per-frame triangle budget
@@ -13,7 +13,7 @@
 
 namespace world {
 
-constexpr int kMaxMeshLevel = 4;
+constexpr int kMaxMeshLevel = 5;   // 5 = 20,480 triangles (~6 ms to build); 6 (~26 ms) would hitch a frame on the one-build-per-frame path. docs/QUALITY.md
 
 // ---- deterministic noise (own implementation: same numbers on every platform) ----
 inline uint32_t hash32(uint32_t x) {
@@ -148,7 +148,7 @@ inline void biomeColor(const PlanetParams& p, bool ocean, float h, float lat, fl
     mixc(col, white, snow, out);
 }
 
-// Builds the terrain mesh of subdivision `level` (clamped to 0..4).
+// Builds the terrain mesh of subdivision `level` (clamped to 0..kMaxMeshLevel).
 inline PlanetMesh buildPlanetMesh(int level, const PlanetParams& p) {
     using namespace detail;
     level = std::clamp(level, 0, kMaxMeshLevel);

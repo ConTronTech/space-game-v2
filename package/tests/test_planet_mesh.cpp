@@ -9,7 +9,7 @@ world::PlanetParams params(uint32_t seed) { world::PlanetParams p; p.seed = seed
 } // namespace
 
 TEST(planet_mesh_counts_per_level) {
-    for (int l = 0; l <= 4; l++) {
+    for (int l = 0; l <= world::kMaxMeshLevel; l++) {
         auto m = world::buildPlanetMesh(l, params(5));
         CHECK_EQ(m.vertexCount(), 10 * (1 << (2 * l)) + 2);
         CHECK_EQ(m.triangleCount(), 20 * (1 << (2 * l)));
@@ -17,7 +17,9 @@ TEST(planet_mesh_counts_per_level) {
         CHECK_EQ(m.triangleCount(), world::meshTriangleCount(l));
         for (auto i : m.indices) CHECK((int)i < m.vertexCount());
     }
-    CHECK_EQ(world::buildPlanetMesh(9, params(1)).level, 4);       // clamped
+    CHECK_EQ(world::kMaxMeshLevel, 5);                              // 5 = 20,480 triangles; 6 builds too slowly for one frame (docs/QUALITY.md)
+    CHECK_EQ(world::buildPlanetMesh(9, params(1)).level, 5);       // clamped
+    CHECK(world::meshVertexCount(world::kMaxMeshLevel) <= 65535);   // indices are 16-bit
     CHECK_EQ(world::buildPlanetMesh(-3, params(1)).level, 0);
 }
 
