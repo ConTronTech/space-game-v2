@@ -1,0 +1,62 @@
+// FOR WORKERS/AGENTS testing the game (scripted scenarios, screenshots): identical to default.json except mouse capture is OFF (the desktop mouse
+// is never grabbed - safe to run on a display the user is not using) and it is meant to be combined with --display=1 (a secondary monitor, not
+// the user's primary), e.g.
+//   ./space_game_v2 --input-profile=testing --display=1 --frames=60 --screenshot=logs/x.bmp --screenshot-frame=50
+// Keyboard to move, mouse to look. Copy this file to make another profile and load it with
+//   ./space_game_v2 --input-profile=<name>
+// Every action is a list of bindings; values from all bindings are summed and clamped to -1..1.
+{
+  "name": "Keyboard + Mouse",
+
+  "devices": {
+    "mouse": { "capture": false, "sensitivity": 1.0 }
+  },
+
+  "bindings": {
+    "thrust": [ { "device": "keyboard", "key": "W", "scale":  1 },
+                { "device": "keyboard", "key": "S", "scale": -1 } ],
+    "strafe": [ { "device": "keyboard", "key": "D", "scale":  1 },
+                { "device": "keyboard", "key": "A", "scale": -1 } ],
+    "lift":   [ { "device": "keyboard", "key": "Space", "scale":  1 },   // up
+                { "device": "keyboard", "key": "C",     "scale": -1 },   // down
+                { "device": "keyboard", "key": "R",     "scale":  1 },   // (alt) up
+                { "device": "keyboard", "key": "F",     "scale": -1 } ], // (alt) down
+    "roll":   [ { "device": "keyboard", "key": "E", "scale":  1 },
+                { "device": "keyboard", "key": "Q", "scale": -1 } ],
+
+    // mouse: pixels/sec * scale. Negative = moving right turns right / moving down pitches down.
+    "yaw":    [ { "device": "mouse",    "axis": "x", "scale": -0.0006 },
+                { "device": "keyboard", "key": "Left",  "scale":  1 },
+                { "device": "keyboard", "key": "Right", "scale": -1 } ],
+    "pitch":  [ { "device": "mouse",    "axis": "y", "scale": -0.0006 },
+                { "device": "keyboard", "key": "Down", "scale":  1 },
+                { "device": "keyboard", "key": "Up",   "scale": -1 } ],
+
+    "brake":  [ { "device": "keyboard", "key": "X" },
+                { "device": "mouse",    "button": "right" } ],
+    "toggle_warp": [ { "device": "keyboard", "key": "Z" } ],         // engage / disengage the warp drive
+    "toggle_orbit_lock": [ { "device": "keyboard", "key": "O" } ],    // circular orbit around the nearest planet/moon/sun, again to release
+    "fire":       [ { "device": "mouse", "button": "left" } ],                    // hold to fire the selected weapon (mouse captured only)
+    "weapon_1":   [ { "device": "keyboard", "key": "1" } ],                       // blaster
+    "weapon_2":   [ { "device": "keyboard", "key": "2" } ],                       // mining beam
+    "weapon_3":   [ { "device": "keyboard", "key": "3" } ],                       // missiles
+    "lock_target": [ { "device": "keyboard", "key": "T" } ],                      // lock the rock nearest the nose (again: next target / clear)
+    "lock_clear":  [ { "device": "keyboard", "key": "Y" } ],                      // drop the lock
+    "weapon_next": [ { "device": "mouse", "axis": "wheel", "scale": 1 } ],         // mouse wheel: next weapon
+    "toggle_menu": [ { "device": "keyboard", "key": "I" } ],                      // the game menu (cargo, crafting, ...): I or Esc closes it
+    "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
+    "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
+    "toggle_profiler":     [ { "device": "keyboard", "key": "F3" } ],   // live profiler overlay (fps, frame graph, top consumers, hitches)
+    "toggle_profiler_gpu": [ { "device": "keyboard", "key": "F4" } ],   // while the overlay is open: GPU attribution (glFinish around render passes)
+    "dump_profile":        [ { "device": "keyboard", "key": "F5" } ],   // write logs/profile_live.txt (send it back after a stutter)
+    "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
+    "pause":  [ { "device": "keyboard", "key": "Escape" } ],
+
+    // menu navigation (also used by any future UI module)
+    "ui_up":      [ { "device": "keyboard", "key": "Up" },    { "device": "keyboard", "key": "W" } ],
+    "ui_down":    [ { "device": "keyboard", "key": "Down" },  { "device": "keyboard", "key": "S" } ],
+    "ui_left":    [ { "device": "keyboard", "key": "Left" },  { "device": "keyboard", "key": "A" } ],
+    "ui_right":   [ { "device": "keyboard", "key": "Right" }, { "device": "keyboard", "key": "D" } ],
+    "ui_confirm": [ { "device": "keyboard", "key": "Return" }, { "device": "keyboard", "key": "Space" } ]
+  }
+}

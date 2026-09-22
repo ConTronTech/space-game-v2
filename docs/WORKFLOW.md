@@ -79,3 +79,10 @@ orca-ide orchestration worker-start --run <run> --spec "<task>" --terminal <hand
   (A fresh terminal in the same worktree; the older retained workers keep their previous model until they finish.)
 - **Report early:** every spec tells the worker to send a short progress message as soon as it has something (after the first working step and after each item), partial results welcome,
   instead of one big report at the end. The coordinator reads them, so a wrong direction is caught early.
+
+## Testing display + mouse capture (user decision, 2026-09-21)
+Workers (and the coordinator, when running the real game rather than `--frames`-only headless checks) use `--display=1 --input-profile=testing`
+for any scripted scenario / screenshot run: `--display=1` opens on a secondary monitor, never the user's primary (`--list-displays` shows which
+index that is on the current machine), and `config/input/testing.json` is a copy of the default input profile with mouse capture off, so the
+desktop mouse is never grabbed. Worker specs should include this in their example commands going forward. `--frames=N` headless-only checks
+(no window content that matters) do not need it.
