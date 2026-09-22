@@ -4,6 +4,7 @@ Target (docs/VISION.md): 60 fps average and a 30 fps floor on the i5 M 560 / Int
 The dev PC cannot show a problem there, so the game measures itself: `--benchmark` (docs/BENCHMARK.md) gives the totals, `--profile` says **where the time goes**.
 
 ## Live profiler (F3 / F4 / F5): find a stutter without restarting
+**F3-F5 = performance, F6-F8 = gameplay / physics state** (the in-game debugger, docs/DEBUGGER.md: same pattern, a watch panel, debug draws and `logs/debug_state.txt`).
 The same `engine::Profiler` now also runs **live**, always on (`profiler.lite`, default true): a ring of the last 600 frames (about 10 s at 60 fps) with the frame time and the CPU time of every module hook and render pass, recorded without `glFinish` and without allocating.
 Code: `package/engine/profiler_live.{h,cpp}` (pure ring, rolling windows, 1% low, top consumers, hitch rules, graph bars: `tests/test_profiler_live.cpp`), the recorder in `profiler.cpp`, the panel in `package/modules/core/profiler_overlay/`.
 

@@ -1,3 +1,7 @@
+// FOR WORKERS/AGENTS testing the game (scripted scenarios, screenshots): identical to default.json except mouse capture is OFF (the desktop mouse
+// is never grabbed - safe to run on a display the user is not using) and it is meant to be combined with --display=1 (a secondary monitor, not
+// the user's primary), e.g.
+//   ./space_game_v2 --input-profile=testing --display=1 --frames=60 --screenshot=logs/x.bmp --screenshot-frame=50
 // Keyboard to move, mouse to look. Copy this file to make another profile and load it with
 //   ./space_game_v2 --input-profile=<name>
 // Every action is a list of bindings; values from all bindings are summed and clamped to -1..1.
@@ -5,7 +9,7 @@
   "name": "Keyboard + Mouse",
 
   "devices": {
-    "mouse": { "capture": true, "sensitivity": 1.0 }
+    "mouse": { "capture": false, "sensitivity": 1.0 }
   },
 
   "bindings": {
@@ -45,9 +49,6 @@
     "toggle_profiler":     [ { "device": "keyboard", "key": "F3" } ],   // live profiler overlay (fps, frame graph, top consumers, hitches)
     "toggle_profiler_gpu": [ { "device": "keyboard", "key": "F4" } ],   // while the overlay is open: GPU attribution (glFinish around render passes)
     "dump_profile":        [ { "device": "keyboard", "key": "F5" } ],   // write logs/profile_live.txt (send it back after a stutter)
-    "toggle_debugger":     [ { "device": "keyboard", "key": "F6" } ],   // in-game state debugger panel (watches, debug-draw switches, event log)
-    "toggle_debug_draws":  [ { "device": "keyboard", "key": "F7" } ],   // show / hide every debug draw switched on in the F6 panel
-    "dump_debug_state":    [ { "device": "keyboard", "key": "F8" } ],   // write logs/debug_state.txt (send it back after a weird quirk)
     "mouse_capture_toggle": [ { "device": "keyboard", "key": "Tab" } ],
     "pause":  [ { "device": "keyboard", "key": "Escape" } ],
 
