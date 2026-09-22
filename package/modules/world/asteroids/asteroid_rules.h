@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 #include "world/star_system/planet_mesh.h"
 #include "world/star_system/star_system_api.h"
@@ -45,6 +46,44 @@ inline int pickOre(const std::vector<float>& weights, float r) {
     for (size_t i = 0; i < weights.size(); i++) { acc += std::max(0.0f, weights[i]); if (t < acc) return (int)i; }
     return (int)weights.size() - 1;
 }
+
+// ---- ore zones (data/ore_zones.json): distance bands from the sun that scale the base ore weights ----
+struct OreZone {
+    std::string id;
+    double minDistance = 0, maxDistance = 0;                     // [min, max) from the sun, world units
+    std::vector<std::pair<std::string, float>> multipliers;      // ore id -> weight multiplier (missing = 1)
+};
+struct OreZones { std::vector<OreZone> zones; };                 // ordered; empty = the single global table
+
+// First zone whose [min, max) holds `distance`, else -1 (unaffected).
+inline int findOreZone(const OreZones& z, double distance) {
+    for (size_t i = 0; i < z.zones.size(); i++) if (distance >= z.zones[i].minDistance && distance < z.zones[i].maxDistance) return (int)i;
+    return -1;
+}
+inline float oreZoneMultiplier(const OreZone& z, const std::string& ore) {
+    for (auto& m : z.multipliers) if (m.first == ore) return m.second;
+    return 1.0f;
+}
+// The ore table at `distance` from the sun: base weight x zone multiplier (clamped >= 0), renormalized to sum 1.
+// No zone at that distance (or no zones at all) = the base table, unchanged.
+inline OreTable zoneOreTable(const OreTable& base, const OreZones& zones, double distance, int* zoneOut = nullptr) {
+    int zi = findOreZone(zones, distance);
+    if (zoneOut) *zoneOut = zi;
+    if (zi < 0) return base;
+    OreTable t = base;
+    float total = 0;
+    for (size_t i = 0; i < t.weights.size(); i++) {
+        float m = i < t.ids.size() ? oreZoneMultiplier(zones.zones[zi], t.ids[i]) : 1.0f;
+        t.weights[i] = std::max(0.0f, base.weights[i]) * std::max(0.0f, m);
+        total += t.weights[i];
+    }
+    if (total <= 0.0f) return base;                              // a zone that zeroes everything: keep the base table
+    for (float& w : t.weights) w /= total;
+    return t;
+}
+
+// One belt or cluster of the generated field (for the --ore-zone-dump log and tests).
+struct OreGroup { bool belt = false; double distance = 0; int zone = -1; int first = 0, count = 0; };
 
 struct TargetBody { Vec3d pos; double radius = 0; bool moon = false; };   // a planet or moon a cluster can surround
 
@@ -90,7 +129,10 @@ inline float clusterRadius(ARng& rng) { return rng.irange(0, 9) == 0 ? rng.range
 // Belts and clusters. `planetOrbits`: orbit radii of the planets around the sun (any order). No sun/planets (fewer than 2 orbits) = no belts;
 // no targets = no clusters. Positions are in the world frame, sun at `sun`, belt plane = the XZ plane through the sun.
 inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::vector<double> planetOrbits, const std::vector<TargetBody>& targets,
-                                   const OreTable& ores, std::vector<BeltInfo>* beltsOut = nullptr) {
+                                   const OreTable& ores, std::vector<BeltInfo>* beltsOut = nullptr,
+                                   const OreZones* zones = nullptr, std::vector<OreGroup>* groupsOut = nullptr) {
+    static const OreZones kNoZones;
+    const OreZones& oz = zones ? *zones : kNoZones;
     AsteroidField F;
     detail::ARng rng(gp.seed);
     std::sort(planetOrbits.begin(), planetOrbits.end());
@@ -109,6 +151,8 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
         inner = std::max(inner, mid - width * 0.5); outer = std::min(outer, mid + width * 0.5);
         double half = std::clamp(0.008 * mid, 150.0, 1000.0);
         if (beltsOut) beltsOut->push_back({inner, outer, half});
+        OreGroup g{true, (lo + hi) * 0.5, -1, F.count(), 0};          // zone by the orbit-gap midpoint
+        const OreTable bt = zoneOreTable(ores, oz, g.distance, &g.zone);
         uint32_t noiseSeed = mixSeed(gp.seed, 900 + b);
         for (int n = 0, tries = 0; n < gp.beltAsteroids && tries < gp.beltAsteroids * 30; tries++) {
             double ang = rng.range(0.0f, 6.2831853f);
@@ -116,9 +160,11 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
             float dens = fbm((float)std::cos(ang) * 2.0f, (float)std::sin(ang) * 2.0f, (float)(r / 15000.0), noiseSeed, 3);   // patchy, not uniform
             if (rng.f() > 0.25f + 0.75f * dens) continue;
             double h = half * (rng.f() + rng.f() - 1.0);                      // triangular: thickest in the middle
-            detail::pushAsteroid(F, rng, {sun.x + r * std::cos(ang), sun.y + h, sun.z + r * std::sin(ang)}, detail::beltRadius(rng), ores);
+            detail::pushAsteroid(F, rng, {sun.x + r * std::cos(ang), sun.y + h, sun.z + r * std::sin(ang)}, detail::beltRadius(rng), bt);
             n++;
         }
+        g.count = F.count() - g.first;
+        if (groupsOut) groupsOut->push_back(g);
     }
 
     // clusters: shells around some planets / moons (outside the moons' orbits for planets)
@@ -130,12 +176,17 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
         const TargetBody& t = targets[order[c]];
         double inner = t.moon ? t.radius * 3.0 + 100.0 : t.radius * 4.5 + 500.0;
         double width = std::max(400.0, t.radius * 3.0);
+        double dx0 = t.pos.x - sun.x, dy0 = t.pos.y - sun.y, dz0 = t.pos.z - sun.z;
+        OreGroup g{false, std::sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0), -1, F.count(), 0};   // zone by the body's distance from the sun
+        const OreTable ct = zoneOreTable(ores, oz, g.distance, &g.zone);
         for (int n = 0; n < gp.clusterAsteroids; n++) {
             float dx, dy, dz, l;
             do { dx = rng.range(-1, 1); dy = rng.range(-1, 1); dz = rng.range(-1, 1); l = std::sqrt(dx * dx + dy * dy + dz * dz); } while (l > 1.0f || l < 0.1f);
             double r = inner + width * rng.f();
-            detail::pushAsteroid(F, rng, {t.pos.x + dx / l * r, t.pos.y + dy / l * r * 0.5, t.pos.z + dz / l * r}, detail::clusterRadius(rng), ores);   // flattened shell
+            detail::pushAsteroid(F, rng, {t.pos.x + dx / l * r, t.pos.y + dy / l * r * 0.5, t.pos.z + dz / l * r}, detail::clusterRadius(rng), ct);   // flattened shell
         }
+        g.count = F.count() - g.first;
+        if (groupsOut) groupsOut->push_back(g);
     }
     return F;
 }

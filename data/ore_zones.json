@@ -1,0 +1,11 @@
+{
+  "_comment": "Ore tiers by distance from the sun (docs/WORLD.md 'Ore zones'). Each zone: [min_distance, max_distance) in world units from the sun (belts: their orbit-gap midpoint; clusters: the target planet/moon). weight_multiplier scales data/ores.json's rarity per ore (missing ore = 1.0). Never use 0: every ore must stay findable everywhere. Distance in no zone / this file empty = the plain ores.json weights.",
+  "inner": { "min_distance": 0,      "max_distance": 110000,
+             "weight_multiplier": { "iron": 1.6, "copper": 1.4, "gold": 0.8, "cobalt": 0.8, "uranium": 0.4, "platinum": 0.35, "crystal": 0.35 } },
+  "mid":   { "min_distance": 110000, "max_distance": 200000,
+             "weight_multiplier": { "uranium": 1.2, "platinum": 1.3, "crystal": 1.2 } },
+  "outer": { "min_distance": 200000, "max_distance": 320000,
+             "weight_multiplier": { "iron": 0.7, "copper": 0.8, "gold": 1.3, "cobalt": 1.3, "uranium": 2.0, "platinum": 2.5, "crystal": 2.5 } },
+  "deep":  { "min_distance": 320000, "max_distance": 10000000,
+             "weight_multiplier": { "iron": 0.5, "copper": 0.6, "titanium": 1.2, "gold": 1.5, "cobalt": 1.5, "uranium": 2.5, "platinum": 3.5, "crystal": 4.0 } }
+}

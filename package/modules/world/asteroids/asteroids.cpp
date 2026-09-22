@@ -48,6 +48,14 @@ public:
                 ores_.weights.push_back((float)o["rarity"].num(1.0));
                 for (int k = 0; k < 3; k++) ores_.color.push_back((float)o["color"].at(k).num(0.5));
             }
+            // ore zones from data/ore_zones.json (optional): distance bands that scale the weights above
+            for (auto& id : data->ids("ore_zones")) {
+                const engine::Json& z = data->get("ore_zones", id);
+                world::OreZone oz{id, z["min_distance"].num(0.0), z["max_distance"].num(0.0), {}};
+                const engine::Json& m = z["weight_multiplier"];
+                for (auto& k : m.keys()) oz.multipliers.push_back({k, (float)m[k].num(1.0)});
+                zones_.zones.push_back(oz);
+            }
         }
         if (ores_.ids.empty()) { ores_.ids = {"rock"}; ores_.weights = {1.0f}; ores_.color = {0.45f, 0.42f, 0.40f}; }
 
@@ -61,13 +69,31 @@ public:
         }
         auto t0 = std::chrono::steady_clock::now();
         std::vector<world::BeltInfo> belts;
-        field_ = world::generateField(gp, sys->sunPosition(), orbits, targets, ores_, &belts);
+        std::vector<world::OreGroup> groups;
+        field_ = world::generateField(gp, sys->sunPosition(), orbits, targets, ores_, &belts, &zones_, &groups);
         for (int v = 0; v < world::kAsteroidVariants; v++)
             for (int l = 0; l < world::kAsteroidLevels; l++) { meshes_[v][l] = world::buildAsteroidMesh(l, world::mixSeed(gp.seed, 400 + v)); meshBytes_ += meshes_[v][l].bytes(); }
         double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         int n = field_.count();
         LOG_I("asteroids", "%d asteroids (%zu belts, %d clusters) and %d shared meshes generated in %.2f ms, %.0f KB", n, belts.size(), std::min<int>(gp.clusterCount, (int)targets.size()),
               world::kAsteroidVariants * world::kAsteroidLevels, ms, (double)(field_.bytes() + meshBytes_) / 1024.0);
+        if (eng.hasFlag("ore-zone-dump")) {   // dev: the resolved zone, adjusted weights and the actual ore histogram of every belt / cluster
+            for (auto& o : sys->bodies()) if (o.kind == world::BodyKind::Planet) LOG_I("asteroids", "ore-zone-dump: planet orbit %.0f", o.orbitRadius);
+            for (auto& g : groups) {
+                world::OreTable t = world::zoneOreTable(ores_, zones_, g.distance);
+                float tw = 0; for (float w : t.weights) tw += std::max(0.0f, w);
+                std::vector<int> hist(ores_.ids.size(), 0);
+                for (int i = g.first; i < g.first + g.count; i++) if (field_.ore[i] < hist.size()) hist[field_.ore[i]]++;
+                std::string line;
+                for (size_t k = 0; k < ores_.ids.size(); k++) {
+                    char buf[96];
+                    snprintf(buf, sizeof buf, " %s %.1f%%/%d(%.1f%%)", ores_.ids[k].c_str(), tw > 0 ? 100.0 * t.weights[k] / tw : 0.0, hist[k], g.count ? 100.0 * hist[k] / g.count : 0.0);
+                    line += buf;
+                }
+                LOG_I("asteroids", "ore-zone-dump: %s at %.0f from the sun, zone %s, %d asteroids; ore expected%%/count(actual%%):%s", g.belt ? "belt" : "cluster", g.distance,
+                      g.zone >= 0 ? zones_.zones[g.zone].id.c_str() : "(none)", g.count, line.c_str());
+            }
+        }
         for (auto& b : belts) LOG_D("asteroids", "belt: %.0f .. %.0f from the sun, +-%.0f thick", b.inner, b.outer, b.halfHeight);
 
         cand_.reserve(n); levels_.reserve(n); pts_.reserve((size_t)n * 3); addList_.reserve(n);
@@ -279,6 +305,7 @@ private:
     std::vector<float> hp_;
     world::AsteroidField field_;
     world::OreTable ores_;
+    world::OreZones zones_;
     world::AsteroidMesh meshes_[world::kAsteroidVariants][world::kAsteroidLevels];
     std::vector<int> bodyIds_, levels_;
     std::vector<Cand> cand_;

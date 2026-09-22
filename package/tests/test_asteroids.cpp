@@ -217,3 +217,65 @@ TEST(asteroids_nearest_hides_destroyed_ones) {
     world::nearestIndices(f, p, 3, out, &alive); CHECK(out.empty());
     world::nearestIndices(f, p, 3, out); CHECK_EQ((int)out.size(), 3);                                // no mask: as before
 }
+
+namespace {
+world::OreZones testZones() {
+    world::OreZones z;
+    z.zones.push_back({"inner", 0, 100000, {{"iron", 2.0f}, {"gold", 0.01f}}});
+    z.zones.push_back({"outer", 100000, 200000, {{"gold", 4.0f}}});
+    return z;
+}
+} // namespace
+
+TEST(asteroids_ore_zone_lookup_and_adjusted_weights) {
+    auto z = testZones();
+    CHECK_EQ(world::findOreZone(z, 5000), 0);
+    CHECK_EQ(world::findOreZone(z, 100000), 1);                 // [min, max)
+    CHECK_EQ(world::findOreZone(z, 250000), -1);
+    CHECK_EQ(world::findOreZone(world::OreZones{}, 5000), -1);
+    int zi = 7;
+    auto t = world::zoneOreTable(ores(), z, 150000, &zi);        // gold x4: 40 : 32
+    CHECK_EQ(zi, 1);
+    CHECK(close(t.weights[0], 40.0 / 72.0)); CHECK(close(t.weights[1], 32.0 / 72.0));
+    auto in = world::zoneOreTable(ores(), z, 1000);              // iron x2, gold x0.01: still > 0
+    CHECK(close(in.weights[0], 80.0 / 80.08)); CHECK(in.weights[1] > 0.0f);
+    CHECK_EQ(world::pickOre(in.weights, 0.99999f), 1);            // the rare ore can still be picked
+    auto none = world::zoneOreTable(ores(), z, 900000, &zi);     // no zone: multiplier 1 for everything = base, unchanged
+    CHECK_EQ(zi, -1);
+    CHECK(none.weights == ores().weights);
+    world::OreZones neg; neg.zones.push_back({"bad", 0, 1e9, {{"iron", -3.0f}}});
+    auto n = world::zoneOreTable(ores(), neg, 10);               // negative clamps to 0, never below
+    CHECK_EQ(n.weights[0], 0.0f); CHECK(close(n.weights[1], 1.0));
+}
+
+TEST(asteroids_ore_zones_absent_is_exactly_the_global_table) {
+    Sys s; world::GenParams gp;
+    auto base = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
+    world::OreZones empty;
+    std::vector<world::OreGroup> groups;
+    auto e = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, &empty, &groups);
+    CHECK_EQ(e.count(), base.count());
+    for (int i = 0; i < base.count(); i++) { CHECK_EQ(e.ore[i], base.ore[i]); CHECK_EQ(e.x[i], base.x[i]); }
+    CHECK_EQ((int)groups.size(), 1 + 4);
+    for (auto& g : groups) CHECK_EQ(g.zone, -1);
+}
+
+TEST(asteroids_ore_zones_shift_the_distribution) {
+    Sys s; world::GenParams gp; gp.beltAsteroids = 4000; gp.clusterAsteroids = 2000;
+    auto z = testZones();
+    std::vector<world::OreGroup> groups;
+    auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, &z, &groups);
+    auto base = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
+    CHECK_EQ(f.count(), base.count());                          // only the ore changes, never placement
+    for (int i = 0; i < f.count(); i++) CHECK_EQ(f.x[i], base.x[i]);
+    int total = 0;
+    for (auto& g : groups) {
+        CHECK_EQ(g.zone, world::findOreZone(z, g.distance));
+        int gold = 0;
+        for (int i = g.first; i < g.first + g.count; i++) gold += f.ore[i] == 1;
+        double share = (double)gold / g.count, expect = world::zoneOreTable(ores(), z, g.distance).weights[1] / (g.zone < 0 ? 48.0f : 1.0f);
+        CHECK(std::fabs(share - expect) < 0.04);
+        total += g.count;
+    }
+    CHECK_EQ(total, f.count());
+}
