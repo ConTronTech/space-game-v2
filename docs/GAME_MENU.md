@@ -21,6 +21,7 @@ While the menu is open:
 ## The tabs
 * **CARGO** (built in): the hold as a list (colour square from `data/ores.json` / `items.json`, name, count), a capacity bar (green / yellow / red by fill), the ship's hull, shield and warp fuel bars, and a **USE** button on every usable item (through `gameplay::ICrafting::use`; the result line is shown at the bottom).
 * **CRAFTING** (added by `gameplay/crafting`): docs/CRAFTING.md.
+* **MAP** (order 30, added by `ui/system_map`): a flat top-down schematic of the whole star system, docs/SYSTEM_MAP.md.
 
 ## Adding a tab
 ```cpp
@@ -32,7 +33,7 @@ if (auto* menu = eng.services.get<ui::IGameMenu>())          // optional: list "
     });
 // shutdown: menu->removeTab("MAP");
 ```
-Tabs are sorted by `order` (CARGO 10, CRAFTING 20); a tab with an existing name replaces it. The draw function runs only while the menu is open and that tab is selected. `IGameMenu` also has `open()`, `close()` and `isOpen()` (a HUD hint, a station "trade" button...).
+Tabs are sorted by `order` (CARGO 10, CRAFTING 20, MAP 30); a tab with an existing name replaces it. The draw function runs only while the menu is open and that tab is selected. `IGameMenu` also has `open()`, `close()` and `isOpen()` (a HUD hint, a station "trade" button...).
 Do not list `ui/game_menu` and a module that adds tabs as optional dependencies of each other (an optional cycle leaves the order arbitrary and the tab never registers).
 
 ## Tunables

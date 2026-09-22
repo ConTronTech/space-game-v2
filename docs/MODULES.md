@@ -12,6 +12,7 @@ package/modules/combat/    weapons (blaster + mining beam, ICombat)
 package/modules/core/input_methods/  keyboard, mouse, joystick (joysticks / wheels / pedals / shifters: docs/CONTROLLERS.md)
 package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore chunks from destroyed asteroids), crafting (ICrafting)
 package/modules/ui/game_menu  the tabbed game menu (IGameMenu)
+package/modules/ui/system_map  the MAP tab of the game menu (star system schematic, docs/SYSTEM_MAP.md)
 package/modules/fx/        particles (engine exhaust, sparks, debris, warp flash; fx::SpawnParticles event)
 package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations)
 package/template/          scaffold used by package/tools/new_module.sh
