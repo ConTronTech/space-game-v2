@@ -7,5 +7,6 @@
   "missile_pack":     { "name": "Missile Pack",     "result": "missile_pack",     "ingredients": { "iron": 3, "gold": 2, "cobalt": 1 } },
   "hull_plating":     { "name": "Hull Plating",     "result": "hull_plating",     "ingredients": { "titanium": 8, "iron": 4 } },
   "shield_generator": { "name": "Shield Generator", "result": "shield_generator", "ingredients": { "titanium": 10, "crystal": 8, "platinum": 5, "gold": 5 } },
-  "ore_scanner":      { "name": "Ore Scanner",      "result": "ore_scanner",      "ingredients": { "cobalt": 6, "crystal": 4, "gold": 2 } }
+  "ore_scanner":      { "name": "Ore Scanner",      "result": "ore_scanner",      "ingredients": { "cobalt": 6, "crystal": 4, "gold": 2 } },
+  "anomaly_scanner":  { "name": "Anomaly Scanner",  "result": "anomaly_scanner",  "ingredients": { "crystal": 6, "platinum": 3, "gold": 3 } }
 }

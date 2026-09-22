@@ -30,6 +30,7 @@ inline Effect effectFromJson(const engine::Json& item) {
     e.maxHpCap = (float)x["max_hp_cap"].num(200);
     e.shieldEnabled = x["shield_enabled"].boolean(false);
     e.hudOreLabels = x["hud_ore_labels"].boolean(false);
+    e.anomalyScan = x["anomaly_scan"].boolean(false);
     e.permanent = item["permanent"].boolean(false);
     return e;
 }

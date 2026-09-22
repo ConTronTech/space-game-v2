@@ -5,6 +5,7 @@
 #include "core/data_registry/data_api.h"
 #include "gameplay/inventory/inventory_api.h"
 #include "ship/docking/docking_api.h"
+#include "world/anomalies/anomalies_api.h"
 #include "world/asteroids/asteroids_api.h"
 #include "world/star_system/star_system_api.h"
 #include "world/stations/stations_api.h"
@@ -205,6 +206,22 @@ void HudScreens::proximityRadar(const ScreenContext& ctx) {
             py = dy;
         }
         c.rect(px - size * 0.5f, py - size * 0.5f, size, size, col);
+    }
+
+    // anomalies (world/anomalies): only the DETECTED ones (scanner perk + in range + not investigated): a pulsing violet 4-point star, no stem
+    if (const world::IAnomalies* an = eng_.services.get<world::IAnomalies>()) {
+        const int n = std::min(an->count(), kMaxRadarAnomalies);
+        const float s = anomalyMarkerSize(ctx.time);
+        const ScreenColor violet{0.85f, 0.35f, 1.0f, 1};
+        for (int i = 0; i < n; i++) {
+            if (!an->detected(i)) continue;
+            world::Vec3d p = an->position(i);
+            RadarPlot pl = radarPlot({(float)(p.x - sx), (float)(p.y - sy), (float)(p.z - sz)}, frame, range_);
+            float px = cx + pl.x * r, py = cy - pl.y * r;
+            c.line(px - s, py, px + s, py, 0.007f, violet);
+            c.line(px, py - s, px, py + s, 0.007f, violet);
+            c.diamond(px, py, s * 0.55f, 0.006f, violet, false);
+        }
     }
 
     // stations: cyan diamonds with the same log range and height stems; filled when docking works for that station (the HUD's DOCK [G])

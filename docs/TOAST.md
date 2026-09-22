@@ -1,7 +1,7 @@
 # Toasts (`ui/toast`, roadmap 5.2)
 
 A generic notification popup service. Any module can opt in through `core::IToast` (`package/modules/ui/toast/toast_api.h`);
-nothing is wired to it yet. It is optional, the same pattern as `core::IDebug`: look it up, do nothing if it is absent.
+its first real caller is `world/anomalies` (the discovery toast, docs/ANOMALIES.md). It is optional, the same pattern as `core::IDebug`: look it up, do nothing if it is absent.
 
 ```cpp
 #include "ui/toast/toast_api.h"

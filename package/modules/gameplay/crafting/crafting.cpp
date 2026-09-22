@@ -106,6 +106,7 @@ public:
         auto* ammo = eng_->services.get<combat::IAmmo>();
         if (ammo) { ss.missiles = ammo->missiles(); ss.maxMissiles = ammo->maxMissiles(); }
         ss.oreScanner = i->hasPerk("ore_scanner");
+        ss.anomalyScanner = i->hasPerk("anomaly_scanner");
         gameplay::UsePlan plan = gameplay::decideUse(it->second, ss);
         if (!plan.ok) return fail(plan.reason);                                 // refused: the item stays in the hold
         float fuelBefore = st.warpFuel, hpBefore = st.hp;
@@ -116,6 +117,7 @@ public:
         if (plan.addMissiles > 0 && ammo && ammo->addMissiles(plan.addMissiles) <= 0 && !(plan.addFuel > 0 || plan.heal > 0 || plan.addMaxHp > 0 || plan.installShield))
             return fail("missile rack full");
         if (plan.setOreScanner) i->addPerk("ore_scanner");
+        if (plan.setAnomalyScanner) i->addPerk("anomaly_scanner");
         i->remove(itemId, 1);                                                    // consumed only after the effect was applied
         reason = plan.reason;
         setMessage("Used " + nm + ": " + plan.reason, true);

@@ -19,9 +19,10 @@ Code: `package/modules/gameplay/crafting/` (`crafting_rules.h` is pure and unit-
 | `shield_enabled` | `IShip::installShield(true)` (permanent) | a shield is already installed |
 | `missiles` | `combat::IAmmo::addMissiles(n)` (rack cap `combat.max_missiles`, 12; a nearly full rack takes what fits) | **missile rack full** (the pack is not consumed); `no missile rack` when `combat.enabled` is false |
 | `hud_ore_labels` | sets the inventory perk `ore_scanner` (`IInventory::addPerk`, saved; permanent) | **ore scanner already installed**. With the perk the radar dots take ore colours, the lock info line shows the ore and expected yield and the lock bracket is ore-tinted (docs/MINING.md "Ore Scanner") |
+| `anomaly_scan` | sets the inventory perk `anomaly_scanner` (saved; permanent): anomaly sites show on the radar and can be investigated (docs/ANOMALIES.md) | **anomaly scanner already installed** |
 
 Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no ship`. An item with an applicable and a refused effect applies the applicable one. Permanent items apply one at a time (the shield generator refuses a second one; hull plating keeps working until the cap).
-The Missile Pack (+3 missiles, docs/COMBAT.md) and the Ore Scanner work since 4.2b; `decideUse` gets the rack (`ShipState::missiles/maxMissiles`) and the perk (`ShipState::oreScanner`) and returns `UsePlan::addMissiles` / `setOreScanner`.
+The Missile Pack (+3 missiles, docs/COMBAT.md) and the Ore Scanner work since 4.2b; `decideUse` gets the rack (`ShipState::missiles/maxMissiles`) and the perk (`ShipState::oreScanner`) and returns `UsePlan::addMissiles` / `setOreScanner`. The Anomaly Scanner (crystal 6, platinum 3, gold 3) mirrors it: `Effect::anomalyScan`, `ShipState::anomalyScanner`, `UsePlan::setAnomalyScanner`.
 
 ## The hard-game switch
 `crafting.require_dock` (default **true**, user decision 2026-09-21: a docked station is the workbench; a setting either way for testing/modding): crafting works only while `ship::IDocking::docked()`; the tab shows "Dock at a station to craft" and every button is greyed with that reason. `false` crafts anywhere.

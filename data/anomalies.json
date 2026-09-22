@@ -1,0 +1,32 @@
+{
+  "_comment": "Anomaly kinds (world/anomalies, docs/ANOMALIES.md). messages = flavour text variants (one picked per site); rewards = [{ore, min, max, weight}] (one entry picked per site, then an amount); detect_mult = x anomalies.detect_range (0.1..5); weight = how often generation picks the kind.",
+  "derelict_wreckage": {
+    "name": "Derelict Wreckage",
+    "messages": ["A gutted freighter drifts in silence. You strip what is left of its hold.",
+                 "Twisted hull plates and a cold reactor. Someone never made it home.",
+                 "An old mining tug, its cargo bay still sealed."],
+    "rewards": [{ "ore": "titanium", "min": 8, "max": 15, "weight": 2 }, { "ore": "iron", "min": 20, "max": 35, "weight": 2 }, { "ore": "cobalt", "min": 5, "max": 10, "weight": 1 }],
+    "detect_mult": 1.0, "weight": 3
+  },
+  "energy_signature": {
+    "name": "Energy Signature",
+    "messages": ["A pulsing knot of energy collapses as you arrive, leaving charged dust behind.",
+                 "The readings spike, then fall silent. Crystals have formed in the wake."],
+    "rewards": [{ "ore": "crystal", "min": 3, "max": 6, "weight": 2 }, { "ore": "uranium", "min": 2, "max": 5, "weight": 1 }],
+    "detect_mult": 1.6, "weight": 2
+  },
+  "ancient_artifact": {
+    "name": "Ancient Artifact",
+    "messages": ["A carved monolith older than the star charts. Its core is solid platinum.",
+                 "Alien glyphs glow faintly on a tumbling obelisk. You pry loose a precious seam."],
+    "rewards": [{ "ore": "platinum", "min": 3, "max": 6, "weight": 1 }, { "ore": "gold", "min": 8, "max": 14, "weight": 1 }],
+    "detect_mult": 0.6, "weight": 1
+  },
+  "unstable_phenomenon": {
+    "name": "Unstable Phenomenon",
+    "messages": ["Space folds and snaps back. Fragments of some other place rain against the hull.",
+                 "A shimmering rift closes behind you, shedding strange metals."],
+    "rewards": [{ "ore": "gold", "min": 5, "max": 10, "weight": 1 }, { "ore": "crystal", "min": 2, "max": 4, "weight": 1 }, { "ore": "copper", "min": 15, "max": 30, "weight": 1 }],
+    "detect_mult": 1.3, "weight": 2
+  }
+}

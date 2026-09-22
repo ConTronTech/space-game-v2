@@ -44,8 +44,9 @@ struct Effect {
     float maxHpCap = 200;            // ... up to this cap
     bool shieldEnabled = false;      // installs the shield generator
     bool hudOreLabels = false;       // the "ore_scanner" perk (IInventory::hasPerk); the HUD labels themselves come later
+    bool anomalyScan = false;        // the "anomaly_scanner" perk (world/anomalies, docs/ANOMALIES.md)
     bool permanent = false;
-    bool any() const { return warpFuel != 0 || hp != 0 || hpFull || missiles != 0 || maxHp != 0 || shieldEnabled || hudOreLabels; }
+    bool any() const { return warpFuel != 0 || hp != 0 || hpFull || missiles != 0 || maxHp != 0 || shieldEnabled || hudOreLabels || anomalyScan; }
 };
 
 struct ShipState {
@@ -55,6 +56,7 @@ struct ShipState {
     bool shieldInstalled = false;
     int missiles = 0, maxMissiles = 0;   // the missile rack; maxMissiles 0 = no rack (combat off)
     bool oreScanner = false;             // the perk is already set
+    bool anomalyScanner = false;         // the "anomaly_scanner" perk is already set
 };
 
 // What using the item does: the ship changes to make (the caller applies them through IShip), or a refusal. A refused item is NOT consumed.
@@ -65,6 +67,7 @@ struct UsePlan {
     bool installShield = false;
     int addMissiles = 0;             // through combat::IAmmo::addMissiles
     bool setOreScanner = false;      // through IInventory::addPerk("ore_scanner")
+    bool setAnomalyScanner = false;  // through IInventory::addPerk("anomaly_scanner")
 };
 
 inline UsePlan decideUse(const Effect& e, const ShipState& s) {
@@ -105,9 +108,13 @@ inline UsePlan decideUse(const Effect& e, const ShipState& s) {
         if (s.oreScanner) refuse("ore scanner already installed");
         else { p.setOreScanner = true; note("ore scanner installed"); }
     }
+    if (e.anomalyScan) {
+        if (s.anomalyScanner) refuse("anomaly scanner already installed");
+        else { p.setAnomalyScanner = true; note("anomaly scanner installed"); }
+    }
     if (!e.any()) refuse("this item has no effect");
 
-    bool did = p.addFuel > 0 || p.heal > 0 || p.addMaxHp > 0 || p.installShield || p.addMissiles > 0 || p.setOreScanner;
+    bool did = p.addFuel > 0 || p.heal > 0 || p.addMaxHp > 0 || p.installShield || p.addMissiles > 0 || p.setOreScanner || p.setAnomalyScanner;
     p.ok = did;
     p.reason = did ? done : (firstRefusal.empty() ? "nothing to do" : firstRefusal);
     return p;

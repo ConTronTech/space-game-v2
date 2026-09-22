@@ -40,6 +40,7 @@ class Inventory : public engine::Module, public core::ISaveable {
 | `ship/warp_drive` | upgrade level |
 | `world/star_system` | seed and simulation time |
 | `gameplay/inventory` | `{"level": n, "stacks": [{"id": "iron", "amount": 50}, ...]}`: the cargo hold in stack order and its capacity level; a missing `stacks` key = an empty hold (docs/INVENTORY.md) |
+| `world/anomalies` | `{"investigated": [ids]}`: which anomaly sites are done; the sites come back from the seed (docs/ANOMALIES.md) |
 
 Known gaps (Phase 4.3 / later): ore chunks in flight and destroyed asteroids are **not** saved (the asteroid field regenerates on load).
 

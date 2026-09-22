@@ -132,6 +132,10 @@ inline StationMarker stationMarker(const std::string& stationName, bool dockKnow
     return m;
 }
 
+// ---- anomalies (world/anomalies): a pulsing violet 4-point star, only for DETECTED sites ----
+constexpr int kMaxRadarAnomalies = 16;                          // at most this many are looked at per frame
+inline float anomalyMarkerSize(float time) { return 0.03f + 0.008f * std::sin(time * 5.0f); }   // half-length of the star's arms, scope-height fractions
+
 // "Station 1 (Planet 1, orbital)" -> "Station 1": the scope label only has room for the part before the parenthesis.
 inline std::string radarShortName(const std::string& name) {
     size_t p = name.find(" (");

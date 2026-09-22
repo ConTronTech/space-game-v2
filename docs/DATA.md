@@ -25,6 +25,7 @@ data.has("items", "repair_kit");
 | `data/ores.json` | 8 ores: name, `color` [r,g,b], `rarity` (spawn weight) |
 | `data/items.json` | 8 items: name, description, color, `effect` (e.g. `{"warp_fuel": 25}`), optional `permanent` |
 | `data/cargo.json` | 4 cargo hold upgrade levels: name, `capacity_mult` (x `inventory.capacity`): 100 / 200 / 400 / 800 (docs/INVENTORY.md) |
+| `data/anomalies.json` | 4 anomaly kinds: name, `messages`, `rewards` [{ore, min, max, weight}], `detect_mult`, `weight` (docs/ANOMALIES.md) |
 | `data/recipes.json` | 8 recipes: name, `result` (item id), `ingredients` `{ore id: amount}` |
 
 Ported from the old game's `ORE_TABLE`, `ITEM_TABLE` and `RECIPES`.

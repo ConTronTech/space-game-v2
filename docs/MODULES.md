@@ -14,7 +14,7 @@ package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore c
 package/modules/ui/game_menu  the tabbed game menu (IGameMenu)
 package/modules/ui/system_map  the MAP tab of the game menu (star system schematic, docs/SYSTEM_MAP.md)
 package/modules/fx/        particles (engine exhaust, sparks, debris, warp flash; fx::SpawnParticles event)
-package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations)
+package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations), anomalies (IAnomalies)
 package/template/          scaffold used by package/tools/new_module.sh
 ```
 
@@ -65,6 +65,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `world::IStarSystem` | the sun, planets and moons: `bodies()` (double positions), `sunPosition()`, `positionAt(id)`, `simTime()` - see docs/WORLD.md |
 | `world::IAsteroids` | the asteroid field, read-only: `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(point, n, out)` - see docs/WORLD.md |
 | `world::IStations` | the space stations: `count()`, `info(i)` (position/velocity in double, dock radius, up), `nearest(p)` - see docs/STATIONS.md |
+| `world::IAnomalies` | anomaly sites: `count()`, `position(i)`, `detected(i)`, `investigated(i)`; event `world::AnomalyInvestigated` - see docs/ANOMALIES.md |
 | `ship::IDocking` (+ events `Docked`, `Undocked`) | `docked()`, `stationName()`, `nearestDockable(...)`: what a "DOCK [G]" prompt needs - see docs/STATIONS.md |
 | `core::IControllers` | the connected joysticks / wheels: `devices()`, `deviceCount()`, `rawAxis(dev, i)`, `rawButton`, `rawHat`, `lastEvent()` - see docs/CONTROLLERS.md |
 | `ui::IGameMenu` | `addTab(name, order, drawFn)`, `removeTab`, `open()`, `close()`, `isOpen()`: the game menu on the I key; other modules add tabs - see docs/GAME_MENU.md |

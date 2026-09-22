@@ -5,7 +5,7 @@ self-contained module that uses the services Phases 1-5 already built and can be
 modularity rule). User decision 2026-09-22: **anomalies + scanner first** ("something to find" over "something to fight" - no NPCs exist yet, so
 combat depth is parked until the user is around to steer it; see docs/QUESTIONS.md and docs/DEVLOG.md Leap 43/44's note on the fork).
 
-1. **`gameplay/anomalies` + scanner** - IN PROGRESS (2026-09-22). The "what's over there?" hook: seeded points of interest scattered through the
+1. **`world/anomalies` + scanner** - BUILT (2026-09-22, docs/ANOMALIES.md). The "what's over there?" hook: seeded points of interest scattered through the
    star system, hidden until the player crafts and uses an Anomaly Scanner (a permanent perk item, same pattern as the Ore Scanner), then shown as
    a marker on the radar/map within a detection range; flying close investigates one (one-time, saved), giving ore and/or a flavour-text discovery
    via `ui/toast` (the first real thing wired to it). See docs/ANOMALIES.md once built.
