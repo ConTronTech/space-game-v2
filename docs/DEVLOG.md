@@ -84,6 +84,11 @@ only after the full check passes, so it should always run.
 - **`docs/GAME_LOOPS.md`** (written this session, was referenced but never existed) is updated: item 1 marked built.
 - **Next:** item 2 of the game loop list (`gameplay/blueprints`) or further anomalies polish (height stem, system map marker), or - still parked - combat depth/NPCs, whenever the user wants to steer that.
 
+## Leap 47 - 2026-09-22 (DONE, tag `good-20260922-07`): anomaly radar/map polish (6.1b)
+- **Changed:** anomalies now get a proper height stem on the radar (reusing the same stem path bodies/stations already use, violet, dimmer below the plane) instead of a flat marker, and a small violet cross on the system map when detected (scanner perk required, exactly like the radar). No new helper code needed in radar_map.h - the existing stem machinery was reused as-is.
+- **Verified:** 505 tests under ASan+UBSan (43 modules), smoke, headless clean, laptop unchanged; screenshots from below a site show the stem and the map marker; nothing shows without the perk; `--disable=world/anomalies` does not crash.
+- **Closes out both "not done" follow-ups from Leap 46.**
+
 ## Leap 36 - 2026-09-21 (DONE, tag `good-20260921-36`): ore scanner effect (5.5b)
 - **Changed:** the Ore Scanner perk now does something. WITHOUT it the lock line under the crosshair says only "ASTEROID  r 9.6  850 m" (the ore no longer leaks through the lock name); WITH it: "ASTEROID  IRON  r 9.6  ~41 ore  850 m" (expected yield = `mining.yield_scale` x radius^2), the radar asteroid dots take the ore colour (rare ores `rarity <= 8` one size tier bigger) and the world-space lock bracket is tinted by the ore. Pure rules in `combat/weapons/scanner_rules.h`; `ICombat` gained lockTargetId/Ore/Radius.
 - **Verified:** 458 tests under ASan+UBSan, smoke (38 modules), headless clean; worker screenshots of the lock line, tinted bracket and ore radar dots.
