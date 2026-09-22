@@ -49,6 +49,11 @@ only after the full check passes, so it should always run.
 - **Note:** one of the worker's own early test runs was disturbed around t=24s in a way it could not reproduce, "likely a real controller on the rig feeding the visible window" - this is exactly the scenario the user's `--display=1 --input-profile=testing` rule (Leap 39) now prevents; that rule landed after this worker was dispatched, so it predates the fix.
 - **Next:** Phase 5.2 (toast)/5.6 (system map), the first Phase 6 loop item (`gameplay/anomalies` + scanner), or combat depth (no NPCs exist yet).
 
+## Leap 41 - 2026-09-22 (DONE, tag `good-20260922-01`): ui/toast notification popups (5.2)
+- **Changed:** `ui/toast` - generic stackable popups (`core::IToast`: `show(text, Level, seconds)`), Info/Warning/Urgent styles, bottom-right corner (clear of the existing HUD/debug panels), 4 visible with a 16-slot queue, 0.5 s linear fade, Urgent flashes. Pure logic in `toast_rules.h`. `--toast-test` dev flag. Nothing is wired to it yet (the ad-hoc banners in ship_hud stay as they are, by design - a future task could unify them).
+- **Verified:** 485 tests under ASan+UBSan (41 modules), smoke, headless clean, laptop 68.3 fps / 53.3 1% low unchanged. Worker screenshots: a single toast, a stack of 4 with a 5th queued, Urgent flashing (red peak 243 vs 155 across two frames). Cost: +0.05 ms UI per frame with 4 toasts visible.
+- **Next:** system map tab (5.6, in flight), then Phase 6's first loop item or combat depth.
+
 ## Leap 36 - 2026-09-21 (DONE, tag `good-20260921-36`): ore scanner effect (5.5b)
 - **Changed:** the Ore Scanner perk now does something. WITHOUT it the lock line under the crosshair says only "ASTEROID  r 9.6  850 m" (the ore no longer leaks through the lock name); WITH it: "ASTEROID  IRON  r 9.6  ~41 ore  850 m" (expected yield = `mining.yield_scale` x radius^2), the radar asteroid dots take the ore colour (rare ores `rarity <= 8` one size tier bigger) and the world-space lock bracket is tinted by the ore. Pure rules in `combat/weapons/scanner_rules.h`; `ICombat` gained lockTargetId/Ore/Radius.
 - **Verified:** 458 tests under ASan+UBSan, smoke (38 modules), headless clean; worker screenshots of the lock line, tinted bracket and ore radar dots.
