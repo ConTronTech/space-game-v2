@@ -77,3 +77,10 @@ TEST(system_map_belt_band) {
     std::vector<double> few{1, 2, 3};
     CHECK(!sysmap::beltBand(few).valid);
 }
+TEST(system_map_anomaly_marker_uses_the_map_projection) {
+    // an anomaly at Planet 1's radius lands where Planet 1 would: same log-radial projection
+    auto a = sysmap::project(46493, 0, 0, 0, 400000, 500, 300, 200);
+    CHECK(near(a.x, 500 + 0.4878 * 200, 0.3) && near(a.y, 300, 1e-3));
+    CHECK(sysmap::markerSize(sysmap::Mark::Anomaly, 0) > 0 && sysmap::markerSize(sysmap::Mark::Anomaly, 1e6) == sysmap::markerSize(sysmap::Mark::Anomaly, 0));
+    CHECK(near(sysmap::kAnomalyColor[0], 0.85, 1e-6) && near(sysmap::kAnomalyColor[2], 1.0, 1e-6));   // the radar's violet
+}

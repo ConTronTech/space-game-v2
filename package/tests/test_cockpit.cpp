@@ -247,6 +247,17 @@ TEST(radar_plot_clamps_to_the_rim_and_handles_overhead) {
     auto here = cockpit::radarPlot({0, 0, 0}, f, 400000.0f);
     CHECK(nearf(here.x, 0.0f) && !std::isnan(here.y));
 }
+TEST(radar_anomaly_stem_uses_the_same_plot_as_bodies) {
+    // an anomaly site 3000 above / below the plane, 20000 ahead: the SAME radarPlot/radarHeightOffset a body at that spot gets
+    auto f = cockpit::radarFrame({0, 0, -1}, {0, 1, 0});
+    auto up = cockpit::radarPlot({0, 3000, -20000}, f, 400000.0f);
+    auto dn = cockpit::radarPlot({0, -3000, -20000}, f, 400000.0f);
+    CHECK(up.stem > 0 && dn.stem < 0);
+    CHECK(nearf(up.stem, cockpit::radarHeightOffset(up.height, 400000.0f), 1e-5f));
+    CHECK(nearf(up.stem, -dn.stem, 1e-5f));
+    auto level = cockpit::radarPlot({0, 10, -20000}, f, 400000.0f);          // inside kLevelHeight: no stem
+    CHECK(level.stem == 0.0f);
+}
 TEST(radar_contact_list_keeps_the_nearest_twenty) {
     cockpit::RadarContacts list;
     for (int i = 0; i < 50; i++) {
