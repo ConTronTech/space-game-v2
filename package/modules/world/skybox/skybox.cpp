@@ -57,7 +57,10 @@ public:
         std::vector<std::string> names;
         for (auto& s : sets) names.push_back(s.color + "/" + s.name);
         float gain = c.get("skybox.star_tint_gain", 3.0f, "star matching: how much the sun's faint tint is exaggerated before comparing with the (strongly tinted) sky sets; 1 = raw");
-        want = world::resolveWantedSet(want, matchOn, want == world::kAutoSet && matchOn ? matchStar(eng, sets, cacheDir, gain) : std::string());
+        std::string colorsPath = c.get(std::string("skybox.colors_data"), std::string("data/skybox_colors.json"),
+                                       "precomputed average colour per set (avoids decoding every set's image just to compare colours - one shipped image is 4096x4096, "
+                                       "and decoding all of them at startup was measured to add ~0.6s of unresponsive main-thread time); '' = always decode live");
+        want = world::resolveWantedSet(want, matchOn, want == world::kAutoSet && matchOn ? matchStar(eng, sets, cacheDir, colorsPath, gain) : std::string());
         int idx = world::chooseSet(names, want);
         if (idx < 0) { LOG_W("skybox", "no skybox sets found in %s: no skybox", dir.c_str()); return true; }
         if (names[idx] != want) LOG_W("skybox", "set '%s' not found, using '%s'", want.c_str(), names[idx].c_str());
@@ -116,25 +119,49 @@ private:
     }
 
     // Star colour -> nearest set by average colour (chromaticity, star tint boosted by `gain`). "" when there is no star system or no sets.
-    static std::string matchStar(engine::Engine& eng, const std::vector<Set>& sets, const std::string& cacheDir, float gain) {
+    static std::string matchStar(engine::Engine& eng, const std::vector<Set>& sets, const std::string& cacheDir, const std::string& colorsPath, float gain) {
         auto* sys = eng.services.get<world::IStarSystem>();
         if (!sys || sys->bodies().empty() || sets.empty()) return "";
         const float* sc = sys->bodies()[0].color;
         world::RGB star{sc[0], sc[1], sc[2]};
+        engine::Json shipped = loadShippedColors(colorsPath);
         std::vector<world::ColorCandidate> cands;
+        int fromShipped = 0;
         for (auto& s : sets) {
+            std::string key = s.color + "/" + s.name;
             world::RGB avg;
-            if (averageColor(s, cacheDir, avg)) cands.push_back({s.color + "/" + s.name, world::chroma(avg)});
+            if (shippedColor(shipped, key, avg)) { fromShipped++; cands.push_back({key, world::chroma(avg)}); }
+            else if (averageColor(s, cacheDir, avg)) cands.push_back({key, world::chroma(avg)});
         }
         world::ColorMatch m = world::nearestColor(world::boostTint(world::chroma(star), gain), cands);
         if (m.index < 0) return "";
-        LOG_I("skybox", "star colour (%.2f,%.2f,%.2f) -> chosen set '%s' (distance %.3f of %zu sets)", star.r, star.g, star.b,
-              cands[m.index].name.c_str(), m.distance, cands.size());
+        LOG_I("skybox", "star colour (%.2f,%.2f,%.2f) -> chosen set '%s' (distance %.3f of %zu sets, %d from shipped data)", star.r, star.g, star.b,
+              cands[m.index].name.c_str(), m.distance, cands.size(), fromShipped);
         return cands[m.index].name;
     }
 
-    // Average RGB (0..1) of a set's front face. Decoding costs one full image per set on the first start, so the result is cached
-    // as cache/skybox/<color>_<set>_avg.txt (fresh while not older than the face), after that it is a tiny text read.
+    // data/skybox_colors.json: precomputed average colours (see skybox.colors_data doc above) so the common case never decodes
+    // every set's image just to compare colours. Missing/unparseable file, or a key not in it, falls back to a live decode below.
+    static engine::Json loadShippedColors(const std::string& path) {
+        if (path.empty()) return engine::Json();
+        std::ifstream f(path);
+        if (!f) return engine::Json();
+        std::stringstream ss; ss << f.rdbuf();
+        std::string err;
+        engine::Json j = engine::Json::parse(ss.str(), &err);
+        return j.isObject() ? j : engine::Json();
+    }
+    static bool shippedColor(const engine::Json& shipped, const std::string& key, world::RGB& out) {
+        if (!shipped.isObject()) return false;
+        const engine::Json& rgb = shipped[key]["rgb"];   // {"blue/set1": {"rgb": [r,g,b]}, ...} - each entry is an object so core/data_registry's
+        if (!rgb.isArray() || rgb.size() < 3) return false;   // generic data/ scan does not warn about it (its "is not an object" check)
+        out = {(float)rgb.at(0).num(0), (float)rgb.at(1).num(0), (float)rgb.at(2).num(0)};
+        return true;
+    }
+
+    // Average RGB (0..1) of a set's front face, by fully decoding it (only reached for a set not covered by the shipped data above,
+    // e.g. a user-added one). Cached as cache/skybox/<color>_<set>_avg.txt (fresh while not older than the face) so this cost is
+    // paid at most once per set even on that path.
     static bool averageColor(const Set& s, const std::string& cacheDir, world::RGB& out) {
         const std::string& src = s.files[0];
         std::error_code ec;

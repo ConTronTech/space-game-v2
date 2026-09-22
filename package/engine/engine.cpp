@@ -86,8 +86,11 @@ bool Engine::loadModules() {
     }
 
     std::unordered_set<std::string> alive;
+    const int total = (int)sorted.size();
+    int index = 0;
     for (auto& m : sorted) {
         std::string n = m->name();
+        index++;
         bool depsOk = true;
         for (auto& d : m->dependencies()) if (!alive.count(d)) { depsOk = false; break; }
         if (!depsOk) {
@@ -107,6 +110,16 @@ bool Engine::loadModules() {
         LOG_I("engine", "loaded %s", n.c_str());
         alive.insert(n);
         modules_.push_back(std::move(m));
+
+        // Boot progress (docs/STARTUP.md): a slow module (asset decoding, mesh generation, ...) must never leave the window
+        // unresponsive with no event pump, or the OS/compositor can visually read it as a frozen app even with no real hang.
+        // Replay the SAME per-frame hooks the main loop uses, over whatever modules have loaded so far: before core/window
+        // exists this is a no-op; once it does, onFrameBegin pumps events, and any boot-progress module (e.g. core/boot_screen,
+        // which draws the actual bar) reacts to the ModuleLoaded event below and paints in onRenderUI; onPresent swaps.
+        events.emit(ModuleLoaded{n, index, total});
+        for (auto& loaded : modules_) loaded->onFrameBegin(*this);
+        for (auto& loaded : modules_) loaded->onRenderUI(*this);
+        for (auto& loaded : modules_) loaded->onPresent(*this);
     }
     return true;
 }

@@ -14,6 +14,9 @@ namespace engine {
 struct QuitRequested {};
 // Emitted when the game is paused/unpaused (see Engine::setPaused).
 struct PauseChanged { bool paused; };
+// Emitted once per module as loadModules() finishes it (index/total are 1-based; index == total on the last one).
+// A boot-progress module (e.g. core/boot_screen) can subscribe to this to draw a loading bar - see docs/STARTUP.md.
+struct ModuleLoaded { std::string name; int index = 0, total = 0; };
 
 class Engine {
 public:

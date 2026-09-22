@@ -1,0 +1,21 @@
+{
+  "_comment": "Precomputed average colour (rgb 0..1) of each shipped skybox set's front face, used by world/skybox's star-colour matching (docs/WORLD.md 'Skybox matches the star'). Generated once offline from assets/skybox/bkg/<key>/front.png (a box-downscale to 1x1) so the game never has to fully decode all 18 sets' images at startup just to compare colours - one of those images is 4096x4096, and decoding all of them synchronously was measured at ~0.6s alone, on top of the normal cost of decoding the actually-displayed set, making the game hang for a noticeable moment on startup. If a set is missing here (e.g. the user adds a new one), world/skybox falls back to decoding it at runtime and caching the result under cache/skybox/, exactly as before - this file just removes that cost for the sets that ship with the game.",
+  "blue/set1": { "rgb": [0.0, 0.0118, 0.0314] },
+  "dark/set1": { "rgb": [0.1843, 0.1216, 0.0235] },
+  "dark/set2": { "rgb": [0.0431, 0.0196, 0.0] },
+  "dark/set3": { "rgb": [0.0941, 0.0667, 0.1059] },
+  "green/set1": { "rgb": [0.0588, 0.0863, 0.0392] },
+  "green/set2": { "rgb": [0.1412, 0.1765, 0.0039] },
+  "green/set3": { "rgb": [0.2039, 0.1765, 0.0784] },
+  "lightblue/set1": { "rgb": [0.0392, 0.2039, 0.2667] },
+  "orange/set1": { "rgb": [0.3137, 0.1569, 0.0667] },
+  "orange/set2": { "rgb": [0.4, 0.1373, 0.0078] },
+  "orange/set3": { "rgb": [0.2314, 0.1294, 0.0235] },
+  "purple/set1": { "rgb": [0.0275, 0.0078, 0.1137] },
+  "purple/set2": { "rgb": [0.1216, 0.0549, 0.1647] },
+  "purple/set3": { "rgb": [0.2, 0.0549, 0.2039] },
+  "red/set1": { "rgb": [0.149, 0.0471, 0.0431] },
+  "red/set2": { "rgb": [0.1255, 0.0196, 0.0157] },
+  "red/set3": { "rgb": [0.1294, 0.0275, 0.0196] },
+  "teal/set1": { "rgb": [0.0275, 0.0745, 0.0549] }
+}
