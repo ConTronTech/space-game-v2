@@ -41,11 +41,13 @@ public:
     }
 
     // Esc while the menu is open closes the menu and must NOT also open the pause menu: the pause menu reads the `pause` action in its own onUpdate,
-    // so right after the input handler has polled (this module inits after it) the press is cancelled for that frame by adding -1 to the action, and
-    // kept cancelled while the key is held (otherwise the release/press edge would show up one frame later).
+    // so right after the input handler has polled (this module inits after it) the press is swallowed for that frame with IInput::consume(), and
+    // kept swallowed while the key is held (otherwise the release/press edge would show up one frame later). consume() hard-zeroes the action for
+    // the rest of this frame regardless of how many sources contributed to it (a `contribute("pause", -1)` guess could fail to fully cancel a press
+    // that two devices both triggered the same frame; consume() cannot).
     void onFrameBegin(engine::Engine&) override {
         bool close = false;
-        if (swallow_.step(open_, input_->value("pause"), close)) input_->contribute("pause", -1.0f);
+        if (swallow_.step(open_, input_->value("pause"), close)) input_->consume("pause");
         if (close) closeRequested_ = true;
     }
 

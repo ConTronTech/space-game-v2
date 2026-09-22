@@ -79,3 +79,26 @@ TEST(input_below_threshold_is_not_down) {
     CHECK(!r.in.down("act"));
     CHECK_EQ(r.in.value("act"), 0.3f);
 }
+
+TEST(input_consume_zeroes_the_rest_of_this_frame_only) {
+    Rig r;
+    r.dev.level = 1; r.frame();
+    CHECK(r.in.down("act"));
+    r.in.consume("act");
+    CHECK(!r.in.down("act"));
+    CHECK_EQ(r.in.value("act"), 0.0f);
+    r.frame();                      // next frame: the device still contributes, consume() does not stick
+    CHECK(r.in.down("act"));
+}
+
+TEST(input_consume_beats_a_manual_offset_when_two_sources_press_the_same_action) {
+    // the bug a raw contribute(action, -1) offset could hide: two sources both pressing "pause" the same frame sum to
+    // more than 1 before consume(); consume() zeroes it outright regardless of how many sources contributed.
+    Rig r;
+    r.frame();
+    r.in.contribute("pause", 1.0f);
+    r.in.contribute("pause", 1.0f);   // e.g. keyboard AND a wheel button both pressed this frame
+    CHECK(r.in.down("pause"));
+    r.in.consume("pause");
+    CHECK(!r.in.down("pause"));
+}
