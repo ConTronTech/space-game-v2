@@ -3,6 +3,8 @@
 Target (docs/VISION.md): 60 fps average and a 30 fps floor on the i5 M 560 / Intel Ironlake laptop at 1280x720, OpenGL 2.1 fixed function.
 The dev PC cannot show a problem there, so the game measures itself: `--benchmark` (docs/BENCHMARK.md) gives the totals, `--profile` says **where the time goes**.
 
+**Planet detail (3.3c):** only the Ultra preset got more planet detail (mesh level 5, 20,480 triangles, docs/QUALITY.md). Low / Medium / High, which the laptop uses, reach the same levels and triangle counts as before (measured in game and pinned by `quality_planet_rows_low_medium_high_unchanged`).
+
 ## Live profiler (F3 / F4 / F5): find a stutter without restarting
 **F3-F5 = performance, F6-F8 = gameplay / physics state** (the in-game debugger, docs/DEBUGGER.md: same pattern, a watch panel, debug draws and `logs/debug_state.txt`).
 The same `engine::Profiler` now also runs **live**, always on (`profiler.lite`, default true): a ring of the last 600 frames (about 10 s at 60 fps) with the frame time and the CPU time of every module hook and render pass, recorded without `glFinish` and without allocating.

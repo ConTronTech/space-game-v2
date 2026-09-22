@@ -1,6 +1,9 @@
 #include "engine/config.h"
 #include "tests/test.h"
 #include "core/quality/quality_rules.h"
+#include "world/star_system/planet_mesh.h"
+#include <algorithm>
+#include <cstring>
 
 using namespace quality;
 
@@ -95,4 +98,48 @@ TEST(config_preset_layer_replaces_the_default_but_never_the_user_value) {
     CHECK_EQ(c.get("a.d", 1, ""), 1);
     CHECK_EQ(c.presetSize(), 0u);
     std::remove(path.c_str());
+}
+
+namespace {
+const Entry& row(const char* key) {
+    for (auto& e : presetTable()) if (std::strcmp(e.key, key) == 0) return e;
+    static Entry none{"", 0, 0, 0, 0};
+    CHECK(false);
+    return none;
+}
+// The level the planet LOD path settles on for one body `px` pixels in radius (chooseLod + the budget), as star_system.cpp does it.
+int settledLevel(float px, int maxLod, int budget, float edgePx) {
+    int lv = -1;
+    for (int i = 0; i < 4; i++) lv = world::chooseLod(world::wantedLevel(px, edgePx), lv, maxLod);
+    std::vector<int> levels{lv};
+    world::applyTriangleBudget(levels, {px}, budget);
+    return levels[0];
+}
+}
+
+// The laptop presets must render planets exactly as before the Ultra ceiling was raised (docs/PERFORMANCE.md).
+TEST(quality_planet_rows_low_medium_high_unchanged) {
+    const Entry &lod = row("world.planet_max_lod"), &bud = row("world.planet_triangle_budget"), &edge = row("world.planet_lod_edge_px");
+    CHECK_EQ(lod.low, 2.0); CHECK_EQ(lod.medium, 3.0); CHECK_EQ(lod.high, 3.0);
+    CHECK_EQ(bud.low, 8000.0); CHECK_EQ(bud.medium, 20000.0); CHECK_EQ(bud.high, 40000.0);
+    CHECK_EQ(edge.low, 20.0); CHECK_EQ(edge.medium, 12.0); CHECK_EQ(edge.high, 8.0);
+    // every lower preset stays under the OLD ceiling (4), so raising kMaxMeshLevel cannot change what they pick
+    for (Preset p : {Preset::Low, Preset::Medium, Preset::High}) {
+        CHECK(valueFor(lod, p) < 4.0);
+        for (float px : {3.0f, 20.0f, 60.0f, 200.0f, 600.0f, 2000.0f, 1.0e6f}) {
+            int oldLevel = std::min(settledLevel(px, (int)valueFor(lod, p), (int)valueFor(bud, p), (float)valueFor(edge, p)), 4);
+            CHECK_EQ(settledLevel(px, (int)valueFor(lod, p), (int)valueFor(bud, p), (float)valueFor(edge, p)), oldLevel);
+        }
+    }
+}
+
+TEST(quality_ultra_planets_reach_level_5_close_up) {
+    const Entry &lod = row("world.planet_max_lod"), &bud = row("world.planet_triangle_budget"), &edge = row("world.planet_lod_edge_px");
+    CHECK_EQ((int)lod.ultra, world::kMaxMeshLevel);
+    CHECK_EQ(lod.ultra, 5.0);
+    CHECK(bud.ultra >= 4 * world::meshTriangleCount(5));                        // four planets at full detail before the budget bites
+    CHECK_EQ(settledLevel(1.0e6f, (int)lod.ultra, (int)bud.ultra, (float)edge.ultra), 5);   // at the surface
+    CHECK_EQ(settledLevel(150.0f, (int)lod.ultra, (int)bud.ultra, (float)edge.ultra), 5);   // a planet 150 px in radius on screen
+    CHECK_EQ(settledLevel(150.0f, 4, 80000, 6.0f), 4);                                     // the old Ultra row stopped at 5,120 triangles
+    CHECK_EQ(world::buildPlanetMesh(5, world::PlanetParams{}).triangleCount(), 20480);
 }
