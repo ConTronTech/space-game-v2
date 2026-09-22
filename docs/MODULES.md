@@ -79,6 +79,7 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `core::IQuality` | the graphics preset in use (`activeName()`, `selectedName()`); set defaults for tunables, see docs/QUALITY.md |
 | `core::UIHandler` | `addPanel`, glass panels, `button/toggle/slider`, `text` - see docs/UI.md |
 | `core::IDebug` | the in-game debugger (F6-F8, module `core/debugger`): `watch(name, getter)`, `drawHook(name, fn)`, `logEvent(line)`, `unwatch` / `removeDrawHook` in shutdown - see docs/DEBUGGER.md |
+| `core::IToast` | generic notification popups (module `ui/toast`, bottom-right, Info / Warning / Urgent): `show(text, level, seconds)`, `clear()` - optional, see docs/TOAST.md |
 | `core::ImportHandler` | `load<Mesh/Texture/TextAsset>("models/x.obj")` from `assets/`, cached; `registerLoader(".ext", fn)` adds a format |
 
 `package/modules/ship/ship_core/ship_core.cpp` is the reference: provides `ship::IShip`, registers render passes, is saveable, uses physics/audio,
