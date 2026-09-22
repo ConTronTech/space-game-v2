@@ -20,6 +20,7 @@ inline Vec3d mul(const Vec3d& a, double k) { return {a.x * k, a.y * k, a.z * k};
 inline double dot(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline Vec3d cross(const Vec3d& a, const Vec3d& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
 inline double length(const Vec3d& a) { return std::sqrt(dot(a, a)); }
+inline Vec3d normalized(const Vec3d& a) { double l = length(a); return l > 1e-12 ? mul(a, 1.0 / l) : Vec3d{0, 0, 0}; }
 
 // ---- gravity model (a design, not real physics) ----
 // mu = gravity_scale * radius^2, so the circular speed v = sqrt(mu / r) = sqrt(gravity_scale) * radius / sqrt(r) scales with the body's size:
@@ -80,14 +81,55 @@ struct Orbit {
     double speed = 0;      // tangential speed relative to the body
 };
 
-inline Orbit makeOrbit(const Vec3d& rel, const Vec3d& relVel, const Vec3d& forward, double mu) {
+inline Orbit makeOrbitWithNormal(const Vec3d& rel, const Vec3d& normal, double mu) {
     Orbit o;
     o.rel0 = rel;
     o.radius = length(rel);
-    o.normal = planeNormal(rel, relVel, forward);
+    o.normal = normal;
     o.speed = circularSpeed(mu, o.radius);
     o.omega = angularRate(o.speed, o.radius);
     return o;
+}
+
+// ---- the guide plane, with a fallback for a radial approach (3.5d) ----
+// The plane is set by the TANGENTIAL part of the relative velocity (the part across the line to the body centre). Flying (nearly) straight at or
+// away from the body, that part is tiny and noisy: the plane would be set by noise and the ring/arc collapse into a line through the centre. Then
+// ("fallback") the plane contains the ship's position and its nose (the part of `forward` across the radius), else its RIGHT vector (nose pointing
+// at the body), else the world axes. Hysteresis so it does not flip: enter below kFallbackEnter (fraction of the speed, or kFallbackMinSpeed m/s),
+// leave only above kFallbackLeave (and 1.5x the minimum speed).
+constexpr double kFallbackEnter = 0.20, kFallbackLeave = 0.30, kFallbackMinSpeed = 2.0;
+
+inline Vec3d tangentialPart(const Vec3d& rel, const Vec3d& v) {
+    Vec3d u = normalized(rel);
+    return sub(v, mul(u, dot(v, u)));
+}
+
+// Updates `fallback` (keep it per body between frames; start false) and returns the unit orbit normal.
+inline Vec3d guidePlaneNormal(const Vec3d& rel, const Vec3d& relVel, const Vec3d& forward, bool& fallback) {
+    double speed = length(relVel);
+    Vec3d vt = tangentialPart(rel, relVel);
+    double tl = length(vt), frac = speed > 1e-9 ? tl / speed : 0.0;
+    if (fallback) { if (tl > 1.5 * kFallbackMinSpeed && frac > kFallbackLeave) fallback = false; }
+    else if (tl < kFallbackMinSpeed || frac < kFallbackEnter) fallback = true;
+    if (length(rel) < 1e-9) return {0, 1, 0};
+    if (!fallback) return normalized(cross(rel, vt));
+    Vec3d right = cross(forward, {0, 1, 0});
+    if (length(right) < 1e-6) right = cross(forward, {1, 0, 0});
+    const Vec3d dirs[] = {forward, right, {0, 1, 0}, {1, 0, 0}, {0, 0, 1}};
+    for (const Vec3d& d : dirs) {
+        Vec3d t = tangentialPart(rel, d);
+        if (length(t) > 0.3 * length(d) && length(d) > 1e-9) return normalized(cross(rel, t));
+    }
+    return normalized(cross(rel, tangentialPart(rel, {0, 0, 1})));   // unreachable in practice: one of the axes is always across the radius
+}
+
+inline Orbit makeOrbit(const Vec3d& rel, const Vec3d& relVel, const Vec3d& forward, double mu, bool& fallback) {
+    return makeOrbitWithNormal(rel, guidePlaneNormal(rel, relVel, forward, fallback), mu);
+}
+// Stateless (no hysteresis): what the lock does from a cold start.
+inline Orbit makeOrbit(const Vec3d& rel, const Vec3d& relVel, const Vec3d& forward, double mu) {
+    bool fallback = false;
+    return makeOrbit(rel, relVel, forward, mu, fallback);
 }
 
 // Offset from the body after `t` seconds of orbiting.
@@ -106,7 +148,6 @@ inline bool shouldRelease(bool alive, bool warping, double thrust, double strafe
 }
 
 // ---- the guide: what the lock WOULD do from the ship's current state (3.5c) ----
-inline Vec3d normalized(const Vec3d& a) { double l = length(a); return l > 1e-12 ? mul(a, 1.0 / l) : Vec3d{0, 0, 0}; }
 
 // Tangent direction of travel at `rel` for an orbit with this normal (the way the offset moves under the right-hand rotation).
 inline Vec3d orbitTangent(const Vec3d& normal, const Vec3d& rel) { return normalized(cross(normal, rel)); }
@@ -129,7 +170,7 @@ inline int arcAheadSegments(int segments, double degrees = 90.0) {
 
 // ---- alignment ----
 enum class Refusal { None, TooClose, TooFar, Heading, TooFast, TooSlow };
-struct Tolerances { double speedFrac = 0.12, angleDeg = 10.0; };
+struct Tolerances { double speedFrac = 0.25, angleDeg = 25.0; };   // forgiving defaults (3.5d); orbit.align_speed_tol / align_angle_tol
 struct Alignment {
     Refusal reason = Refusal::None;
     double needSpeed = 0;      // circular speed at this altitude
@@ -137,6 +178,7 @@ struct Alignment {
     double speedError = 0;     // relSpeed - needSpeed (positive = too fast)
     double headingDeg = 0;     // angle between the relative velocity and the orbit tangent (0 = perfectly tangential)
     double altitude = 0;
+    double minAltitude = 0, maxAltitude = 0;   // the lock band, for the refusal text
     bool aligned() const { return reason == Refusal::None; }
 };
 
@@ -145,6 +187,7 @@ inline Alignment checkAlignment(const Orbit& o, const Vec3d& rel, const Vec3d& r
                                 double rangeFactor, double minAltitude, const Tolerances& tol) {
     Alignment a;
     a.altitude = altitude;
+    a.minAltitude = minAltitude; a.maxAltitude = rangeFactor * bodyRadius;
     a.needSpeed = o.speed;
     a.relSpeed = length(relVel);
     a.speedError = a.relSpeed - o.speed;
@@ -160,20 +203,6 @@ inline Alignment checkAlignment(const Orbit& o, const Vec3d& rel, const Vec3d& r
     return a;
 }
 
-// Short, specific text for the log and the HUD ("" when aligned).
-inline std::string refusalText(const Alignment& a) {
-    char b[128];
-    switch (a.reason) {
-        case Refusal::None: return "";
-        case Refusal::TooClose: return "too close to the surface";
-        case Refusal::TooFar: return "too far from the body";
-        case Refusal::Heading: std::snprintf(b, sizeof b, "heading %.0f degrees off the orbit (fly tangent)", a.headingDeg); return b;
-        case Refusal::TooFast: std::snprintf(b, sizeof b, "speed %+.0f m/s too fast (need %.0f)", a.speedError, a.needSpeed); return b;
-        case Refusal::TooSlow: std::snprintf(b, sizeof b, "speed %+.0f m/s too slow (need %.0f)", a.speedError, a.needSpeed); return b;
-    }
-    return "";
-}
-
 // "1.0K" above a thousand units, else whole units (the radar's style)
 inline std::string altitudeText(double alt) {
     char b[32];
@@ -181,6 +210,20 @@ inline std::string altitudeText(double alt) {
     else std::snprintf(b, sizeof b, "%.0f", alt);
     return b;
 }
+// Short, specific text for the log and the HUD: what is wrong AND what to do ("" when aligned).
+inline std::string refusalText(const Alignment& a) {
+    char b[128];
+    switch (a.reason) {
+        case Refusal::None: return "";
+        case Refusal::TooClose: std::snprintf(b, sizeof b, "too close to the surface: climb above %s", altitudeText(a.minAltitude).c_str()); return b;
+        case Refusal::TooFar: std::snprintf(b, sizeof b, "too far: fly within %s of the surface", altitudeText(a.maxAltitude).c_str()); return b;
+        case Refusal::Heading: std::snprintf(b, sizeof b, "turn %.0f deg toward the arc ahead", a.headingDeg); return b;
+        case Refusal::TooFast: std::snprintf(b, sizeof b, "%.0f m/s too fast: slow to %.0f m/s", a.speedError, a.needSpeed); return b;
+        case Refusal::TooSlow: std::snprintf(b, sizeof b, "%.0f m/s too slow: speed up to %.0f m/s", -a.speedError, a.needSpeed); return b;
+    }
+    return "";
+}
+
 // HUD block, line 1: "ORBIT PLANET 1  alt 1.0K  need 84 m/s"
 inline std::string guideLine1(const std::string& body, const Alignment& a) {
     std::string up = body;
@@ -197,26 +240,80 @@ inline std::string guideLine2(const Alignment& a) {
     return b;
 }
 
+// Aligned state with hysteresis (3.5d): once aligned it stays aligned while the ship is within the tolerances x kWideTol, and only drops after
+// being outside them for kHoldSeconds (values hovering at the edge no longer flicker between green and amber). The altitude band drops at once.
+constexpr double kWideTol = 1.25, kHoldSeconds = 0.3;
+struct AlignLatch { bool aligned = false; double outFor = 0; };
+inline Tolerances widened(const Tolerances& t, double k = kWideTol) { return {t.speedFrac * k, t.angleDeg * k}; }
+// `strict` checked with the tolerances, `wide` with widened() ones (same state). Returns the latched state.
+inline bool updateAlignLatch(AlignLatch& l, const Alignment& strict, const Alignment& wide, double dt, double hold = kHoldSeconds) {
+    if (strict.reason == Refusal::TooClose || strict.reason == Refusal::TooFar) { l = {}; return false; }
+    if (strict.aligned()) { l.aligned = true; l.outFor = 0; return true; }
+    if (!l.aligned) return false;
+    if (wide.aligned()) { l.outFor = 0; return true; }
+    l.outFor += dt;
+    if (l.outFor > hold) l = {};
+    return l.aligned;
+}
+
+// ---- when the guide shows (pure, 3.5d) ----
+// Whenever the ship is free (alive, not warping, docking or locked) and within max(rangeFactor x radius, minRange) of the nearest SURFACE. No key press.
+inline double guideRange(double bodyRadius, double rangeFactor, double minRange) { return std::max(rangeFactor * bodyRadius, minRange); }
+inline bool guideVisible(bool enabled, bool locked, bool alive, bool warping, bool docking, double altitude, double bodyRadius, double rangeFactor, double minRange) {
+    if (!enabled || locked || !alive || warping || docking) return false;
+    return altitude >= 0.0 && altitude <= guideRange(bodyRadius, rangeFactor, minRange);
+}
+
 // ---- settling onto the orbit ----
+// The settle takes longer for a bigger error (a curve, not a snap): `base` at a perfect entry up to max(base, maxSeconds) at the edge of the
+// tolerances (the latch lets it lock a little beyond). The commanded acceleration of the blend peaks at 1.5 x (velocity error) / seconds.
+inline double settleSecondsFor(double base, const Alignment& a, const Tolerances& tol, double maxSeconds = 3.0) {
+    if (base <= 0.0) return 0.0;
+    double eh = tol.angleDeg > 0 ? a.headingDeg / tol.angleDeg : 0.0;
+    double es = tol.speedFrac > 0 && a.needSpeed > 0 ? std::fabs(a.speedError) / (tol.speedFrac * a.needSpeed) : 0.0;
+    double e = std::clamp(std::max(eh, es), 0.0, 1.0);
+    return base + (std::max(base, maxSeconds) - base) * e;
+}
+
 inline double smoothstep01(double x) { x = std::max(0.0, std::min(1.0, x)); return x * x * (3.0 - 2.0 * x); }
 
-// One step of the settle, in the body's frame: the ship's velocity is blended from the one it had (relVel0) to the circular velocity at its current
-// offset, weight smoothstep(t / seconds), and its distance from the body is eased to the orbit's radius the same way. `off` is the current offset
-// from the body, t the time since the lock, dt the step. From t >= seconds it returns the exact circular motion. The caller re-anchors the orbit
-// at the end (orbit.rel0 = rotate(off, -omega * t)) so the analytic hold continues from where the ship is: no jump, and the velocity error against
-// the circular orbit shrinks monotonically to 0 (it is (1 - s) times the starting error).
-inline Vec3d settleStep(const Orbit& o, const Vec3d& relVel0, const Vec3d& off, double t, double dt, double seconds) {
-    double s = seconds <= 1e-6 ? 1.0 : smoothstep01((t + dt) / seconds);
-    Vec3d vCirc = mul(cross(o.normal, off), o.omega);
-    Vec3d v = add(mul(relVel0, 1.0 - s), mul(vCirc, s));
+// Circular velocity at offset `off` for this orbit's body and plane: the circular speed at |off| (not the lock radius), along the orbit tangent.
+inline double orbitMu(const Orbit& o) { return o.speed * o.speed * o.radius; }
+inline Vec3d circularVelocityAt(const Orbit& o, const Vec3d& off) { return mul(orbitTangent(o.normal, off), circularSpeed(orbitMu(o), length(off))); }
+
+// One step of the settle, in the body's frame (3.5d): the velocity is the circular velocity where the ship IS, plus the entry error
+// (relVel0 minus the circular velocity at the lock point, carried round with the orbit so a radial error stays radial) faded out by
+// 1 - smoothstep(t / seconds). No position snapping: the velocity is continuous, the correction acceleration peaks at 1.5 x error / seconds
+// (a curve, not a snap). The ship settles on the circle at the radius where the fade ends (an inward entry ends a little lower); the caller
+// then re-anchors the analytic orbit there with rebaseOrbit(): the speed is already the circular one, so there is no jump. Never below
+// `minRadius` (the body's surface plus orbit.min_altitude). seconds <= 0 is the old snap onto the lock circle.
+inline Vec3d settleStep(const Orbit& o, const Vec3d& relVel0, const Vec3d& off, double t, double dt, double seconds, double minRadius = 0.0) {
+    if (seconds <= 1e-6) {
+        Vec3d next = add(off, mul(mul(cross(o.normal, off), o.omega), dt));
+        double len = length(next);
+        return len < 1e-9 ? off : mul(next, o.radius / len);
+    }
+    double s = smoothstep01((t + dt) / seconds);
+    Vec3d e0 = rotateAbout(sub(relVel0, circularVelocityAt(o, o.rel0)), o.normal, o.omega * t);
+    Vec3d v = add(circularVelocityAt(o, off), mul(e0, 1.0 - s));
     Vec3d next = add(off, mul(v, dt));
     double len = length(next);
     if (len < 1e-9) return off;
-    return mul(next, (len * (1.0 - s) + o.radius * s) / len);
+    if (len < minRadius) next = mul(next, minRadius / len);
+    return next;
+}
+// After the settle: the circular orbit through the ship's offset `off` at time t since the lock (same body, same plane).
+inline Orbit rebaseOrbit(const Orbit& o, const Vec3d& off, double t) {
+    Orbit r = o;
+    r.radius = length(off);
+    r.speed = circularSpeed(orbitMu(o), r.radius);
+    r.omega = angularRate(r.speed, r.radius);
+    r.rel0 = rotateAbout(off, o.normal, -r.omega * t);
+    return r;
 }
 // How far a relative velocity is from the circular velocity at offset `off` (for logging and tests).
 inline double speedErrorVsCircular(const Orbit& o, const Vec3d& off, const Vec3d& relVel) {
-    return length(sub(relVel, mul(cross(o.normal, off), o.omega)));
+    return length(sub(relVel, circularVelocityAt(o, off)));
 }
 
 } // namespace orbit

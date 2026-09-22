@@ -30,11 +30,12 @@ public:
         minAlt_ = c.get("orbit.min_altitude", 20.0f, "never lock closer than this above the surface, units");
         releaseOnThrust_ = c.get("orbit.release_on_thrust", true, "thrust, strafe, lift or brake releases the lock (you burned)");
         guideRange_ = c.get("orbit.guide_range", 6.0f, "the orbit guide (ring + HUD block) shows within this many body radii above the surface");
+        guideMinRange_ = c.get("orbit.guide_min_range", 2500.0f, "... and always within this many units of the surface (small bodies): range = max(guide_range x radius, this)");
         showGuide_ = c.get("orbit.show_guide", true, "draw the orbit guide near a body: the circular orbit the lock would give, amber = misaligned, green = aligned");
         requireAlign_ = c.get("orbit.require_alignment", true, "O only locks when the ship is lined up with the orbit (false = the old snap: lock from any state)");
-        tol_.speedFrac = std::max(0.0f, c.get("orbit.align_speed_tol", 12.0f, "speed tolerance for locking, percent of the circular speed")) / 100.0;
-        tol_.angleDeg = std::max(0.0f, c.get("orbit.align_angle_tol", 10.0f, "heading tolerance for locking: max degrees between your velocity and the orbit tangent"));
-        settleSeconds_ = std::max(0.0f, c.get("orbit.settle_seconds", 1.5f, "after a lock the ship is eased onto the exact circular orbit over this many seconds (0 = snap)"));
+        tol_.speedFrac = std::max(0.0f, c.get("orbit.align_speed_tol", 25.0f, "speed tolerance for locking, percent of the circular speed")) / 100.0;
+        tol_.angleDeg = std::max(0.0f, c.get("orbit.align_angle_tol", 25.0f, "heading tolerance for locking: max degrees between your velocity and the orbit tangent"));
+        settleSeconds_ = std::max(0.0f, c.get("orbit.settle_seconds", 1.5f, "after a lock the ship is eased onto the exact circular orbit over this many seconds at a perfect entry, up to 3 s at the edge of the tolerances (0 = snap)"));
         segments_ = std::clamp(c.get("orbit.guide_segments", 96, "segments of the guide ring (the Low preset uses 48 and draws no tick marks; 96+ draws ticks every 30 degrees)"), 12, 256);
         autoOn_ = frameFlag(eng, "auto-orbit-lock");
         autoOff_ = frameFlag(eng, "auto-orbit-lock-off");
@@ -71,8 +72,8 @@ public:
     bool aligned() const override { return guideActive_ && align_.aligned(); }
     std::string refuseReason() const override { return guideActive_ ? orbit::refusalText(align_) : std::string(); }
 
-    void onUpdate(engine::Engine& eng, float) override {
-        updateGuide(eng);
+    void onUpdate(engine::Engine& eng, float dt) override {
+        updateGuide(eng, dt);
         bool toggle = input_->pressed("toggle_orbit_lock");
         long f = (long)eng.frame();
         if (autoOn_ >= 0 && f == autoOn_) toggle = true;
@@ -83,17 +84,22 @@ public:
     }
 
     void onFixedUpdate(engine::Engine& eng, float dt) override {
-        lastDt_ = dt > 0.0f ? dt : lastDt_;
         auto* sys = eng.services.get<world::IStarSystem>();
-        // remember every body's position each step: the previous one gives the body's velocity when engaging
+        // every body's velocity from its last two positions (read by the guide, the lock and the hold). 3.5d fix: this used to overwrite the previous
+        // position in the same step it was read, so the body velocity was always 0 while unlocked and the "relative" velocity was the absolute one.
         if (sys) {
             const auto& bodies = sys->bodies();
-            prevPos_.resize(bodies.size());
-            if (!locked_) { for (size_t i = 0; i < bodies.size(); i++) prevPos_[i] = bodies[i].position; }
+            if (prevPos_.size() != bodies.size()) { prevPos_.assign(bodies.size(), {}); bodyVel_.assign(bodies.size(), {}); prevValid_ = false; }
+            for (size_t i = 0; i < bodies.size(); i++) {
+                world::Vec3d v = orbit::mul(orbit::sub(bodies[i].position, prevPos_[i]), 1.0 / dt);
+                if (prevValid_ && orbit::length(v) < kMaxBodySpeed) bodyVel_[i] = v;   // a jump (a loaded game) keeps the last velocity for a step
+                prevPos_[i] = bodies[i].position;
+            }
+            prevValid_ = true;
         }
         if (!locked_) return;
         auto* ship = eng.services.get<ship::IShip>();
-        if (!ship || !sys || body_ >= (int)sys->bodies().size()) { release(eng, "ship or star system gone"); return; }
+        if (!ship || !sys || body_ >= (int)sys->bodies().size() || body_ >= (int)bodyVel_.size()) { release(eng, "ship or star system gone"); return; }
         const auto& st = ship->status();
         if (orbit::shouldRelease(st.alive, st.warping, input_->value("thrust"), input_->value("strafe"), input_->value("lift"),
                                  input_->down("brake"), releaseOnThrust_)) {
@@ -104,13 +110,15 @@ public:
         // The ship integrates position += velocity * dt, so the velocity that lands it there is (target - position) / dt. Re-derived from the
         // analytic orbit every step: errors never accumulate.
         world::Vec3d bp = sys->positionAt(body_);
-        world::Vec3d bv = orbit::mul(orbit::sub(bp, prevPos_[body_]), 1.0 / dt);
-        prevPos_[body_] = bp;
+        world::Vec3d bv = bodyVel_[body_];
         elapsed_ += dt;
         world::Vec3d offset;
         if (elapsed_ - dt < settleSeconds_used_) {                     // still settling: ease onto the circle, then re-anchor the analytic orbit where we are
-            offset = off_ = orbit::settleStep(orbit_, relVel0_, off_, elapsed_ - dt, dt, settleSeconds_used_);
-            if (elapsed_ >= settleSeconds_used_) orbit_.rel0 = orbit::rotateAbout(off_, orbit_.normal, -orbit_.omega * elapsed_);
+            offset = off_ = orbit::settleStep(orbit_, relVel0_, off_, elapsed_ - dt, dt, settleSeconds_used_, floorRadius_);
+            if (elapsed_ >= settleSeconds_used_) {
+                orbit_ = orbit::rebaseOrbit(orbit_, off_, elapsed_);
+                LOG_I("orbit", "settled on %s: radius %.1f, circular speed %.1f m/s", name_.c_str(), orbit_.radius, orbit_.speed);
+            }
         } else offset = orbit::offsetAt(orbit_, elapsed_);
         world::Vec3d target = orbit::add(orbit::add(bp, orbit::mul(bv, dt)), offset);
         auto p = ship->position();
@@ -126,7 +134,8 @@ public:
             settleLog_ = 0;
             world::Vec3d rel = orbit::sub({p.x, p.y, p.z}, bp);
             world::Vec3d sv = {v.x - bv.x, v.y - bv.y, v.z - bv.z};
-            LOG_I("orbit", "settle %.2f s: radius error %.3f, speed error vs the circular orbit %.2f m/s", elapsed_, orbit::length(rel) - orbit_.radius, orbit::speedErrorVsCircular(orbit_, orbit::sub({p.x, p.y, p.z}, bp), sv));
+            double r = orbit::length(rel), radial = r > 0 ? orbit::dot(sv, rel) / r : 0.0;
+            LOG_I("orbit", "settle %.2f s: radius %.1f (lock %.1f), radial speed %+.2f m/s, speed error vs the circular orbit %.2f m/s", elapsed_, r, lockRadius_, radial, orbit::speedErrorVsCircular(orbit_, rel, sv));
         }
     }
 
@@ -137,8 +146,8 @@ private:
     }
 
     // What the guide and the lock both need: the nearest body by surface, the orbit from the ship's current state, and how aligned it is.
-    struct Probe { bool ok = false; int index = -1; world::Vec3d pos, rel, relVel; double altitude = 0; float radius = 0; std::string name; orbit::Orbit orbit; orbit::Alignment align; };
-    bool probe(engine::Engine& eng, Probe& out, float rangeFactorForBody) {
+    struct Probe { bool ok = false; int index = -1; world::Vec3d pos, rel, relVel; double altitude = 0; float radius = 0; std::string name; orbit::Orbit orbit; orbit::Alignment align, wide; };
+    bool probe(engine::Engine& eng, Probe& out, bool& fallback) {
         auto* ship = eng.services.get<ship::IShip>();
         auto* sys = eng.services.get<world::IStarSystem>();
         if (!ship || !sys) return false;
@@ -153,32 +162,44 @@ private:
         out.index = n.index; out.altitude = n.altitude; out.radius = b.radius; out.name = b.name;
         // body velocity from the last two steps; the ship's velocity relative to it decides which way round we orbit
         world::Vec3d bv{};
-        if ((size_t)n.index < prevPos_.size()) bv = orbit::mul(orbit::sub(b.position, prevPos_[n.index]), 1.0 / lastDt_);
+        if ((size_t)n.index < bodyVel_.size()) bv = bodyVel_[n.index];
+        if (n.index != fallbackBody_) { fallbackBody_ = n.index; fallback = false; }   // the plane hysteresis is per body
         auto v = ship->velocity(), f = ship->forward();
         out.rel = orbit::sub(out.pos, b.position);
         out.relVel = orbit::sub({v.x, v.y, v.z}, bv);
-        out.orbit = orbit::makeOrbit(out.rel, out.relVel, {f.x, f.y, f.z}, orbit::bodyMu(b.radius, gravity_));
+        out.orbit = orbit::makeOrbit(out.rel, out.relVel, {f.x, f.y, f.z}, orbit::bodyMu(b.radius, gravity_), fallback);
         out.align = orbit::checkAlignment(out.orbit, out.rel, out.relVel, n.altitude, b.radius, range_, minAlt_, tol_);
-        (void)rangeFactorForBody;
+        out.wide = orbit::checkAlignment(out.orbit, out.rel, out.relVel, n.altitude, b.radius, range_, minAlt_, orbit::widened(tol_));
         out.ok = true;
         return true;
     }
 
     // Every frame: is the guide showing, and how aligned is the ship? (cheap: a handful of bodies, no allocation once the vectors are sized)
-    void updateGuide(engine::Engine& eng) {
+    // The guide shows whenever orbit::guideVisible says so: no key press involved. The aligned state is latched (orbit::updateAlignLatch).
+    void updateGuide(engine::Engine& eng, float dt) {
+        bool was = guideActive_;
         guideActive_ = false;
-        if (!showGuide_ || locked_) return;
         auto* ship = eng.services.get<ship::IShip>();
-        if (!ship) return;
-        const auto& st = ship->status();
-        if (!st.alive || st.warping) return;
-        if (auto* dock = eng.services.get<ship::IDocking>()) if (dock->busy()) return;
-        if (!probe(eng, probe_, 0)) return;
-        if (probe_.altitude < 0 || probe_.altitude > guideRange_ * probe_.radius) return;
+        bool docking = false;
+        if (auto* dock = eng.services.get<ship::IDocking>()) docking = dock->busy();
+        bool ok = ship && !locked_ && probe(eng, probe_, planeFallback_);
+        const auto* st = ship ? &ship->status() : nullptr;
+        if (ok) ok = orbit::guideVisible(showGuide_, locked_, st->alive, st->warping, docking, probe_.altitude, probe_.radius, guideRange_, guideMinRange_);
+        if (!ok) {
+            latch_ = {};
+            if (was) LOG_D("orbit", "guide off");
+            return;
+        }
+        bool aligned = orbit::updateAlignLatch(latch_, probe_.align, probe_.wide, eng.paused() ? 0.0 : (double)dt);
         align_ = probe_.align;
+        if (aligned) align_.reason = orbit::Refusal::None;
         if (guideName_ != probe_.name) guideName_ = probe_.name;
         guideActive_ = true;
-        // a fresh refusal text only when it changes (the HUD block caches its strings on these)
+        if (!was) LOG_D("orbit", "guide on: %s, altitude %.0f (shows within %.0f)", guideName_.c_str(), probe_.altitude, orbit::guideRange(probe_.radius, guideRange_, guideMinRange_));
+        if (planeFallback_ != loggedFallback_) {
+            loggedFallback_ = planeFallback_;
+            LOG_D("orbit", "guide plane: %s", planeFallback_ ? "radial approach - using the ship's nose/right" : "from the velocity");
+        }
     }
 
     void engage(engine::Engine& eng) {
@@ -190,15 +211,18 @@ private:
         if (st.warping) { LOG_I("orbit", "cannot lock while warping"); return; }
         if (auto* dock = eng.services.get<ship::IDocking>()) if (dock->busy()) { LOG_I("orbit", "cannot lock while docking or docked (press G to undock)"); return; }
         Probe pr;
-        if (!probe(eng, pr, 0)) { LOG_I("orbit", "cannot lock: no bodies"); return; }
+        bool fallback = planeFallback_;                                  // same plane as the guide shows (a copy: the guide's state is not stepped twice)
+        if (!probe(eng, pr, fallback)) { LOG_I("orbit", "cannot lock: no bodies"); return; }
         const auto& bodies = sys->bodies();
         const auto& b = bodies[pr.index];
         if (!orbit::inEngageRange(pr.altitude, b.radius, range_, minAlt_)) {
             LOG_I("orbit", "cannot lock: %s is %.0f units above the surface (range %.0f to %.0f)", b.name.c_str(), pr.altitude, (double)minAlt_, range_ * b.radius);
-            eng.events.emit(ship::OrbitLockRefused{b.name, pr.altitude < minAlt_ ? "too close to the surface" : "too far from the body"});
+            eng.events.emit(ship::OrbitLockRefused{b.name, orbit::refusalText(pr.align)});
             return;
         }
-        if (requireAlign_ && !pr.align.aligned()) {
+        // aligned now, or still inside the latched (widened) tolerances the guide is showing green for
+        bool latched = latch_.aligned && guideActive_ && probe_.index == pr.index && pr.wide.aligned();
+        if (requireAlign_ && !pr.align.aligned() && !latched) {
             std::string why = orbit::refusalText(pr.align);
             LOG_I("orbit", "cannot lock to %s: %s", b.name.c_str(), why.c_str());
             eng.events.emit(ship::OrbitLockRefused{b.name, why});
@@ -207,15 +231,15 @@ private:
         orbit_ = pr.orbit;
         relVel0_ = pr.relVel;
         off_ = pr.rel;
-        settleSeconds_used_ = requireAlign_ ? (double)settleSeconds_ : 0.0;   // the old snap (require_alignment false) stays a snap
+        lockRadius_ = orbit_.radius;
+        floorRadius_ = (double)b.radius + minAlt_;
+        settleSeconds_used_ = requireAlign_ ? orbit::settleSecondsFor(settleSeconds_, pr.align, tol_) : 0.0;   // the old snap (require_alignment false) stays a snap
         settleLog_ = 0;
         body_ = pr.index; name_ = b.name; elapsed_ = 0; logTimer_ = 0;
-        prevPos_.resize(bodies.size());
-        prevPos_[body_] = b.position;
         locked_ = true;
         guideActive_ = false;
-        LOG_I("orbit", "LOCKED to %s: radius %.1f (altitude %.1f), circular speed %.1f m/s, period %.0f s%s", name_.c_str(), orbit_.radius, pr.altitude, orbit_.speed,
-              orbit_.omega > 0 ? 2.0 * 3.14159265358979 / orbit_.omega : 0.0, settleSeconds_used_ > 0 ? " (settling)" : "");
+        LOG_I("orbit", "LOCKED to %s: radius %.1f (altitude %.1f), circular speed %.1f m/s, period %.0f s, entry heading %.1f deg speed %+.1f m/s, settling %.2f s%s", name_.c_str(), orbit_.radius, pr.altitude, orbit_.speed,
+              orbit_.omega > 0 ? 2.0 * 3.14159265358979 / orbit_.omega : 0.0, pr.align.headingDeg, pr.align.speedError, settleSeconds_used_, fallback ? " (radial-approach plane)" : "");
         eng.events.emit(ship::OrbitLockChanged{true, name_});
     }
 
@@ -330,14 +354,18 @@ private:
     core::IInput* input_ = nullptr;
     // guide state
     bool showGuide_ = true, requireAlign_ = true, guideActive_ = false;
-    float guideRange_ = 6.0f, settleSeconds_ = 1.5f, settleLog_ = 0;
+    float guideRange_ = 6.0f, guideMinRange_ = 2500.0f, settleSeconds_ = 1.5f, settleLog_ = 0;
     double settleSeconds_used_ = 0, textAt_ = -1;
     int segments_ = 96;
     orbit::Tolerances tol_;
     orbit::Alignment align_;
+    orbit::AlignLatch latch_;
+    bool planeFallback_ = false, loggedFallback_ = false, prevValid_ = false;
+    int fallbackBody_ = -1;
     Probe probe_;
     std::string guideName_, line1_, line2_;
     world::Vec3d relVel0_{}, off_{};
+    double lockRadius_ = 0, floorRadius_ = 0;
     std::vector<orbit::Candidate> cand_;
     std::vector<world::Vec3d> ring_;
     std::vector<float> verts_, cols_;
@@ -346,10 +374,11 @@ private:
     float gravity_ = 60.0f, range_ = 3.0f, minAlt_ = 20.0f, logTimer_ = 0;
     long autoOn_ = -1, autoOff_ = -1;
     int body_ = -1;
-    double elapsed_ = 0, lastDt_ = 1.0 / 60.0;
+    double elapsed_ = 0;
     std::string name_;
     orbit::Orbit orbit_;
-    std::vector<world::Vec3d> prevPos_;
+    std::vector<world::Vec3d> prevPos_, bodyVel_;
+    static constexpr double kMaxBodySpeed = 20000.0;   // faster than any orbit (even at world.time_scale 100): a teleport, not motion
 };
 
 REGISTER_MODULE(OrbitLock);
