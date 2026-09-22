@@ -37,6 +37,7 @@ public:
         sunRange_ = std::max(0.0f, c.get("gravity.sun_range", 2.0f, "the sun pulls out to this many times the outermost planet's orbit radius; beyond it, no gravity at all"));
         assistRange_ = c.get("gravity.dock_assist_range", 0.0f, "gravity fades out from this distance to the nearest station's centre, units (0 = 4 x its dock radius, the HUD's DOCK prompt range)");
         assistMin_ = std::clamp(c.get("gravity.dock_assist_min", 0.1f, "fraction of gravity left inside the station's dock zone (1 = no assist, the old behaviour)"), 0.0f, 1.0f);
+        gradientOn_ = c.get("gravity.debug_gradient_rings", true, "F7 debug draw: rings at 1.1/1.5/2/3/5/8 body radii around the dominant body, coloured by local |g| (blue weak -> red strong); the numbers are the gravity.gradient watch");
         assistOn_ = !eng.hasFlag("gravity-dock-assist-off");
         testFrame_ = frameFlag(eng, "gravity-test");
         scenario_ = eng.flagValue("gravity-scenario");
@@ -52,6 +53,7 @@ public:
             dbg_->watch("gravity.local_g", [this] { char b[64]; std::snprintf(b, sizeof b, "%.3f m/s^2", orbit::length(accel_)); return std::string(b); });
             dbg_->watch("gravity.dock_assist", [this] { char b[64]; std::snprintf(b, sizeof b, "x%.3f (station %.0f)", assist_, stationDist_); return std::string(b); });
             dbg_->watch("gravity.soi", [this] { char b[96]; std::snprintf(b, sizeof b, "dist %.0f / soi %.0f", dist_, soi_); return std::string(b); });
+            dbg_->watch("gravity.gradient", [this] { return gradientText(); });
             dbg_->drawHook("gravity.draw", [this](core::RenderEngine& r) { draw(r); });
         }
         return true;
@@ -59,7 +61,7 @@ public:
 
     void shutdown(engine::Engine&) override {
         if (dbg_) {
-            for (const char* w : {"gravity.dominant", "gravity.accel", "gravity.local_g", "gravity.dock_assist", "gravity.soi"}) dbg_->unwatch(w);
+            for (const char* w : {"gravity.dominant", "gravity.accel", "gravity.local_g", "gravity.dock_assist", "gravity.soi", "gravity.gradient"}) dbg_->unwatch(w);
             dbg_->removeDrawHook("gravity.draw");
             dbg_ = nullptr;
         }
@@ -262,9 +264,44 @@ private:
         glColor4f(0.4f, 0.7f, 1.0f, 0.5f); glVertexPointer(3, GL_FLOAT, 0, circle_); glDrawArrays(GL_LINE_STRIP, 0, kCircle + 1);
         glColor4f(1.0f, 0.9f, 0.3f, 0.8f); glVertexPointer(3, GL_FLOAT, 0, arc_); glDrawArrays(GL_LINE_STRIP, 0, nf);
         glColor4f(1.0f, 0.3f, 0.3f, 1.0f); glVertexPointer(3, GL_FLOAT, 0, vec_); glDrawArrays(GL_LINES, 0, 2);
+        if (gradientOn_) {   // the gradient rings face the camera (always read as circles, never edge-on like the orbital-plane SOI ring)
+            world::Vec3d fn = orbit::normalized(orbit::sub(s.pos, cam));
+            world::Vec3d fu = orbit::normalized(orbit::cross(fn, {0, 1, 0}));
+            if (orbit::length(fu) < 0.5) fu = orbit::normalized(orbit::cross(fn, {1, 0, 0}));
+            world::Vec3d fw = orbit::cross(fn, fu);
+            double gd[gravity::kGradientRings], gm[gravity::kGradientRings];
+            int nr = gravity::gradientDistances(s, gd);
+            for (int k = 0; k < nr; k++) gm[k] = gravity::gradientMagnitude(s, gd[k], minRadius_, maxAccel_);
+            for (int k = 0; k < nr; k++) {
+                for (int i = 0; i <= kCircle; i++) {
+                    double t = i * 2.0 * 3.14159265358979 / kCircle;
+                    put(&ring_[i * 3], orbit::add(s.pos, orbit::add(orbit::mul(fu, gd[k] * std::cos(t)), orbit::mul(fw, gd[k] * std::sin(t)))));
+                }
+                float c[3];
+                gravity::gradientColor(gravity::gradientT(gm[k], gm[nr - 1], gm[0]), c);
+                glColor4f(c[0], c[1], c[2], 0.7f); glVertexPointer(3, GL_FLOAT, 0, ring_); glDrawArrays(GL_LINE_STRIP, 0, kCircle + 1);
+            }
+        }
         glDisableClientState(GL_VERTEX_ARRAY);
         glPopAttrib();
         glPopMatrix();
+    }
+
+    // gravity.gradient watch: "49.6 26.7 15.0 6.7 2.4 0.9 m/s^2 @ 1.1/1.5/2/3/5/8 R (Planet 1, R 408)", numbers first so the panel's
+    // truncation keeps them (built only while F6's panel or F8's dump reads it)
+    std::string gradientText() const {
+        if (!gradientOn_) return "off";
+        if (dominant_ < 0 || (size_t)dominant_ >= src_.size()) return "none (deep space)";
+        const auto& s = src_[(size_t)dominant_];
+        double gd[gravity::kGradientRings], gx[gravity::kGradientRings];
+        int nr = gravity::gradientDistances(s, gd, gx);
+        char b[256];
+        int len = 0;
+        for (int k = 0; k < nr; k++) len += std::snprintf(b + len, sizeof b - len, "%.1f ", gravity::gradientMagnitude(s, gd[k], minRadius_, maxAccel_));
+        len += std::snprintf(b + len, sizeof b - len, "m/s^2 @");
+        for (int k = 0; k < nr; k++) len += std::snprintf(b + len, sizeof b - len, "%s%.3g", k ? "/" : " ", gx[k]);
+        std::snprintf(b + len, sizeof b - len, " R (%.40s, R %.0f)", dominantName_.c_str(), s.radius);
+        return std::string(b);
     }
 
     static constexpr long kScenarioFrame = 5;
@@ -273,7 +310,7 @@ private:
     core::IDebug* dbg_ = nullptr;
     float assistRange_ = 0, assistMin_ = 0.1f;
     double assist_ = 1, stationDist_ = -1;
-    bool assistOn_ = true;
+    bool assistOn_ = true, gradientOn_ = true;
     bool enabled_ = true, locked_ = false, prevValid_ = false;
     float scale_ = 60, minRadius_ = 0, maxAccel_ = 200, hysteresis_ = 1.05f, sunRange_ = 2, logTimer_ = 0;
     long testFrame_ = -1;
@@ -284,7 +321,7 @@ private:
     world::Vec3d accel_{};
     std::vector<gravity::Source> src_;
     std::vector<world::Vec3d> prevPos_, bodyVel_;
-    float circle_[(kCircle + 1) * 3] = {}, arc_[(kForecast + 1) * 3] = {}, vec_[6] = {};
+    float circle_[(kCircle + 1) * 3] = {}, arc_[(kForecast + 1) * 3] = {}, vec_[6] = {}, ring_[(kCircle + 1) * 3] = {};
 };
 
 REGISTER_MODULE(ShipGravity);

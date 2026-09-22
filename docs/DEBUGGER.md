@@ -83,6 +83,8 @@ uptime: 3.24 s (frame 195)
 Disabled 0.24 ms/frame, enabled + closed 0.24-0.26 ms (noise: nothing runs but three `pressed()` checks and two early returns), open on the Watches tab with
 the velocity draw on 0.34-0.36 ms (+~0.1 ms, all in the UI text quads). Close it when not looking, like F3.
 
+Hooks in the game: `gravity.draw` = SOI circle, acceleration vector, forecast arc and (3.5g) the field-gradient rings coloured by local |g| (docs/GRAVITY.md "Gradient debugger").
+
 ## Code
 `package/modules/core/debugger/`: `debugger_api.h` (`core::IDebug`), `debugger_rules.h` (pure logic: watch registry, grouping, log ring, draw-hook toggles,
 dump format; tests in `package/tests/test_debugger.cpp`), `debugger.cpp` (module, panel, pass, events, F8).

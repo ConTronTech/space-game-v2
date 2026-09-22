@@ -151,3 +151,49 @@ TEST(gravity_dock_assist_no_station_is_exactly_one) {
     CHECK(gravity::dockAssist(true, false, 10, 180, 720, 0.1) == 1.0);     // --gravity-dock-assist-off
     CHECK(std::fabs(gravity::dockAssist(true, true, 10, 180, 720, 0.1) - 0.1) < 1e-12);
 }
+
+TEST(gravity_gradient_distances_stay_inside_the_soi) {
+    std::vector<gravity::Source> src;
+    gravity::buildSources(gravSystem(), 60, 2, src);
+    for (const auto& s : src) {
+        double d[gravity::kGradientRings], m[gravity::kGradientRings];
+        int n = gravity::gradientDistances(s, d, m);
+        CHECK(n >= 1 && n <= gravity::kGradientRings);
+        for (int i = 0; i < n; i++) {
+            CHECK(d[i] > s.radius && d[i] < s.soi);
+            CHECK(near(m[i] * s.radius, d[i]));
+            if (i) CHECK(d[i] > d[i - 1]);
+        }
+    }
+    gravity::Source big; big.radius = 400; big.soi = 1000;   // SOI inside 3x: the outer rings clamp onto one ring just inside it
+    double d[gravity::kGradientRings];
+    int n = gravity::gradientDistances(big, d);
+    CHECK(n == 4 && d[3] < 1000 && d[3] > 990);
+    gravity::Source none;                                    // no radius / no SOI: nothing to draw
+    CHECK(gravity::gradientDistances(none, d) == 0);
+}
+
+TEST(gravity_gradient_magnitude_reuses_acceleration) {
+    gravity::Source s; s.pos = {100, 5, -7}; s.radius = 400; s.mu = gravity::bodyMu(400, 60); s.soi = 1e5;
+    CHECK(near(gravity::gradientMagnitude(s, 800, 0, 200), 60.0 / 4.0));                 // mu / r^2 = 60 (r/R)^-2
+    CHECK(near(gravity::gradientMagnitude(s, 800, 0, 200), orbit::length(gravity::acceleration(s, {900, 5, -7}, 0, 200))));
+    CHECK(near(gravity::gradientMagnitude(s, 440, 0, 10), 10.0));                         // the max_accel clamp applies too
+}
+
+TEST(gravity_gradient_colour_hot_strong_cool_weak_monotonic) {
+    float c[3];
+    gravity::gradientColor(gravity::gradientT(40, 1, 40), c);          // strongest -> hot red
+    CHECK(std::fabs(c[0] - 1.0f) < 1e-5f && std::fabs(c[2] - 0.2f) < 1e-5f);
+    gravity::gradientColor(gravity::gradientT(1, 1, 40), c);           // weakest -> cool blue
+    CHECK(std::fabs(c[0] - 0.3f) < 1e-5f && std::fabs(c[2] - 1.0f) < 1e-5f);
+    CHECK(std::fabs(gravity::gradientT(std::sqrt(40.0), 1, 40) - 0.5) < 1e-9);   // log scale
+    float prev[3] = {0, 1, 2};
+    for (double g = 1; g <= 40; g += 0.5) {
+        gravity::gradientColor(gravity::gradientT(g, 1, 40), c);
+        CHECK(c[0] >= prev[0] - 1e-6f && c[2] <= prev[2] + 1e-6f);
+        for (int k = 0; k < 3; k++) prev[k] = c[k];
+    }
+    CHECK(gravity::gradientT(5, 3, 3) == 1.0 && gravity::gradientT(NAN, 1, 40) == 1.0);   // degenerate: hot, never NaN
+    gravity::gradientColor(NAN, c);
+    CHECK(std::isfinite(c[0]) && std::isfinite(c[1]) && std::isfinite(c[2]));
+}

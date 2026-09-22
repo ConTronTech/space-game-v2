@@ -130,4 +130,39 @@ inline int forecast(const Source& s, Vec3d pos, Vec3d vel, double dt, int n, dou
     return k;
 }
 
+// ---- gradient debugger (task 3.5g): the shape of the dominant body's field, drawn as a few rings (debug view only) ----
+// Ring distances = body radius x kGradientMults, clamped just inside the SOI; a ring clamped onto an earlier one is dropped.
+// Writes up to kGradientRings distances (ascending) into out, returns how many. No allocation.
+constexpr int kGradientRings = 6;
+constexpr double kGradientMults[kGradientRings] = {1.1, 1.5, 2.0, 3.0, 5.0, 8.0};
+inline int gradientDistances(const Source& s, double* out, double* multOut = nullptr) {
+    if (!(s.radius > 0.0) || !(s.soi > 0.0)) return 0;
+    double cap = s.soi * 0.999;
+    int n = 0;
+    for (int i = 0; i < kGradientRings; i++) {
+        double d = std::min(s.radius * kGradientMults[i], cap);
+        if (d <= s.radius * 0.999 || (n > 0 && d <= out[n - 1] * 1.001)) continue;
+        if (multOut) multOut[n] = d / s.radius;
+        out[n++] = d;
+    }
+    return n;
+}
+// |a| at `distance` from the body's centre: the SAME acceleration() the ship feels (no second copy of the physics).
+inline double gradientMagnitude(const Source& s, double distance, double minRadius, double maxAccel) {
+    return orbit::length(acceleration(s, orbit::add(s.pos, Vec3d{distance, 0, 0}), minRadius, maxAccel));
+}
+// Colour for magnitude g between the weakest (gMin) and strongest (gMax) sampled ring: log scale (gravity is 1/r^2),
+// cool blue (0.3, 0.6, 1.0) at gMin -> hot red (1.0, 0.25, 0.2) at gMax, via amber in the middle. Monotonic in g; degenerate -> hot.
+inline double gradientT(double g, double gMin, double gMax) {
+    if (!(g > 0.0) || !(gMin > 0.0) || !(gMax > gMin)) return 1.0;
+    return std::clamp(std::log(g / gMin) / std::log(gMax / gMin), 0.0, 1.0);
+}
+inline void gradientColor(double t, float rgb[3]) {
+    t = std::clamp(t == t ? t : 1.0, 0.0, 1.0);
+    // red rises, blue falls: monotonic per channel
+    rgb[0] = (float)(0.3 + 0.7 * t);
+    rgb[1] = (float)(0.6 - 0.35 * t);
+    rgb[2] = (float)(1.0 - 0.8 * t);
+}
+
 } // namespace gravity
