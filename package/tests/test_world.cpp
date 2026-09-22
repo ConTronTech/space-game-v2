@@ -1,4 +1,7 @@
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include "engine/config.h"
 #include "tests/test.h"
 #include "world/skybox/skybox_rules.h"
 #include "world/starfield/starfield_rules.h"
@@ -261,4 +264,61 @@ TEST(star_system_physics_kinds_and_orbit_velocity) {
     world::updatePositions(s, 500.0);
     for (auto& b : s.bodies) if (b.kind == world::BodyKind::Moon)
         CHECK(std::fabs(dist(b.position, s.bodies[b.parent].position) - b.orbitRadius) < 1e-6 * b.orbitRadius + 1e-6);
+}
+
+TEST(skybox_nearest_color_exact_nearest_and_empty) {
+    std::vector<world::ColorCandidate> c = {{"red/set1", {1, 0, 0}}, {"blue/set1", {0, 0, 1}}, {"green/set1", {0, 1, 0}}};
+    auto m = world::nearestColor({0, 0, 1}, c);
+    CHECK_EQ(m.index, 1);
+    CHECK(m.distance < 1e-6f);
+    CHECK_EQ(world::nearestColor({0.2f, 0.9f, 0.1f}, c).index, 2);
+    CHECK_EQ(world::nearestColor({0.6f, 0.1f, 0.3f}, c).index, 0);
+    auto e = world::nearestColor({1, 1, 1}, {});
+    CHECK_EQ(e.index, -1);
+}
+
+TEST(skybox_chroma_matches_hue_not_brightness) {
+    // a dark blue sky and a dark orange sky; a bright pale-blue star must pick blue even though both are far darker than it
+    std::vector<world::ColorCandidate> c = {{"orange", world::chroma({0.20f, 0.10f, 0.04f})}, {"blue", world::chroma({0.04f, 0.08f, 0.20f})}};
+    CHECK_EQ(c[world::nearestColor(world::chroma({0.7f, 0.85f, 1.0f}), c).index].name, std::string("blue"));
+    CHECK_EQ(c[world::nearestColor(world::chroma({1.0f, 0.6f, 0.3f}), c).index].name, std::string("orange"));
+    world::RGB k = world::chroma({0, 0, 0});
+    CHECK(std::fabs(k.r - 1.0f / 3) < 1e-6f);
+}
+
+TEST(skybox_resolve_wanted_set_rules) {
+    CHECK_EQ(world::resolveWantedSet("red/set2", true, "blue/set1"), std::string("red/set2"));    // explicit always wins
+    CHECK_EQ(world::resolveWantedSet("dark/set1", true, "blue/set1"), std::string("dark/set1"));
+    CHECK_EQ(world::resolveWantedSet("auto", true, "blue/set1"), std::string("blue/set1"));
+    CHECK_EQ(world::resolveWantedSet("auto", false, "blue/set1"), std::string("dark/set1"));   // off-switch
+    CHECK_EQ(world::resolveWantedSet("auto", true, ""), std::string("dark/set1"));             // no star system = old default
+}
+
+TEST(skybox_set_config_explicit_vs_default) {
+    // the module reads skybox.set with default "auto": missing or "DEFAULT" in game.json -> auto (matched); a real value -> kept
+    namespace fs = std::filesystem;
+    std::string p = (fs::temp_directory_path() / "sgv2_test_skybox_set.json").string();
+    auto read = [&](const char* json) {
+        std::ofstream(p) << json;
+        engine::Config c(p);
+        c.load();
+        return world::resolveWantedSet(c.get(std::string("skybox.set"), std::string(world::kAutoSet)), true, "blue/set1");
+    };
+    CHECK_EQ(read(R"({"skybox": {"set": "DEFAULT"}})"), std::string("blue/set1"));
+    CHECK_EQ(read(R"({})"), std::string("blue/set1"));
+    CHECK_EQ(read(R"({"skybox": {"set": "orange/set3"}})"), std::string("orange/set3"));
+    CHECK_EQ(read(R"({"skybox": {"set": "dark/set1"}})"), std::string("dark/set1"));
+    fs::remove(p);
+}
+
+TEST(skybox_boost_tint) {
+    world::RGB g = world::boostTint(world::chroma({1, 1, 1}), 3);   // grey stays grey
+    CHECK(std::fabs(g.r - 1.0f / 3) < 1e-5f && std::fabs(g.b - 1.0f / 3) < 1e-5f);
+    world::RGB b = world::boostTint(world::chroma({0.7f, 0.85f, 1.0f}), 3);   // pale blue gets bluer, stays normalised
+    CHECK(b.b > 0.45f && b.r < 0.2f);
+    CHECK(std::fabs(b.r + b.g + b.b - 1.0f) < 1e-5f);
+    world::RGB o = world::boostTint(world::chroma({1.0f, 0.4f, 0.2f}), 3);   // clamps negatives
+    CHECK(o.b >= 0.0f && o.r > 0.7f);
+    world::RGB same = world::boostTint(world::chroma({0.2f, 0.5f, 0.3f}), 1);
+    CHECK(std::fabs(same.g - 0.5f) < 1e-5f);
 }

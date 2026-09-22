@@ -152,4 +152,52 @@ inline FaceVisibility visibleFaces(const float* view, float fovYdeg, float aspec
     return out;
 }
 
+// ---- matching the sky to the star (pure) ----
+// "skybox.set" value meaning "not chosen by the user": pick the set whose colour matches the star (or kFallbackSet without a star).
+inline const char* kAutoSet = "auto";
+inline const char* kFallbackSet = "dark/set1";   // the fixed default before star matching (and still used when there is no star)
+
+struct RGB { float r = 0, g = 0, b = 0; };
+struct ColorCandidate { std::string name; RGB color; };
+struct ColorMatch { int index = -1; float distance = 0; };   // index -1 = no candidates
+
+// Chromaticity: the colour scaled so r+g+b = 1 (black -> equal thirds). The sky images are dark and the star is bright,
+// so comparing raw RGB would mostly compare brightness; comparing the hue mix is what makes "blue star -> blue sky".
+inline RGB chroma(RGB c) {
+    float s = c.r + c.g + c.b;
+    if (!(s > 1e-6f)) return {1.0f / 3, 1.0f / 3, 1.0f / 3};
+    return {c.r / s, c.g / s, c.b / s};
+}
+
+// Push a chroma() colour away from grey by `gain` (1 = unchanged), clamp negatives, re-normalise. Star colours are only faintly
+// tinted (pale blue = 0.27/0.33/0.39) while the sky images are strongly tinted, so the star's tint is exaggerated before matching.
+inline RGB boostTint(RGB c, float gain) {
+    const float g = 1.0f / 3;
+    RGB o{std::max(0.0f, g + (c.r - g) * gain), std::max(0.0f, g + (c.g - g) * gain), std::max(0.0f, g + (c.b - g) * gain)};
+    return chroma(o);
+}
+
+inline float colorDistance(RGB a, RGB b) {
+    float dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+    return std::sqrt(dr * dr + dg * dg + db * db);
+}
+
+// Plain RGB Euclidean nearest candidate (ties: the earlier one). Callers pass chroma() values to match on hue.
+inline ColorMatch nearestColor(RGB target, const std::vector<ColorCandidate>& cands) {
+    ColorMatch m;
+    for (size_t i = 0; i < cands.size(); i++) {
+        float d = colorDistance(target, cands[i].color);
+        if (m.index < 0 || d < m.distance) { m.index = (int)i; m.distance = d; }
+    }
+    return m;
+}
+
+// Which set name to ask for: an explicit skybox.set always wins; "auto" (the default) takes the star-matched set when matching
+// is on and one was found (matched non-empty), else kFallbackSet (= the old fixed default).
+inline std::string resolveWantedSet(const std::string& configured, bool matchOn, const std::string& matched) {
+    if (configured != kAutoSet && !configured.empty()) return configured;
+    if (matchOn && !matched.empty()) return matched;
+    return kFallbackSet;
+}
+
 } // namespace world

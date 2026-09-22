@@ -13,6 +13,7 @@
 #include "engine/json.h"
 #include "engine/log.h"
 #include "world/skybox/skybox_rules.h"
+#include "world/star_system/star_system_api.h"
 
 namespace fs = std::filesystem;
 
@@ -20,12 +21,15 @@ class Skybox : public engine::Module {
 public:
     const char* name() const override { return "world/skybox"; }
     std::vector<std::string> dependencies() const override { return {"core/render_engine", "core/import_handler"}; }   // import_handler runs IMG_Init
+    std::vector<std::string> optionalDependencies() const override { return {"world/star_system"}; }   // the sun's colour picks the sky
 
     bool init(engine::Engine& eng) override {
         auto& c = eng.config;
         if (!c.get("skybox.enabled", true, "draw the skybox")) return true;
         std::string dir = c.get(std::string("skybox.dir"), std::string("assets/skybox/bkg"), "folder with <color>/<set>/ face images");
-        std::string want = c.get(std::string("skybox.set"), std::string("dark/set1"), "which skybox: color/set (falls back to the first found)");
+        std::string want = c.get(std::string("skybox.set"), std::string(world::kAutoSet),
+                                 "which skybox: color/set, or auto = the set whose colour matches the star (dark/set1 without a star); falls back to the first found");
+        bool matchOn = c.get("skybox.match_star_color", true, "with skybox.set auto: pick the set whose average colour is closest to the sun's colour (false = dark/set1)");
         int maxSize = c.get("skybox.max_size", 1024, "largest face size in pixels (longest side); bigger images are downscaled to save graphics memory");
         std::string cacheDir = c.get(std::string("skybox.cache_dir"), std::string("cache"), "where downscaled faces are cached ('' = no cache)");
         auto t0 = std::chrono::steady_clock::now();
@@ -52,6 +56,8 @@ public:
         std::sort(sets.begin(), sets.end(), [](const Set& a, const Set& b) { return a.color + "/" + a.name < b.color + "/" + b.name; });
         std::vector<std::string> names;
         for (auto& s : sets) names.push_back(s.color + "/" + s.name);
+        float gain = c.get("skybox.star_tint_gain", 3.0f, "star matching: how much the sun's faint tint is exaggerated before comparing with the (strongly tinted) sky sets; 1 = raw");
+        want = world::resolveWantedSet(want, matchOn, want == world::kAutoSet && matchOn ? matchStar(eng, sets, cacheDir, gain) : std::string());
         int idx = world::chooseSet(names, want);
         if (idx < 0) { LOG_W("skybox", "no skybox sets found in %s: no skybox", dir.c_str()); return true; }
         if (names[idx] != want) LOG_W("skybox", "set '%s' not found, using '%s'", want.c_str(), names[idx].c_str());
@@ -107,6 +113,48 @@ private:
             s.uv[i].flipV = o["flip_v"].boolean(o["flipV"].boolean(false));
             s.uv[i].rotate = world::normalizeRotate((int)o["rotate"].num(0));
         }
+    }
+
+    // Star colour -> nearest set by average colour (chromaticity, star tint boosted by `gain`). "" when there is no star system or no sets.
+    static std::string matchStar(engine::Engine& eng, const std::vector<Set>& sets, const std::string& cacheDir, float gain) {
+        auto* sys = eng.services.get<world::IStarSystem>();
+        if (!sys || sys->bodies().empty() || sets.empty()) return "";
+        const float* sc = sys->bodies()[0].color;
+        world::RGB star{sc[0], sc[1], sc[2]};
+        std::vector<world::ColorCandidate> cands;
+        for (auto& s : sets) {
+            world::RGB avg;
+            if (averageColor(s, cacheDir, avg)) cands.push_back({s.color + "/" + s.name, world::chroma(avg)});
+        }
+        world::ColorMatch m = world::nearestColor(world::boostTint(world::chroma(star), gain), cands);
+        if (m.index < 0) return "";
+        LOG_I("skybox", "star colour (%.2f,%.2f,%.2f) -> chosen set '%s' (distance %.3f of %zu sets)", star.r, star.g, star.b,
+              cands[m.index].name.c_str(), m.distance, cands.size());
+        return cands[m.index].name;
+    }
+
+    // Average RGB (0..1) of a set's front face. Decoding costs one full image per set on the first start, so the result is cached
+    // as cache/skybox/<color>_<set>_avg.txt (fresh while not older than the face), after that it is a tiny text read.
+    static bool averageColor(const Set& s, const std::string& cacheDir, world::RGB& out) {
+        const std::string& src = s.files[0];
+        std::error_code ec;
+        std::string cpath = cacheDir.empty() ? "" : cacheDir + "/skybox/" + s.color + "_" + s.name + "_avg.txt";
+        if (!cpath.empty()) {
+            bool exists = fs::exists(cpath, ec);
+            int64_t ct = exists ? stamp(cpath, ec) : 0, st = stamp(src, ec);
+            std::ifstream f(cpath);
+            if (world::cacheFresh(exists && !ec, ct, st) && f && (f >> out.r >> out.g >> out.b)) return true;
+        }
+        std::vector<uint8_t> pix;
+        int w = 0, h = 0;
+        if (!loadPacked(src, 1, pix, w, h) || pix.size() < 3) return false;   // box-downscaled to 1x1 = the average
+        out = {pix[0] / 255.0f, pix[1] / 255.0f, pix[2] / 255.0f};
+        if (!cpath.empty()) {
+            fs::create_directories(fs::path(cpath).parent_path(), ec);
+            std::ofstream f(cpath);
+            f << out.r << " " << out.g << " " << out.b << "\n";
+        }
+        return true;
     }
 
     static int64_t stamp(const fs::path& p, std::error_code& ec) {
