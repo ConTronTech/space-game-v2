@@ -167,6 +167,7 @@ ObjParseResult parseObj(const std::string& text, const MtlReader& readMtl) {
             if (curTagged) {
                 TaggedQuad q;
                 q.tag = curName; q.group = curGroup; q.name = curTagName;
+                q.color[0] = cur.r; q.color[1] = cur.g; q.color[2] = cur.b; q.color[3] = cur.a;
                 if (face.size() == 3) {         // a screen needs four corners: complete the parallelogram a + c - b
                     q.corners[0] = v[(size_t)face[0].v - 1];
                     q.corners[1] = v[(size_t)face[1].v - 1];
