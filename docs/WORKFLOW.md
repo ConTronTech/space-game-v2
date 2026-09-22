@@ -86,3 +86,13 @@ for any scripted scenario / screenshot run: `--display=1` opens on a secondary m
 index that is on the current machine), and `config/input/testing.json` is a copy of the default input profile with mouse capture off, so the
 desktop mouse is never grabbed. Worker specs should include this in their example commands going forward. `--frames=N` headless-only checks
 (no window content that matters) do not need it.
+
+## One build/smoke run at a time (coordinator rule, 2026-09-22, after a machine freeze)
+The user's machine hard-froze (needed a power cycle; the journal shows no OOM/panic trace at all before it - consistent with a driver-level
+hang, not a clean kill) during a stretch where multiple `package/tools/smoke.sh` / `make test-san` cycles were running **concurrently across
+several worktrees** - each `make test-san` is a real `g++ -fsanitize=address,undefined` compile (heavy CPU+memory) and each `smoke.sh` run
+launches an actual SDL2/GL window on the real GPU (not software-rendered). Several of those overlapping at once, sustained for a long unattended
+stretch, is the most likely cause. **Rule: the coordinator never has more than one `smoke.sh` / `make test-san` / real-GPU game process running
+at a time, across ANY worktree or `main`.** Finish and wait out one worktree's full verify-and-merge cycle before starting the next one's, even
+when multiple workers finished around the same time - queue them, don't parallelize the build/verify step (dispatching/investigation in
+parallel is still fine, only the actual compile+run step is serialized).
