@@ -236,4 +236,14 @@ inline Vec3d muzzlePosition(const Vec3d& shipPos, const Vec3d& fwd, const Vec3d&
     return add(shipPos, add(add(mul(right, offset[0]), mul(up, offset[1])), mul(fwd, offset[2])));
 }
 
+// The next selected weapon on a "weapon_next" press: forward on a non-negative deflection (a wheel/stick scrolled/pushed
+// forward, or a plain on/off button, whose value is always positive), backward on a negative one. A wheel/joystick has ONE
+// switch button, not one per weapon (docs/CONTROLLERS.md), so this makes the single bound action bidirectional instead of
+// needing a separate "weapon_prev" action/binding. count <= 1 always selects 0 (nothing to cycle through).
+inline int nextWeaponIndex(int selected, int count, float wheelValue) {
+    if (count <= 1) return 0;
+    int sel = ((selected % count) + count) % count;   // sane even if `selected` arrives out of range
+    return wheelValue >= 0.0f ? (sel + 1) % count : (sel - 1 + count) % count;
+}
+
 } // namespace combat

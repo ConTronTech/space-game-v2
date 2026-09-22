@@ -166,7 +166,11 @@ public:
         if (input_->pressed("weapon_3")) want = 2;
         if (input_->pressed("lock_target")) lockPress_ = true;             // handled in the fixed step (needs this step's pose)
         if (input_->pressed("lock_clear")) lockClear_ = true;
-        if (input_->pressed("weapon_next")) want = (sel_ + 1) % (int)weapons_.size();
+        // "weapon_next" is bound to the mouse wheel (a single bidirectional axis; a wheel/joystick has ONE switch button, not one per
+        // weapon), so pressed() alone cannot say which way it was pushed (pressed() only checks |value| crossing the threshold): read
+        // this frame's signed value too (combat::nextWeaponIndex, unit-tested) so scrolling back cycles backward with no separate
+        // "weapon_prev" action/binding needed.
+        if (input_->pressed("weapon_next")) want = combat::nextWeaponIndex(sel_, (int)weapons_.size(), input_->value("weapon_next"));
         want = std::clamp(want, 0, (int)weapons_.size() - 1);
         if (want != sel_) {
             sel_ = want;

@@ -218,3 +218,14 @@ TEST(weapons_cpu_cost_of_100_live_bolts) {
     std::fprintf(stderr, "  [combat] 100 live bolts x 256 nearby asteroids: %.4f ms per step (%ld hits)\n", ms, hits);
     CHECK(ms < 2.0);
 }
+
+TEST(weapons_next_weapon_index_cycles_both_ways_and_wraps) {
+    CHECK_EQ(combat::nextWeaponIndex(0, 3, 1.0f), 1);     // forward, positive deflection
+    CHECK_EQ(combat::nextWeaponIndex(2, 3, 1.0f), 0);     // forward wraps past the last weapon
+    CHECK_EQ(combat::nextWeaponIndex(0, 3, -1.0f), 2);    // backward wraps to the last weapon
+    CHECK_EQ(combat::nextWeaponIndex(1, 3, -1.0f), 0);    // backward
+    CHECK_EQ(combat::nextWeaponIndex(0, 3, 0.6f), 1);     // a plain on/off button (always positive) still goes forward
+    CHECK_EQ(combat::nextWeaponIndex(0, 1, 1.0f), 0);     // one weapon: nothing to cycle to
+    CHECK_EQ(combat::nextWeaponIndex(0, 0, 1.0f), 0);     // no weapons: never out of range
+    CHECK_EQ(combat::nextWeaponIndex(-1, 3, 1.0f), 0);    // an out-of-range starting index is treated sanely, not undefined
+}
