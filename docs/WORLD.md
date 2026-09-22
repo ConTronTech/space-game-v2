@@ -162,6 +162,20 @@ A warp crash into a registered asteroid reports the full closing speed (checked:
 Laptop notes: a stress run with 21,500 asteroids drew 25 meshes and about 4,000 points with 300 physics bodies at 1,700 fps on the dev machine; the cost scales with the asteroids inside the draw distance, not with the field size (the culling loop is one pass over the field per frame, fine into the tens of thousands).
 The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::nearest(shipPos, N, out)` (see docs/COCKPIT.md).
 
+### Ore zones (6.3, `data/ore_zones.json`)
+Which ore an asteroid holds depends on how far its belt / cluster is from the sun: `data/ore_zones.json` lists distance bands, each multiplying the `data/ores.json` rarity per ore (then renormalized; `world::zoneOreTable` in `asteroid_rules.h`, pure, unit-tested). A **belt** uses its orbit-gap midpoint (halfway between the two planet orbits it sits between), a **cluster** its planet/moon's distance from the sun at generation. Placement, sizes and the RNG sequence are unchanged: only the ore pick's weights differ.
+Boundaries are grounded in seed 1234's planet orbits (46,493 / 90,501 / 140,369 / 218,380 / 280,726 / 352,200; the belt's gap midpoint is 179,375):
+
+| Zone | Distance | Holds (seed 1234) | Multipliers (missing = 1) | Result (share of the table) |
+|---|---|---|---|---|
+| inner | 0 - 110,000 | planets 1-2 (start area) | iron 1.6, copper 1.4, gold 0.8, cobalt 0.8, uranium 0.4, platinum 0.35, crystal 0.35 | iron ~48%, platinum ~0.8%, crystal ~0.5% |
+| mid | 110,000 - 200,000 | planet 3, the belt | uranium 1.2, platinum 1.3, crystal 1.2 | iron 35.6%, platinum 3.5% (close to the old global table) |
+| outer | 200,000 - 320,000 | planets 4-5 | iron 0.7, copper 0.8, gold/cobalt 1.3, uranium 2.0, platinum/crystal 2.5 | iron 25.1%, platinum 6.7% |
+| deep | 320,000 + | planet 6 and beyond | iron 0.5, copper 0.6, titanium 1.2, gold/cobalt 1.5, uranium 2.5, platinum 3.5, crystal 4.0 | iron 17.5%, platinum 9.2%, crystal 7.0% |
+
+Reasoning: the start is near the inner planets, so close in it is the common crafting metals; the belt stays roughly the old balance; the payoff for flying out is that platinum is ~3.5x (outer ~2.5x) as likely at the edge as near the start, and ~12x more than in the inner zone. **No multiplier is 0**: every ore stays findable in every zone (smallest share: inner crystal/platinum ~0.5-0.8%), to avoid a "can't find X anywhere near me" lockout. A distance in no zone = multiplier 1 for everything; file missing/empty = exactly the old single global table (unit test: identical ore for every asteroid).
+Check: `--ore-zone-dump` logs each planet orbit, then per belt / cluster its distance, zone, expected % and actual count per ore. Seed 1234 (default quality): belt (mid, 4,000) iron 35.4% / platinum 2.9% / crystal 2.3%; outer cluster (150) iron 22.0% / platinum 6.0% / uranium 10.7%; deep cluster (150) iron 12.0% / uranium 18.0% / platinum 7.3%. With the file emptied the same run gives the belt iron 36.0% / platinum 2.4% and the deep cluster iron 32.7% / platinum 0.7%. (This seed puts no cluster in the inner zone; the tests cover it.)
+
 ## Stations
 `world/stations` adds 1-3 stations (orbital or planetary, placeholder cube + cylinder models) and `ship/docking` the dock key: see docs/STATIONS.md.
 
