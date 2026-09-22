@@ -89,6 +89,12 @@ only after the full check passes, so it should always run.
 - **Verified:** 505 tests under ASan+UBSan (43 modules), smoke, headless clean, laptop unchanged; screenshots from below a site show the stem and the map marker; nothing shows without the perk; `--disable=world/anomalies` does not crash.
 - **Closes out both "not done" follow-ups from Leap 46.**
 
+## Leap 48 - 2026-09-22 (DONE, tag `good-20260922-08`): gameplay/blueprints - Phase 6 item 2
+- **Changed:** blueprints are found through exploration, not bought/sold (kept clear of the withheld station economy). New `gameplay/blueprints` (`IBlueprints`, save id `gameplay/blueprints`, `--give-blueprint=ID`). Recipes get an optional `requires_blueprint` field - checked first, has NO effect when the module is absent (no softlock risk); gates Missile Pack only, survival recipes stay ungated. A new anomaly kind `ancient_blueprint_cache` grants one on investigation, with a distinct amber toast from the ore-pickup one (`ui/toast`'s second real caller).
+- **Verified:** 513 tests under ASan+UBSan (44 modules), smoke, headless clean, laptop unchanged. In-game (seed 1234): locked recipe shows "blueprint required: Missile Pack" in the CRAFTING tab with zero UI edits; investigating the site logs `BlueprintUnlocked` + a toast; the recipe then crafts; a save/reload keeps it unlocked; `--disable=gameplay/blueprints` does not block crafting.
+- **Caveat:** `craft()` actually refusing a locked recipe is proven only by unit tests (the greyed-out button never calls it in a scripted run).
+- **Phase 6 items 1 and 2 are both done.** Next per docs/GAME_LOOPS.md: item 3 (ore tiers by zone, data-only) or further polish, or the still-parked combat depth/NPCs decision.
+
 ## Leap 36 - 2026-09-21 (DONE, tag `good-20260921-36`): ore scanner effect (5.5b)
 - **Changed:** the Ore Scanner perk now does something. WITHOUT it the lock line under the crosshair says only "ASTEROID  r 9.6  850 m" (the ore no longer leaks through the lock name); WITH it: "ASTEROID  IRON  r 9.6  ~41 ore  850 m" (expected yield = `mining.yield_scale` x radius^2), the radar asteroid dots take the ore colour (rare ores `rarity <= 8` one size tier bigger) and the world-space lock bracket is tinted by the ore. Pure rules in `combat/weapons/scanner_rules.h`; `ICombat` gained lockTargetId/Ore/Radius.
 - **Verified:** 458 tests under ASan+UBSan, smoke (38 modules), headless clean; worker screenshots of the lock line, tinted bracket and ore radar dots.
