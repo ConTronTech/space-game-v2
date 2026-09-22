@@ -33,7 +33,7 @@ Devices and profiles: `docs/DEVICES.md`, `docs/CONTROLLERS.md`. Leave nothing ru
 Deprioritized by the user (2026-09-21 night, "the main game needs focusing"): stick shifter (adapter pending), wheel pause/back button, other accessory polish.
 Design decisions genuinely needed from the user before building: Phase 6's first game loop item (`gameplay/anomalies` + scanner - no `docs/GAME_LOOPS.md` exists) vs combat depth (no NPCs exist, so weapons/missiles have
 nothing to fight) - **this is the main open fork**; a station economy is planned by the user but withheld ("off the record") until their own spec arrives - do not design it. Smaller/no-decision-needed: a
-`weapon_prev` action, `IPhysics` has no body-count query (debugger shows n/a), no free-fly debug camera, unifying ship_hud's ad-hoc banners onto `ui/toast` (flagged, not done - too invasive to do unattended).
+no free-fly debug camera, unifying ship_hud's ad-hoc banners onto `ui/toast` (flagged, not done - too invasive to do unattended).
 
 ## Useful commands
 `make -j8 && ./space_game_v2` · `make test-san` · `package/tools/smoke.sh` · `make joytest` (visual controller tester) · `./space_game_v2 --profile-overlay` (F3 in game) · `--list-displays` · `--list-joysticks` · `--benchmark=20 --no-vsync`.
