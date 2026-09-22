@@ -211,6 +211,23 @@ TEST(fx_random_direction_is_a_unit_vector_in_the_cone) {
     }
 }
 
+TEST(fx_random_disc_offset_lies_in_the_perpendicular_plane_within_radius) {
+    fx::Rng rng(13);
+    double maxR = 0;
+    for (int i = 0; i < 500; i++) {
+        auto o = fx::randomDiscOffset(rng, {0, 0, 1}, 2.0f);                    // axis along +z: offsets must have z == 0
+        CHECK(close(o.z, 0.0, 1e-9));
+        double r = std::sqrt(o.x * o.x + o.y * o.y + o.z * o.z);
+        CHECK(r <= 2.0 + 1e-9);
+        maxR = std::max(maxR, r);
+        auto o2 = fx::randomDiscOffset(rng, {1, 1, 0}, 3.0f);                   // an arbitrary (non-axis-aligned) direction
+        CHECK(close(o2.x + o2.y, 0.0, 1e-6));                                   // perpendicular to (1,1,0): x + y == 0 for any offset in that plane
+    }
+    CHECK(maxR > 1.5);                                                          // 500 samples should reach reasonably close to the full radius
+    CHECK_EQ(fx::randomDiscOffset(rng, {1, 0, 0}, 0.0f).x, 0.0);                // radius 0: no offset at all (every existing non-jet emitter is unaffected)
+    CHECK_EQ(fx::randomDiscOffset(rng, {0, 0, 0}, 2.0f).x, 0.0);                // no axis: degenerate, no offset rather than a crash
+}
+
 TEST(fx_soft_dot_texture_is_round_and_soft) {
     std::vector<uint8_t> px;
     fx::softDotTexture(32, px);

@@ -19,6 +19,7 @@ struct SpawnParticles {
     float size = 0;                          // 0 = the preset's size, else a multiplier of it
     float lifetime = 0;                      // 0 = the preset's lifetime, else a multiplier of it
     float colour[3] = {-1, -1, -1};          // r,g,b in 0..1; negative = the preset's own colours
+    float radius = 0;                        // spawn position spread: a disc of this radius perpendicular to direction, e.g. an engine nozzle's face (0 = a single point)
 };
 
 } // namespace fx

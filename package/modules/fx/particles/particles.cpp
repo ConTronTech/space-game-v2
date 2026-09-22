@@ -127,12 +127,13 @@ private:
         em.sizeMul = e.size > 0 ? e.size : 1.0f; em.lifeMul = e.lifetime > 0 ? e.lifetime : 1.0f;
         for (int k = 0; k < 3; k++) em.colour[k] = e.colour[k];
         em.sizeScale = sizeScale_;
+        em.radius = e.radius;
         fx::spawn(pool_, *p, em, rng_);
     }
 
-    void emit(const char* kind, const world::Vec3d& pos, const world::Vec3d& dir, const world::Vec3d& vel, int count) {
+    void emit(const char* kind, const world::Vec3d& pos, const world::Vec3d& dir, const world::Vec3d& vel, int count, float radius = 0) {
         fx::SpawnParticles e;
-        e.kind = kind; e.position = pos; e.direction = dir; e.velocity = vel; e.count = count;
+        e.kind = kind; e.position = pos; e.direction = dir; e.velocity = vel; e.count = count; e.radius = radius;
         eng_->events.emit(e);
     }
 
@@ -191,7 +192,10 @@ private:
                 if (k <= 0) continue;
                 const auto& j = (*jets)[i];
                 engine::Vec3 o = toWorld(j.position), d = toWorld(j.direction);
-                emit("exhaust", {ps.pos.x + o.x, ps.pos.y + o.y, ps.pos.z + o.z}, {d.x, d.y, d.z}, {v.x, v.y, v.z}, k);
+                // spread each burst's spawn point across the nozzle's own real face (toWorld is a pure rotation, so the
+                // local-space radius carries straight over) instead of every particle leaving from one exact pixel - a
+                // narrow, fast exhaust otherwise reads as one rigid line/wedge rather than a plume filling the nozzle.
+                emit("exhaust", {ps.pos.x + o.x, ps.pos.y + o.y, ps.pos.z + o.z}, {d.x, d.y, d.z}, {v.x, v.y, v.z}, k, j.radius * 0.8f);
             }
             jetTurn_++;
             return;

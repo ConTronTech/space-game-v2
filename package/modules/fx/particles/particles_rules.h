@@ -43,7 +43,7 @@ inline std::vector<Preset> defaultPresets() {
     const float wfS[4] = {0.7f, 0.85f, 1.0f, 1.0f}, wfE[4] = {0.3f, 0.5f, 1.0f, 0.0f};
     const float muS[4] = {1.0f, 0.9f, 0.5f, 1.0f}, muE[4] = {1.0f, 0.5f, 0.1f, 0.0f};
     //  name          count     speed        life         size        colours   drag  additive spread
-    add("exhaust",    1, 1,     10, 18,      0.35f, 0.7f, 0.5f, 0.05f, exS, exE, 0.5f, true, 12.0f);
+    add("exhaust",    1, 1,     10, 18,      0.35f, 0.7f, 0.5f, 0.05f, exS, exE, 0.5f, true, 20.0f);
     add("spark",      10, 18,   8, 40,       0.3f, 0.8f,  0.25f, 0.03f, spS, spE, 0.8f, true, 70.0f);
     add("debris",     4, 8,     3, 14,       0.8f, 1.6f,  0.6f, 0.4f,  deS, deE, 0.3f, false, 80.0f);
     add("warp_flash", 50, 80,   30, 120,     0.3f, 0.7f,  1.0f, 0.15f,  wfS, wfE, 1.2f, true, 180.0f);
@@ -99,6 +99,25 @@ inline Vec3d randomDirection(Rng& rng, const Vec3d& axis, float spreadDeg) {
     return {a.x * cosT + u.x * cx + w.x * cy, a.y * cosT + u.y * cx + w.y * cy, a.z * cosT + u.z * cx + w.z * cy};
 }
 
+// A random offset uniformly distributed over the AREA of a disc of `radius`, perpendicular to `axis` - spreads a burst's SPAWN
+// POSITION across a surface (e.g. an engine nozzle's real cross-section) instead of every particle starting from one exact point,
+// which is what made a narrow, fast exhaust jet look like a single rigid line/wedge rather than a plume. `axis` (0,0,0) or
+// `radius` <= 0 gives {0,0,0} (no spread - every existing non-jet emitter, which passes no radius, is unaffected).
+inline Vec3d randomDiscOffset(Rng& rng, const Vec3d& axis, float radius) {
+    if (!(radius > 0.0f)) return {0, 0, 0};
+    double al = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+    if (al < 1e-9) return {0, 0, 0};
+    Vec3d a{axis.x / al, axis.y / al, axis.z / al};
+    Vec3d ref = std::fabs(a.y) < 0.9 ? Vec3d{0, 1, 0} : Vec3d{1, 0, 0};
+    Vec3d u{a.y * ref.z - a.z * ref.y, a.z * ref.x - a.x * ref.z, a.x * ref.y - a.y * ref.x};
+    double ul = std::sqrt(u.x * u.x + u.y * u.y + u.z * u.z);
+    u = {u.x / ul, u.y / ul, u.z / ul};
+    Vec3d w{a.y * u.z - a.z * u.y, a.z * u.x - a.x * u.z, a.x * u.y - a.y * u.x};
+    double r = (double)radius * std::sqrt(rng.f()), phi = rng.f() * 6.28318530717959;   // sqrt(rng): uniform over the AREA, not just the radius
+    double cx = std::cos(phi) * r, cy = std::sin(phi) * r;
+    return {u.x * cx + w.x * cy, u.y * cx + w.y * cy, u.z * cx + w.z * cy};
+}
+
 // ---- the pool ----
 struct Pool {
     // all arrays are sized once in init; `n` is the number of live particles, always the first n entries
@@ -131,6 +150,7 @@ struct Emit {
     float sizeMul = 1.0f, lifeMul = 1.0f;
     float colour[3] = {-1, -1, -1};
     float sizeScale = 1.0f;                  // the fx.size_scale tunable
+    float radius = 0;                        // spawn position spread (a disc perpendicular to direction, e.g. an engine nozzle's face); 0 = a single point
 };
 
 // Spawns one burst. Returns how many were actually created (limited by the free room and this frame's budget; the rest are counted as dropped).
@@ -142,9 +162,10 @@ inline int spawn(Pool& pool, const Preset& p, const Emit& e, Rng& rng) {
     pool.budget -= made;
     for (int k = 0; k < made; k++) {
         int i = pool.n++;
+        Vec3d off = randomDiscOffset(rng, e.direction, e.radius);
         Vec3d d = randomDirection(rng, e.direction, p.spreadDeg);
         float speed = rng.range(p.speedMin, p.speedMax);
-        pool.px[i] = e.position.x; pool.py[i] = e.position.y; pool.pz[i] = e.position.z;
+        pool.px[i] = e.position.x + off.x; pool.py[i] = e.position.y + off.y; pool.pz[i] = e.position.z + off.z;
         pool.vx[i] = (float)(e.velocity.x + d.x * speed); pool.vy[i] = (float)(e.velocity.y + d.y * speed); pool.vz[i] = (float)(e.velocity.z + d.z * speed);
         pool.age[i] = 0;
         pool.life[i] = rng.range(p.lifeMin, p.lifeMax) * std::max(0.05f, e.lifeMul);
