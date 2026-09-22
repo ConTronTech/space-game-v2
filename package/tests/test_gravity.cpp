@@ -122,3 +122,32 @@ TEST(gravity_skip_conditions) {
     CHECK(!gravity::shouldApply(true, true, false, false, true, false));     // orbit-locked
     CHECK(!gravity::shouldApply(true, true, false, false, false, true));     // paused
 }
+
+TEST(gravity_dock_assist_fade) {
+    const double zone = 180, range = 720, lo = 0.1;
+    CHECK(gravity::dockAssistFactor(720, zone, range, lo) == 1.0);          // at range: untouched
+    CHECK(gravity::dockAssistFactor(5000, zone, range, lo) == 1.0);         // beyond
+    CHECK(std::fabs(gravity::dockAssistFactor(180, zone, range, lo) - lo) < 1e-12);   // at the zone: the floor
+    CHECK(std::fabs(gravity::dockAssistFactor(50, zone, range, lo) - lo) < 1e-12);
+    CHECK(std::fabs(gravity::dockAssistFactor(450, zone, range, lo) - 0.55) < 1e-9);  // midpoint of smoothstep
+    double prev = lo;                                                       // monotonic and continuous
+    for (double d = 180; d <= 720; d += 1) {
+        double f = gravity::dockAssistFactor(d, zone, range, lo);
+        CHECK(f >= prev - 1e-12 && f - prev < 0.01);
+        prev = f;
+    }
+    // degenerate inputs never NaN; bad range = no change
+    CHECK(gravity::dockAssistFactor(-5, zone, range, lo) == lo);
+    CHECK(gravity::dockAssistFactor(NAN, zone, range, lo) == 1.0);
+    CHECK(gravity::dockAssistFactor(300, zone, 0, lo) == 1.0);
+    CHECK(gravity::dockAssistFactor(300, zone, 100, lo) == 1.0);
+    CHECK(gravity::dockAssistFactor(100, zone, range, -3) == 0.0);
+    CHECK(gravity::dockAssistFactor(100, zone, range, 7) == 1.0);
+    CHECK(gravity::dockAssistFactor(100, zone, range, 1.0) == 1.0);        // dock_assist_min 1 = the old behaviour
+}
+
+TEST(gravity_dock_assist_no_station_is_exactly_one) {
+    CHECK(gravity::dockAssist(false, true, 10, 180, 720, 0.1) == 1.0);     // no station reported / IDocking absent
+    CHECK(gravity::dockAssist(true, false, 10, 180, 720, 0.1) == 1.0);     // --gravity-dock-assist-off
+    CHECK(std::fabs(gravity::dockAssist(true, true, 10, 180, 720, 0.1) - 0.1) < 1e-12);
+}

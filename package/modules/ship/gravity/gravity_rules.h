@@ -84,6 +84,24 @@ inline bool shouldApply(bool enabled, bool alive, bool held, bool warping, bool 
     return enabled && alive && !held && !warping && !orbitLocked && !paused;
 }
 
+// Dock-approach assist (task 3.5f): gravity's magnitude fades near the station the ship could dock at (IDocking::nearestDockable), so the final
+// approach to a planetary pad is not a fight against full surface gravity. `distance` is from the station centre (the dock-zone metric),
+// `zone` is the station's dock-zone radius, `range` the distance where the fade begins. 1 at/beyond range, `minFactor` at/inside the zone,
+// smoothstep in between (same easing as the orbit guide). Degenerate inputs (NaN, range <= zone, ...) fall back to 1 = no change.
+inline double dockAssistFactor(double distance, double zone, double range, double minFactor) {
+    if (!(distance == distance) || !(range > 0.0) || !(minFactor == minFactor)) return 1.0;
+    double lo = std::clamp(minFactor, 0.0, 1.0);
+    zone = std::max(0.0, zone == zone ? zone : 0.0);
+    if (range <= zone) return 1.0;
+    if (distance >= range) return 1.0;
+    if (distance <= zone) return lo;
+    return lo + (1.0 - lo) * orbit::smoothstep01((distance - zone) / (range - zone));
+}
+// The factor actually applied: exactly 1 unless a station was reported (`found`) and the assist is on.
+inline double dockAssist(bool found, bool enabled, double distance, double zone, double range, double minFactor) {
+    return found && enabled ? dockAssistFactor(distance, zone, range, minFactor) : 1.0;
+}
+
 // Specific orbital energy and eccentricity relative to the body (debug sanity numbers: a circular orbit has e ~ 0, energy -mu/2r).
 struct OrbitInfo { double energy = 0, ecc = 0; };
 inline OrbitInfo orbitInfo(const Vec3d& rel, const Vec3d& relVel, double mu) {
