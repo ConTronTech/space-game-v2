@@ -66,6 +66,12 @@ only after the full check passes, so it should always run.
 - **Coordinator note:** done directly rather than dispatched, since it touches a foundational shared interface (`core::IInput`) used by every input-consuming module; small, bounded, well-understood, seemed better done with full context than by a fresh worker.
 - **Next:** the two remaining Phase 6 items (`gameplay/anomalies`+scanner, combat depth/NPCs) are real design decisions, not build tasks - no `docs/GAME_LOOPS.md` exists yet and there are no NPCs to fight. Left for the user's steer rather than guessed at unattended.
 
+## Leap 44 - 2026-09-22 (DONE, tag `good-20260922-04`): IPhysics body count for the debugger
+- **Changed:** `core::IPhysics` gained `aliveBodyCount()` (non-pure default `-1` = "not tracked", so any other implementation keeps compiling); `PhysicsWorld` returns its already-tracked `liveCount_`. The debugger's `physics.bodies` watch now shows the real number (confirmed `18` in a saved-game dump) instead of a permanent `n/a`.
+- **Verified:** 2 new unit tests (494 total) under ASan+UBSan, smoke (42 modules), headless clean, laptop unchanged; a real `--debug-dump` snapshot shows `physics.bodies = 18`.
+- **Coordinator note:** small, no-design-decision item picked up during a quiet unattended stretch (several idle wake-ups with nothing else safe to do); the two headline Phase 6 items are still left for the user.
+- **Next:** same fork as Leap 43 - `gameplay/anomalies`+scanner vs. combat depth/NPCs, both needing the user's steer. Smaller no-decision items left: a `weapon_prev` action, a free-fly debug camera, unifying ship_hud's banners onto `ui/toast`.
+
 ## Leap 36 - 2026-09-21 (DONE, tag `good-20260921-36`): ore scanner effect (5.5b)
 - **Changed:** the Ore Scanner perk now does something. WITHOUT it the lock line under the crosshair says only "ASTEROID  r 9.6  850 m" (the ore no longer leaks through the lock name); WITH it: "ASTEROID  IRON  r 9.6  ~41 ore  850 m" (expected yield = `mining.yield_scale` x radius^2), the radar asteroid dots take the ore colour (rare ores `rarity <= 8` one size tier bigger) and the world-space lock bracket is tinted by the ore. Pure rules in `combat/weapons/scanner_rules.h`; `ICombat` gained lockTargetId/Ore/Radius.
 - **Verified:** 458 tests under ASan+UBSan, smoke (38 modules), headless clean; worker screenshots of the lock line, tinted bracket and ore radar dots.
