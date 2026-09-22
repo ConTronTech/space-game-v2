@@ -34,6 +34,8 @@ Tunables: `stations.enabled` true, `stations.count` 2, `stations.seed_offset` 0,
 - **Not saved:** the docked state is not saved (after loading you are flying with whatever velocity you had; the station list comes from the seed).
 - **`docking.test_refill`** (default **false**, TEST ONLY): while docked, heal to full, refill warp fuel and (re)install a full shield. A warning is logged at startup when it is on. Real refuelling and shields are meant to come from mining asteroids.
 
+Near a station (within the HUD prompt range), gravity fades to 10% so a planetary pad is landable: see docs/GRAVITY.md "Dock-approach assist".
+
 Tunables: `docking.max_speed` 15, `docking.undock_push` 3, `docking.approach_seconds` 1.5, `docking.rest_height` 1.4, `docking.test_refill` false.
 
 ## Dev flags

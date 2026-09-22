@@ -16,13 +16,14 @@
 #include "ship/orbit_lock/orbit_lock_api.h"
 #include "ship/ship_core/ship_api.h"
 #include "world/star_system/star_system_api.h"
+#include "world/stations/stations_api.h"
 
 class ShipGravity : public engine::Module {
 public:
     const char* name() const override { return "ship/gravity"; }
     std::vector<std::string> dependencies() const override { return {"ship/ship_core"}; }
     // after the star system (this step's body positions) and the orbit lock (its lock state); the debugger only for the optional hooks
-    std::vector<std::string> optionalDependencies() const override { return {"world/star_system", "ship/orbit_lock", "ship/docking", "ship/warp_drive", "core/debugger"}; }
+    std::vector<std::string> optionalDependencies() const override { return {"world/star_system", "ship/orbit_lock", "ship/docking", "world/stations", "ship/warp_drive", "core/debugger"}; }
 
     bool init(engine::Engine& eng) override {
         auto& c = eng.config;
@@ -34,6 +35,9 @@ public:
         maxAccel_ = c.get("gravity.max_accel", 200.0f, "cap on the gravity acceleration, m/s^2 (the surface gravity of every body is orbit.gravity_scale, 60 by default: this never limits a real orbit)");
         hysteresis_ = std::max(1.0f, c.get("gravity.soi_hysteresis", 1.05f, "the dominant body is kept until the ship is this many times its sphere of influence away"));
         sunRange_ = std::max(0.0f, c.get("gravity.sun_range", 2.0f, "the sun pulls out to this many times the outermost planet's orbit radius; beyond it, no gravity at all"));
+        assistRange_ = c.get("gravity.dock_assist_range", 0.0f, "gravity fades out from this distance to the nearest station's centre, units (0 = 4 x its dock radius, the HUD's DOCK prompt range)");
+        assistMin_ = std::clamp(c.get("gravity.dock_assist_min", 0.1f, "fraction of gravity left inside the station's dock zone (1 = no assist, the old behaviour)"), 0.0f, 1.0f);
+        assistOn_ = !eng.hasFlag("gravity-dock-assist-off");
         testFrame_ = frameFlag(eng, "gravity-test");
         scenario_ = eng.flagValue("gravity-scenario");
         scenarioBody_ = std::max(1, std::atoi(eng.flagValue("gravity-body", "1").c_str()));
@@ -46,6 +50,7 @@ public:
             dbg_->watch("gravity.dominant", [this] { return dominant_ >= 0 ? dominantName_ : std::string(enabled_ ? "none (deep space)" : "off"); });
             dbg_->watch("gravity.accel", [this] { char b[96]; std::snprintf(b, sizeof b, "(%.2f, %.2f, %.2f)", accel_.x, accel_.y, accel_.z); return std::string(b); });
             dbg_->watch("gravity.local_g", [this] { char b[64]; std::snprintf(b, sizeof b, "%.3f m/s^2", orbit::length(accel_)); return std::string(b); });
+            dbg_->watch("gravity.dock_assist", [this] { char b[64]; std::snprintf(b, sizeof b, "x%.3f (station %.0f)", assist_, stationDist_); return std::string(b); });
             dbg_->watch("gravity.soi", [this] { char b[96]; std::snprintf(b, sizeof b, "dist %.0f / soi %.0f", dist_, soi_); return std::string(b); });
             dbg_->drawHook("gravity.draw", [this](core::RenderEngine& r) { draw(r); });
         }
@@ -54,7 +59,7 @@ public:
 
     void shutdown(engine::Engine&) override {
         if (dbg_) {
-            for (const char* w : {"gravity.dominant", "gravity.accel", "gravity.local_g", "gravity.soi"}) dbg_->unwatch(w);
+            for (const char* w : {"gravity.dominant", "gravity.accel", "gravity.local_g", "gravity.dock_assist", "gravity.soi"}) dbg_->unwatch(w);
             dbg_->removeDrawHook("gravity.draw");
             dbg_ = nullptr;
         }
@@ -70,10 +75,23 @@ public:
         trackBodyVelocity(bodies, dt);
         long f = (long)eng.frame();
         if (!scenario_.empty() && f == kScenarioFrame) startScenario(ship);
+        if (scenario_ == "dock" && f >= kScenarioFrame) steerDockScenario(eng, ship);
 
         const auto& st = ship->status();
-        bool held = false;
-        if (auto* dock = eng.services.get<ship::IDocking>()) held = dock->busy();
+        bool held = false, found = false;
+        double stDist = 0, zone = 0;
+        if (auto* dock = eng.services.get<ship::IDocking>()) {
+            held = dock->busy();
+            std::string nm, why; float d = 0; bool ok = false;
+            if (!held && (found = dock->nearestDockable(nm, d, ok, why))) {
+                stDist = d;
+                auto p0 = ship->position();
+                if (auto* sts = eng.services.get<world::IStations>()) { int i = sts->nearest({p0.x, p0.y, p0.z}); if (i >= 0) zone = sts->info(i).radius; }
+            }
+        }
+        double range = assistRange_ > 0 ? assistRange_ : 4.0 * zone;
+        assist_ = gravity::dockAssist(found && zone > 0, assistOn_, stDist, zone, range, assistMin_);
+        stationDist_ = found ? stDist : -1;
         auto p = ship->position();
         world::Vec3d pos{p.x, p.y, p.z};
         int prev = dominant_;
@@ -91,7 +109,7 @@ public:
             return;
         }
         const auto& s = src_[(size_t)dominant_];
-        accel_ = gravity::acceleration(s, pos, minRadius_, maxAccel_);
+        accel_ = orbit::mul(gravity::acceleration(s, pos, minRadius_, maxAccel_), assist_);
         auto v = ship->velocity();
         world::Vec3d nv = gravity::kick({v.x, v.y, v.z}, accel_, dt);
         ship->setVelocity({(float)nv.x, (float)nv.y, (float)nv.z});
@@ -128,9 +146,9 @@ private:
     void testLog(long f, ship::IShip* ship) {
         if (testFrame_ < 0 || f != testFrame_) return;
         auto v = ship->velocity();
-        LOG_I("gravity", "test frame %ld: dominant %s, distance %.1f, soi %.1f, accel (%.3f, %.3f, %.3f) |a| %.3f m/s^2, ship speed %.2f, gravity %s%s",
+        LOG_I("gravity", "test frame %ld: dominant %s, distance %.1f, soi %.1f, accel (%.3f, %.3f, %.3f) |a| %.3f m/s^2, ship speed %.2f, assist %.3f (station %.1f), gravity %s%s",
               f, dominant_ >= 0 ? dominantName_.c_str() : "none", dist_, soi_, accel_.x, accel_.y, accel_.z, orbit::length(accel_),
-              orbit::length({v.x, v.y, v.z}), enabled_ ? "on" : "off", locked_ ? " (orbit-locked: skipped)" : "");
+              orbit::length({v.x, v.y, v.z}), assist_, stationDist_, enabled_ ? "on" : "off", locked_ ? " (orbit-locked: skipped)" : "");
     }
 
     // --gravity-scenario=orbit|drop|deep (dev): places the ship at frame kScenarioFrame, then logs altitude/speed once per simulated second.
@@ -141,7 +159,25 @@ private:
         const auto& s = src_[(size_t)b];
         world::Vec3d bv = (size_t)b < bodyVel_.size() ? bodyVel_[(size_t)b] : world::Vec3d{};
         world::Vec3d pos, vel;
-        if (scenario_ == "deep") {
+        if (scenario_ == "dock" || scenario_ == "dockmiss") {   // dev: a scripted, slow approach straight down onto a station's pad (see steerDockScenario)
+            auto* sts = eng_->services.get<world::IStations>();
+            dockStation_ = -1;
+            for (int i = 0; sts && i < sts->count(); i++) if (sts->info(i).kind == world::StationKind::Planetary) { dockStation_ = i; break; }
+            if (dockStation_ < 0) { LOG_W("gravity", "scenario %s: no planetary station", scenario_.c_str()); scenario_.clear(); return; }
+            auto si = sts->info(dockStation_);
+            // dockmiss: the same altitude on the far side of the station's planet (no station anywhere near): gravity must be untouched
+            world::Vec3d dir = scenario_ == "dock" ? si.up : orbit::mul(si.up, -1.0);
+            const auto& par = src_[(size_t)si.parent];
+            double r0 = orbit::length(orbit::sub(si.position, par.pos)) + 3000.0;
+            pos = scenario_ == "dock" ? orbit::add(si.position, orbit::mul(si.up, 1000.0)) : orbit::add(par.pos, orbit::mul(dir, r0));
+            vel = si.velocity;
+            scenarioRef_ = si.parent;
+            ship->setPose({(float)pos.x, (float)pos.y, (float)pos.z}, {0, 0, 1}, {(float)si.up.x, (float)si.up.y, (float)si.up.z});
+            ship->setVelocity({(float)vel.x, (float)vel.y, (float)vel.z});
+            scenarioT_ = 0; scenarioLogT_ = 1.0;
+            LOG_I("gravity", "scenario %s: station %s (zone %.0f), start %.1f from it", scenario_.c_str(), si.name.c_str(), si.radius, orbit::length(orbit::sub(pos, si.position)));
+            return;
+        } else if (scenario_ == "deep") {
             pos = orbit::add(src_[0].pos, {src_[0].soi * 2.5, 0, 0});
             vel = {0, 0, 10};
             scenarioRef_ = -1;
@@ -158,6 +194,19 @@ private:
         LOG_I("gravity", "scenario %s: body %d, start distance %.1f, speed %.2f (relative %.2f)", scenario_.c_str(), b, orbit::length(orbit::sub(pos, s.pos)), orbit::length(vel), orbit::length(orbit::sub(vel, bv)));
     }
 
+    // dock scenario: a "pilot" holds a steady 10 m/s descent (relative to the station) toward the pad, stopping 40 units above its centre.
+    // It sets the velocity BEFORE gravity's kick, so each step's kick is exactly what the pilot has to fight (logged as |a| below).
+    void steerDockScenario(engine::Engine& eng, ship::IShip* ship) {
+        auto* sts = eng.services.get<world::IStations>();
+        auto* dock = eng.services.get<ship::IDocking>();
+        if (!sts || dockStation_ < 0 || (dock && dock->busy())) return;
+        auto si = sts->info(dockStation_);
+        auto p = ship->position();
+        double h = orbit::dot(orbit::sub({p.x, p.y, p.z}, si.position), si.up);
+        world::Vec3d v = orbit::add(si.velocity, orbit::mul(si.up, h > 40.0 ? -10.0 : 0.0));
+        ship->setVelocity({(float)v.x, (float)v.y, (float)v.z});
+    }
+
     void scenarioLog(engine::Engine& eng, ship::IShip* ship, float dt) {
         if (scenario_.empty() || (long)eng.frame() < kScenarioFrame || eng.paused()) return;
         scenarioT_ += dt;
@@ -168,8 +217,8 @@ private:
         const auto& s = src_[(size_t)scenarioRef_];
         world::Vec3d bv = bodyVel_[(size_t)scenarioRef_];
         double d = orbit::length(orbit::sub({p.x, p.y, p.z}, s.pos));
-        LOG_I("gravity", "scenario t=%.0f s: altitude %.1f, relative speed %.2f m/s, alive %d, dominant %s", scenarioT_, d - s.radius,
-              orbit::length(orbit::sub({v.x, v.y, v.z}, bv)), ship->status().alive ? 1 : 0, dominant_ >= 0 ? dominantName_.c_str() : "none");
+        LOG_I("gravity", "scenario t=%.0f s: altitude %.1f, relative speed %.2f m/s, alive %d, dominant %s, station %.1f, assist %.3f, |a| %.3f m/s^2", scenarioT_, d - s.radius,
+              orbit::length(orbit::sub({v.x, v.y, v.z}, bv)), ship->status().alive ? 1 : 0, dominant_ >= 0 ? dominantName_.c_str() : "none", stationDist_, assist_, orbit::length(accel_));
     }
 
     // ---- debugger draw hook: SOI circle, acceleration vector, forecast arc (fixed buffers, no allocation) ----
@@ -222,9 +271,13 @@ private:
     static constexpr int kCircle = 64, kForecast = 60;
     engine::Engine* eng_ = nullptr;
     core::IDebug* dbg_ = nullptr;
+    float assistRange_ = 0, assistMin_ = 0.1f;
+    double assist_ = 1, stationDist_ = -1;
+    bool assistOn_ = true;
     bool enabled_ = true, locked_ = false, prevValid_ = false;
     float scale_ = 60, minRadius_ = 0, maxAccel_ = 200, hysteresis_ = 1.05f, sunRange_ = 2, logTimer_ = 0;
     long testFrame_ = -1;
+    int dockStation_ = -1;
     int dominant_ = -1, scenarioBody_ = 1, scenarioRef_ = -1;
     double dist_ = 0, soi_ = 0, scenarioT_ = 0, scenarioLogT_ = 0;
     std::string dominantName_, scenario_;
