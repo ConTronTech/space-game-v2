@@ -1,0 +1,6 @@
+{
+    "name": "ShipV1",
+    "model": "ship.obj",
+    "showDefaultUI": true,
+    "screens": []
+}

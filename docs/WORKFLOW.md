@@ -13,9 +13,8 @@ Each roadmap phase is built by **parallel agents**, then reviewed, then played:
 ## Rules every agent follows
 - **Read first:** `docs/MODULES.md`, your roadmap step in `docs/ROADMAP.md`, and the docs for services you use
   (`docs/INPUT.md`, `UI.md`, `CONFIG.md`, `SAVES.md`, `AUDIO.md`, `DATA.md`, `PHYSICS.md`).
-- **Setup in a fresh worktree:** run `package/tools/link_assets.sh` (links the git-ignored `assets/` folder).
-- **The old game is a read-only reference** at `/home/contolis/Documents/Space-Game-V2/space-game/space-game`. Read it for behavior and
-  numbers; never edit it and never copy its globals/header-logic structure. Port the *behavior* as modules.
+- **Setup in a fresh worktree:** `assets/` is tracked in git directly, so a normal clone/checkout already has it; `package/tools/link_assets.sh` is only needed for a worktree that predates this and still expects a symlink.
+- **An earlier concept prototype was used as a read-only reference** during early development (not included in this repo). Behavior/numbers it demonstrated were ported here as new modules from scratch; nothing was copied from it structurally.
 - **Ownership:** edit only the files your task names. A shared file (`config/input/default.json`, `data/*.json`, `docs/*.md`) may get a
   small **additive** edit for your feature; say so in your report. Do **not** tick roadmap boxes (the coordinator does).
   `package/modules/ship/ship_core/ship_api.h` is a contract: extend it only additively and only if you must; say so.

@@ -1,0 +1,19 @@
+{
+    "name": "ShipV2",
+    "model": "ShipV2.obj",
+    "showDefaultUI": false,
+    "screens": [
+        {
+            "tag": "@HUD-INFO",
+            "content": "FLIGHT_DATA"
+        },
+        {
+            "tag": "@HUD-SYSTEMS",
+            "content": "SHIP_SYSTEMS"
+        },
+        {
+            "tag": "@HUD-RADAR",
+            "content": "PROXIMITY_RADAR"
+        }
+    ]
+}

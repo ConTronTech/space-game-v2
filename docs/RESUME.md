@@ -1,7 +1,7 @@
 # Resume guide (updated 2026-09-22, after Leap 58)
 
 ## Where the project stands
-`main` of `/home/contolis/Documents/Space-Game-V2/space-game-v2` is the real project (the old `space-game/space-game` folder is a read-only concept reference).
+`main` of this repo (`~/space-game-v2` or wherever you cloned it) is the real project (an earlier concept prototype was used as a read-only reference during early development, not included here).
 Newest verified tag: see `git tag -l 'good-*'` (latest `good-20260922-18`); every tag = green smoke + `make test-san` (564 tests, 46 modules).
 The full history with what was verified and NOT verified is `docs/DEVLOG.md` (newest first). The roadmap is `docs/ROADMAP.md`; open questions for the user are `docs/QUESTIONS.md`; Phase 6's loop order is `docs/GAME_LOOPS.md`.
 
@@ -46,7 +46,7 @@ scale** (not a modest bump), with **warp speed retuned much faster** (not a new 
 - Never inject keys/mouse into the user's desktop (no xdotool); use `--ui-click`, saved games, dev flags. Never dispatch into a worktree with an unprocessed report or uncommitted changes sitting in it (past collision, Leap 38). Do not edit the user's assets. Ask before anything hard to reverse.
 
 ## The test laptop ("crap-top") and the retro rig
-`contolis@192.168.1.150`, key `~/.ssh/id_ed25519_spacegame_laptop`, game in `~/Documents/Space-Game-V2/space-game-v2` (mirrors the main rig; never copy game.json/settings.json). Intel HD (ILK), OpenGL 2.1, two displays (panel 1366x768 + a 1280x1024 CRT on VGA), PXN V10 wheel, SideWinder joystick, shifter + pedals later. Missing `libSDL2_ttf-2.0` was reported by the user on this machine (open item - not yet fixed/verified, see docs/QUESTIONS.md if tracked there or ask the user for the exact failure).
+`<user>@<laptop-ip>`, key `~/.ssh/id_ed25519_spacegame_laptop`, game in the same relative path as the main rig (mirrors it; never copy game.json/settings.json). Intel HD (ILK), OpenGL 2.1, two displays (panel 1366x768 + a 1280x1024 CRT on VGA), PXN V10 wheel, SideWinder joystick, shifter + pedals later. Missing `libSDL2_ttf-2.0` was reported on this machine (open item - not yet fixed/verified, see docs/QUESTIONS.md if tracked there).
 `package/tools/laptop_bench.sh [flags]` syncs the build and runs the benchmark there. Numbers before this session's Ultra/atmosphere changes: 70-75 fps on the panel (~59 on the CRT), 1% low ~23-29 - Low/Medium/High presets were explicitly kept byte-for-byte unchanged (only Ultra grew), and atmospheres are off at Low, so the laptop's numbers should be unaffected; not yet re-benchmarked to confirm.
 Devices and profiles: `docs/DEVICES.md`, `docs/CONTROLLERS.md`. Leave nothing running there.
 
