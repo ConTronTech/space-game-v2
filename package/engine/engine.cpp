@@ -113,15 +113,14 @@ bool Engine::loadModules() {
 
         // Boot progress (docs/STARTUP.md): a slow module (asset decoding, mesh generation, ...) must never leave the window
         // unresponsive with no event pump, or the OS/compositor can visually read it as a frozen app even with no real hang.
-        // Replay the SAME per-frame hooks the main loop uses, over whatever modules have loaded so far: before core/window
-        // exists this is a no-op; once it does, onFrameBegin pumps events, and any boot-progress module (e.g. core/boot_screen,
-        // which draws the actual bar) reacts to the ModuleLoaded event below and paints in onRenderUI. onBootOverlay runs
-        // AFTER onRenderUI so a boot-time indicator is guaranteed to sit on top of anything else drawn that replay - this is
-        // a safety mechanism (the one thing proving the app is alive and progressing), it must never end up hidden behind
-        // something else that happens to load and draw later. onPresent swaps.
+        // Replay a MINIMAL per-frame cycle over whatever has loaded so far - deliberately NOT the full onUpdate/onRender/
+        // onRenderUI set: as soon as a UI-owning module (ship_hud, game_menu, ...) loads partway through, its panels would
+        // start drawing PARTIAL, not-yet-ready game state over the loading screen, which is worse than showing nothing (a
+        // real bug an earlier version of this had - the loading screen must be the ONLY thing on screen while loading is
+        // still in progress). So: onFrameBegin pumps events and clears, onBootOverlay draws the boot indicator (the one
+        // thing that IS meant to show here - core/boot_screen reacts to the ModuleLoaded event below), onPresent swaps.
         events.emit(ModuleLoaded{n, index, total});
         for (auto& loaded : modules_) loaded->onFrameBegin(*this);
-        for (auto& loaded : modules_) loaded->onRenderUI(*this);
         for (auto& loaded : modules_) loaded->onBootOverlay(*this);
         for (auto& loaded : modules_) loaded->onPresent(*this);
     }
@@ -223,10 +222,9 @@ int Engine::run(int argc, char** argv) {
         runPhase(2, [&](Module& m) { m.onUpdate(*this, dt); });
         runPhase(3, [&](Module& m) { m.onRender(*this); });
         runPhase(4, [&](Module& m) { m.onRenderUI(*this); });
-        // Not profiled (unlike the phases above): every module's onBootOverlay is a no-op cost forever after the one frame
-        // it might actually draw something (core/boot_screen's guaranteed final 100% frame, see loadModules()) - a real early
-        // frame still needs this call so that guarantee holds, but it does not deserve its own profiler slot for that.
-        for (auto& m : modules_) m->onBootOverlay(*this);
+        // onBootOverlay is NOT called here on purpose (see module.h): it only ever runs during loadModules()'s own startup
+        // replay, which already unconditionally reaches its last module (and draws the guaranteed 100%-full boot frame)
+        // before this real loop starts - real gameplay frames have no need to touch it again.
         runPhase(5, [&](Module& m) { m.onFrameEnd(*this); });
         runPhase(6, [&](Module& m) { m.onPresent(*this); });
 

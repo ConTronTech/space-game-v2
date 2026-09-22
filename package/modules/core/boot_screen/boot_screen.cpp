@@ -1,13 +1,16 @@
 // core/boot_screen - a growing bar AND a text log of what is currently loading, shown while the engine's other modules are
-// still starting up (package/engine/engine.cpp's loadModules() replays onFrameBegin/onRenderUI/onBootOverlay/onPresent
-// after each module, exactly like a real frame, so this draws normally during that span through the ModuleLoaded event).
+// still starting up (package/engine/engine.cpp's loadModules() replays onFrameBegin/onBootOverlay/onPresent after each
+// module - deliberately NOT onRenderUI - so this draws normally during that span through the ModuleLoaded event).
 // Fixes/covers three things at once (see the incident this followed, docs/STARTUP.md):
 //   1. a slow module (image decoding, mesh generation, ...) no longer leaves the window with zero visual feedback - the
 //      user sees real progress, and WHICH module is loading, instead of a seemingly frozen black window.
 //   2. loadModules() now pumps SDL events between modules (via Window::onFrameBegin, called generically), so the OS/window
 //      manager never goes long enough without a response to flag the app as "not responding" during a slow startup.
-//   3. this is a safety indicator, so it draws in onBootOverlay - a hook engine.cpp calls AFTER every module's onRenderUI,
-//      guaranteeing it is never hidden behind anything else that happens to draw during the same startup replay.
+//   3. this is a safety indicator, so it draws in onBootOverlay, a hook the startup replay calls INSTEAD OF onRenderUI -
+//      real game UI (ship_hud, game_menu, ...) never draws at all while still loading (an earlier version of this let
+//      onRenderUI run too, so a UI-owning module that had just loaded started drawing PARTIAL, not-yet-ready game state
+//      over the loading screen the moment it registered its panel - worse than the freeze this whole module exists to
+//      fix). The loading screen is now the ONLY thing on screen for the entire span it is visible.
 // Raw GL (fixed-function) and the cockpit's stand-alone stroke font (stroke_font.h - pure glyph data, no module/lifecycle
 // coupling, safe to use this early) - no dependency on core/render_engine, which has not loaded yet at this point
 // (priority -100; this module inits at -990, right after core/window).
@@ -40,10 +43,9 @@ public:
         return true;
     }
 
-    // Called during loadModules()'s replay (while modules are still loading), and once more as a completely normal early
-    // frame after loadModules() returns - boot::nextDraw (unit-tested) guarantees the 100%-full frame is drawn exactly
-    // once before this goes silent for the rest of the run, at zero cost (an early-return, no GL calls at all).
-    // Runs AFTER every module's onRenderUI (engine.cpp calls onBootOverlay last, on purpose - see the file header).
+    // Only ever called during loadModules()'s startup replay (deliberately not onRenderUI - see the file header: game UI
+    // must not draw at all while loading is in progress). boot::nextDraw (unit-tested) guarantees the 100%-full frame is
+    // drawn exactly once, on the last module's own replay iteration, before this goes silent for the rest of the run.
     void onBootOverlay(engine::Engine&) override {
         boot::DrawDecision d = boot::nextDraw(done_, reachedTotal_);
         done_ = d.stopAfter;
