@@ -50,6 +50,9 @@ Bindings from `config/input/default.json` (profile "Keyboard + Mouse").
 | toggle_profiler | F3 (live profiler overlay: fps, frame graph, top consumers, hitches) |
 | toggle_profiler_gpu | F4 (while the overlay is open: GPU attribution, slower) |
 | dump_profile | F5 (write logs/profile_live.txt: send it back after a stutter) |
+| toggle_debugger | F6 (in-game state debugger: live values, debug-draw switches, event log; docs/DEBUGGER.md) |
+| toggle_debug_draws | F7 (show / hide the debug draws switched on in the F6 panel) |
+| dump_debug_state | F8 (write logs/debug_state.txt: send it back after a weird quirk) |
 | mouse_capture_toggle | Tab (free/capture cursor) |
 | pause | Escape |
 | ui_up | Up or W |
