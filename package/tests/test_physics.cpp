@@ -169,3 +169,27 @@ TEST(physics_handler_may_teleport_the_body_it_was_told_about) {
     r.move(ship, {5.99f, 0, 0}, {});                       // resting just outside: sweep starts outside, no repeat
     CHECK_EQ(r.hits.size(), (size_t)1);
 }
+
+TEST(physics_alive_body_count_tracks_add_and_remove) {
+    PhysRig r;
+    CHECK_EQ(r.w.aliveBodyCount(), 0);
+    BodyId a = r.w.addBody("a", {0, 0, 0}, 1.0f, false);
+    BodyId b = r.w.addBody("b", {50, 0, 0}, 1.0f, true);
+    CHECK_EQ(r.w.aliveBodyCount(), 2);
+    r.w.removeBody(a);
+    CHECK_EQ(r.w.aliveBodyCount(), 1);
+    r.w.removeBody(b);
+    CHECK_EQ(r.w.aliveBodyCount(), 0);
+}
+
+TEST(physics_interface_default_alive_body_count_is_unsupported) {
+    struct Minimal : core::IPhysics {   // an IPhysics implementer that never overrides the new method still compiles and reports "unknown"
+        core::BodyId addBody(const std::string&, const engine::Vec3&, float, bool) override { return 0; }
+        void removeBody(core::BodyId) override {}
+        bool alive(core::BodyId) const override { return false; }
+        void setBody(core::BodyId, const engine::Vec3&, const engine::Vec3&) override {}
+        void teleport(core::BodyId, const engine::Vec3&) override {}
+        void query(const engine::Vec3&, float, std::vector<core::BodyId>&) const override {}
+    } m;
+    CHECK_EQ(m.aliveBodyCount(), -1);
+}

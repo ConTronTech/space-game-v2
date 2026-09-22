@@ -39,7 +39,7 @@ only after the full check passes, so it should always run.
 ## Leap 39 - 2026-09-21 (DONE, tag `good-20260921-40`): in-game state debugger (core-debug-1)
 - **Changed:** `core/debugger` module, `core::IDebug` service (watch/unwatch/drawHook/removeDrawHook/logEvent - the same optional-service pattern used everywhere else); **F6** panel (Watches / Draws / Events tabs), **F7** shows/hides every debug draw switched on, **F8** writes `logs/debug_state.txt`. Built-in physics/ship/engine watches and a camera-relative velocity draw hook. The event bus is typed-only (no generic hook), so the debugger subscribes itself to 20 existing event types rather than needing edits elsewhere.
 - **Verified:** 472 tests under ASan+UBSan (39 modules), smoke, headless clean; screenshots of the panel, F7 on/off (569->0 px of a debug draw), the event log. Cost: closed = identical to disabled (0.24 ms/frame), open ~+0.1 ms.
-- **Not built (documented follow-up):** a free-fly debug camera; `IPhysics` has no body-count query yet (shows n/a).
+- **Not built (documented follow-up):** a free-fly debug camera; `IPhysics` had no body-count query yet (shows n/a) - **fixed in Leap 44**.
 - **Also tonight:** a `config/input/testing.json` profile (mouse capture off) + `docs/WORKFLOW.md` rule: workers/coordinator use `--display=1 --input-profile=testing` for any scripted/screenshot run from now on, so the desktop mouse is never grabbed and the window never opens on the user's primary display.
 - **Next:** gravity (in flight, `ctx_7de3cc7296c6`), then Phase 5.2/5.6 or the first Phase 6 loop item, or combat depth (no NPCs exist yet - weapons/missiles have nothing to fight).
 

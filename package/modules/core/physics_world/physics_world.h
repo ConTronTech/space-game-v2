@@ -24,6 +24,7 @@ public:
     void setBody(BodyId id, const engine::Vec3& pos, const engine::Vec3& vel) override;
     void teleport(BodyId id, const engine::Vec3& pos) override;
     void query(const engine::Vec3& center, float radius, std::vector<BodyId>& out) const override;
+    int aliveBodyCount() const override { return (int)liveCount_; }
 
     void step();                                   // one collision pass (called every fixed update; public for tests)
     size_t bodyCount() const { return liveCount_; }

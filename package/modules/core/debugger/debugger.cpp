@@ -13,6 +13,7 @@
 #include "core/debugger/debugger_api.h"
 #include "core/debugger/debugger_rules.h"
 #include "core/input_handler/input_api.h"
+#include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
 #include "core/save_system/save_api.h"
 #include "core/ui_handler/ui_handler.h"
@@ -121,7 +122,12 @@ private:
         watch("physics.ship_speed", [this, noShip] {
             auto* s = ship(); if (!s) return noShip;
             auto v = s->velocity(); char b[48]; std::snprintf(b, sizeof b, "%.2f m/s", std::sqrt((double)v.x * v.x + (double)v.y * v.y + (double)v.z * v.z)); return std::string(b); });
-        watch("physics.bodies", [] { return std::string("n/a (core::IPhysics has no body count query)"); });
+        watch("physics.bodies", [this] {
+            auto* p = eng_->services.get<core::IPhysics>();
+            if (!p) return std::string("n/a (no physics module)");
+            int n = p->aliveBodyCount();
+            return n < 0 ? std::string("n/a (this IPhysics does not track it)") : std::to_string(n);
+        });
         watch("ship.hull", [this, noShip] { auto* s = ship(); if (!s) return noShip; char b[64]; std::snprintf(b, sizeof b, "%.0f / %.0f", s->status().hp, s->status().maxHp); return std::string(b); });
         watch("ship.shield", [this, noShip] {
             auto* s = ship(); if (!s) return noShip; const auto& st = s->status();

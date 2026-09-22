@@ -11,8 +11,9 @@ switch on a debug draw, then press F8 and send back `logs/debug_state.txt`.
 | F8 | `dump_debug_state` | writes `logs/debug_state.txt` (works with the panel closed too; a short toast confirms it) |
 
 - **Watches**: every live value a module registered, grouped by the text before the first `.` (`gravity.dominant` and `gravity.accel` show under `gravity`),
-  re-read `debugger.watch_hz` times a second (4) ONLY while the panel is open. The built-in groups are `physics` (ship position, velocity, speed; the body
-  count is `n/a`: `core::IPhysics` has no count query), `ship` (hull, shield, warp fuel, alive/warping) and `engine` (time, frame, paused).
+  re-read `debugger.watch_hz` times a second (4) ONLY while the panel is open. The built-in groups are `physics` (ship position, velocity, speed, the count
+  of alive collision bodies via `core::IPhysics::aliveBodyCount()`; an `IPhysics` that does not override it - the default is `-1` - shows `n/a`), `ship`
+  (hull, shield, warp fuel, alive/warping) and `engine` (time, frame, paused).
 - **Draws**: one switch per registered draw hook (all off by default). The switches are clickable when the mouse is free (Tab). Built in: `physics.velocity`
   (magenta line from the ship along its velocity, 1 s ahead and at least 5 m; a short green line along the nose). Best seen in chase view (V).
 - **Events**: the last `debugger.log_capacity` (200) game events, newest at the bottom; `up` / `down` buttons scroll (mouse free).

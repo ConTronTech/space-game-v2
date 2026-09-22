@@ -41,6 +41,9 @@ public:
     virtual void teleport(BodyId id, const engine::Vec3& pos) = 0;
     // Bodies whose sphere overlaps the given sphere (O(n): fine for occasional queries).
     virtual void query(const engine::Vec3& center, float radius, std::vector<BodyId>& out) const = 0;
+
+    // How many bodies are currently alive (for debug overlays/logging). -1 = this implementation does not track it.
+    virtual int aliveBodyCount() const { return -1; }
 };
 
 } // namespace core

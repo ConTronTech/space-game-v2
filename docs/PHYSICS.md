@@ -24,6 +24,8 @@ The reported contact is the moment of **first touch**, so you can put the mover 
 the thing it hit, or it would re-collide next step).
 - **Big bodies** (planets, the sun) span too many grid cells and live in a short list checked against every mover.
 - `query(center, radius, out)` lists overlapping bodies (O(n), for occasional use).
+- `aliveBodyCount()` returns how many bodies are currently alive, for debug overlays/logging (`core/debugger`'s `physics.bodies` watch); a
+non-pure default of `-1` means "not tracked" for any other `IPhysics` implementation, so a debug reader shows `n/a` instead of guessing.
 - Order: `core/physics_world` steps after gameplay modules have moved their bodies (priority 10); gameplay modules declare
 `optionalDependencies()` on it so it exists when they `init()`.
 - Tunable: `physics.cell_size` (default 200 m). Flight: `flight.hull_radius`, `flight.bounce`.
