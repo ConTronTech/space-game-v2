@@ -21,6 +21,16 @@ TEST(boot_screen_progress_fraction_clamps) {
     CHECK_EQ(progressFraction(5, -3), 0.0f);
 }
 
+TEST(boot_screen_label_pos_above_the_track_left_aligned) {
+    Rect track = trackRect(1000, 600);
+    Rect lbl = labelPos(track, 16.0f);
+    CHECK_EQ(lbl.x, track.x);          // left-aligned with the track
+    CHECK(lbl.y < track.y);            // sits above it
+    Rect none = labelPos(Rect{}, 16.0f);
+    CHECK_EQ(none.x, 0.0f);
+    CHECK_EQ(none.y, 0.0f);
+}
+
 TEST(boot_screen_next_draw_draws_the_final_full_frame_exactly_once) {
     // Not reached total yet: keeps drawing, never stops.
     DrawDecision d = nextDraw(false, false);

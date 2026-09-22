@@ -34,6 +34,12 @@ public:
     virtual void onRenderUI(Engine&) {}                // 2D overlay (usually via UIHandler panels instead)
     virtual void onFrameEnd(Engine&) {}                // clear per-frame state
     virtual void onPresent(Engine&) {}                 // swap buffers
+
+    // Boot-time only: called by loadModules()'s startup replay, AFTER onRenderUI, so anything drawn here sits on top of
+    // every other module's onRenderUI content that frame - a guaranteed-visible overlay for the one thing that must never
+    // be hidden while the engine is still starting up (the loading indicator, core/boot_screen). Never called once real
+    // gameplay frames begin; a module with nothing boot-time-critical to say never needs to override it.
+    virtual void onBootOverlay(Engine&) {}
 };
 
 // ---- self-registration ----

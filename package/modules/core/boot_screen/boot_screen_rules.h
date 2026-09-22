@@ -27,6 +27,14 @@ inline Rect fillRect(const Rect& track, float fraction) {
     return r;
 }
 
+// Top-left of the "loading X (n/total)" label: left-aligned with the track, sitting just above it. `textHeight` is the
+// glyph cell height (world/cockpit::textAdvance-style units, i.e. pixels here); degenerate track -> {0,0} (caller already
+// skips drawing anything for an empty track).
+inline Rect labelPos(const Rect& track, float textHeight) {
+    if (track.w <= 0 || track.h <= 0) return {};
+    return {track.x, track.y - textHeight * 1.4f, 0, 0};
+}
+
 // Whether THIS draw is still live, and whether the state should stop drawing AFTER it. `alreadyDone` short-circuits (once
 // stopped, stays stopped); `reachedTotal` (the last module's ModuleLoaded already arrived) means: draw one more time at
 // 100%, THEN stop - never skip that final full frame, and never draw again after it.
