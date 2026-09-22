@@ -129,3 +129,6 @@ changes core flight feel.
 - [Global Symplectic Integrator - MNRAS](https://academic.oup.com/mnras/article/414/1/659/1097134)
 - [The Barnes-Hut Galaxy Simulator](https://beltoforion.de/en/barnes-hut-galaxy-simulator/)
 - [Parallel N-Body Simulation with Barnes-Hut Approximation (GitHub)](https://github.com/dileban/nbody-simulation)
+
+## Implemented (3.5e, 2026-09-21)
+The section 3 / #14 recommendation is in: `ship/gravity` (docs/GRAVITY.md) applies single-dominant-body SOI gravity to the ship with a semi-implicit Euler kick through `IShip::setVelocity`, the same `mu` as the orbit guide, on by default (`ship.gravity_enabled`). Bodies stay analytic. A guide-speed orbit around Planet 1 held 610-612 altitude over 43 s.
