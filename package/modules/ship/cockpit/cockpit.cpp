@@ -133,7 +133,20 @@ private:
             ss << f.rdbuf();
             jets_ = thrusterJets(jetPolygonsFromObj(ss.str()), (lo + hi) * 0.5f);
         }
-        for (auto& q : mesh->tagged) if (q.group != "THRUST") tagged_.push_back(q);
+        for (auto& q : mesh->tagged) {
+            if (q.group != "THRUST") { tagged_.push_back(q); continue; }
+            // a @THRUST-JET face is BOTH the particle emitter marker (jets_, above) AND real hull geometry (an engine nozzle): the OBJ
+            // parser pulls every '@' face out of the ordinary mesh (buildBatches never sees it), so without this it is simply invisible.
+            // Draw it as two triangles in the solid batch, using the tag material's own Kd/d colour (an unglamorous but correct fallback:
+            // if the modeller wants a different look, give the visible part of the nozzle a NORMAL material and keep '@THRUST-JET' on
+            // just the small face that marks the exhaust point).
+            const engine::Vec3 tri[2][3] = {{q.corners[0], q.corners[1], q.corners[2]}, {q.corners[0], q.corners[2], q.corners[3]}};
+            for (auto& t : tri) for (auto& p : t) {
+                solid_.positions.insert(solid_.positions.end(), {p.x, p.y, p.z});
+                solid_.normals.insert(solid_.normals.end(), {q.normal.x, q.normal.y, q.normal.z});
+                solid_.colors.insert(solid_.colors.end(), {q.color[0], q.color[1], q.color[2], 1.0f});   // opaque even if the tag's own alpha is not
+            }
+        }
         LOG_I("cockpit", "hull x %.2f..%.2f  y %.2f..%.2f (belly %.2f below the eye)  z %.2f..%.2f", lo.x, hi.x, lo.y, hi.y, -lo.y, lo.z, hi.z);
         if (jets_.empty()) LOG_I("cockpit", "no @THRUST-JET faces: the exhaust uses fx.nozzle_back / fx.nozzle_down");
         for (size_t i = 0; i < jets_.size(); i++)

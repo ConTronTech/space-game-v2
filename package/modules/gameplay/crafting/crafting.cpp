@@ -25,7 +25,7 @@ public:
 
     bool init(engine::Engine& eng) override {
         eng_ = &eng;
-        requireDock_ = eng.config.get("crafting.require_dock", false, "true = crafting only works while docked at a station (a workbench); false = craft anywhere");
+        requireDock_ = eng.config.get("crafting.require_dock", true, "true = crafting only works while docked at a station (a workbench); false = craft anywhere (user decision 2026-09-21: default true, a settable option either way)");
         data_ = &eng.services.require<core::IData>();
         for (auto& id : data_->ids("recipes")) recipes_.push_back(gameplay::recipeFromJson(id, data_->get("recipes", id)));
         for (auto& id : data_->ids("items")) effects_[id] = gameplay::effectFromJson(data_->get("items", id));

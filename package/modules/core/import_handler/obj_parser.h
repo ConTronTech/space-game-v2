@@ -25,6 +25,8 @@ struct TaggedQuad {
     engine::Vec3 normal;              // unit, = (c1 - c0) x (c3 - c0): points at the viewer when the corners run counter-clockwise
     engine::Vec3 centre;
     float width = 0, height = 0;      // average of opposite edges, model units
+    float color[4] = {0.8f, 0.8f, 0.8f, 1.0f};   // the tag material's own Kd/d (grey if the .mtl has no entry for it), for a tag whose faces
+                                                   // should ALSO be drawn as ordinary geometry (e.g. @THRUST-JET: a marker AND a visible nozzle)
 
     void compute();
     // Point on the quad: u 0..1 left -> right, v 0..1 top -> bottom (screen convention).

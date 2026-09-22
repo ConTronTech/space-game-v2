@@ -24,7 +24,7 @@ Also refused: `ship destroyed`, `not in cargo`, `this item has no effect`, `no s
 The Missile Pack (+3 missiles, docs/COMBAT.md) and the Ore Scanner work since 4.2b; `decideUse` gets the rack (`ShipState::missiles/maxMissiles`) and the perk (`ShipState::oreScanner`) and returns `UsePlan::addMissiles` / `setOreScanner`.
 
 ## The hard-game switch
-`crafting.require_dock` (default **false**): craft anywhere. `true`: crafting works only while `ship::IDocking::docked()`; the tab shows "Dock at a station to craft" and every button is greyed with that reason. Whether the real game should need a workbench is an open question for the user (docs/QUESTIONS.md).
+`crafting.require_dock` (default **true**, user decision 2026-09-21: a docked station is the workbench; a setting either way for testing/modding): crafting works only while `ship::IDocking::docked()`; the tab shows "Dock at a station to craft" and every button is greyed with that reason. `false` crafts anywhere.
 
 ## Service, events, save
 `gameplay::ICrafting` (`crafting_api.h`): `recipes(out)` (with have/need per ingredient and the verdict), `canCraft(id, reason)`, `craft(id, reason)`, `usable(item)`, `use(item, reason)`, `requiresDock()`, `message()` / `messageOk()` / `messageAge()` (the last result line for the UI).
@@ -35,7 +35,7 @@ Events: `gameplay::CraftResult{recipe, ok, reason}`, `gameplay::ItemUsed{item}`.
 One row per recipe: name, ingredients as `Name have/need` (**green** enough, **red** missing), a CRAFT button that is greyed out (clicks ignored) with the reason next to it when the recipe cannot be crafted. The result of the last craft / use is shown at the bottom for 8 s.
 
 ## Tunables
-`crafting.require_dock` (false).
+`crafting.require_dock` (true).
 
 ## Cargo rework
 Ingredients are taken from the resource holds; the result needs room only in the GENERAL hold (its `volume`). Ingredients that live in the general hold free their own volume first. Refusal reason: "general hold full (use or discard an item)". Discard from the CARGO tab (see GAME_MENU.md) to make room, so crafting can never softlock.
