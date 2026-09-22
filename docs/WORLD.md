@@ -127,6 +127,10 @@ fits in the one-build-per-frame rule. Memory: level 3 = 31 KB, level 4 = 121 KB 
 
 At debug log level the module prints each build (time, memory) and, every 2 s, the meshes drawn, triangles this frame, cache size and the slowest build.
 
+## Planet atmospheres (3.3b)
+`world/atmosphere` (passes `world/atmosphere` order 120 and `world/atmosphere_tint` order 150) draws a rim-glow shell around each nearby planet and a faint
+screen tint inside it. It reads `IStarSystem` only; visual only (no physics). See docs/ATMOSPHERE.md.
+
 ## `world/asteroids` (3.6, pass `asteroids`, order 60: after the star system, before the demo rocks)
 Belts and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
 indices are stable for the whole run. Without `world/star_system` nothing is generated.

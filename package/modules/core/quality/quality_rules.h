@@ -138,6 +138,8 @@ inline const std::vector<Entry>& presetTable() {
         {"fx.exhaust",                      0.5,   1,      1,      1},    // engine exhaust amount: 0 = off, 0.5 = half the particles
         {"fx.spawn_budget",                 60,    150,    250,    400},  // particles spawned per frame at most
         {"fx.size_scale",                   1,     1,      1,      1},
+        {"atmosphere.enabled",              0,     1,      1,      1},    // 0 = no planet atmospheres at Low (docs/ATMOSPHERE.md: extra blended fill near planets)
+        {"atmosphere.segments",             16,    24,     32,     48},   // atmosphere shell slices (per-vertex rim alpha is recomputed on the CPU every frame)
         {"cockpit.screen_hz",               15,    30,     120,    240},  // cockpit screens redraw rate; at or above the frame rate = every frame
     };
     return t;

@@ -14,7 +14,7 @@ package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore c
 package/modules/ui/game_menu  the tabbed game menu (IGameMenu)
 package/modules/ui/system_map  the MAP tab of the game menu (star system schematic, docs/SYSTEM_MAP.md)
 package/modules/fx/        particles (engine exhaust, sparks, debris, warp flash; fx::SpawnParticles event)
-package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations), anomalies (IAnomalies)
+package/modules/world/     starfield, skybox, star_system (IStarSystem), asteroids (IAsteroids), stations (IStations), anomalies (IAnomalies), atmosphere (planet rim glow, visual only: docs/ATMOSPHERE.md)
 package/template/          scaffold used by package/tools/new_module.sh
 ```
 
