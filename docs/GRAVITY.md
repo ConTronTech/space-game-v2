@@ -45,6 +45,7 @@ Note: the moons' SOIs are small (a few hundred units above their surfaces) becau
 | `gravity.soi_hysteresis` | 1.05 | The dominant body is kept until the ship is 1.05x its SOI away (entering a SOI uses the real edge): no flicker at a boundary. |
 | `gravity.dock_assist_range` | 0 | Dock-approach assist (3.5f): the fade starts at this distance from the nearest station's centre; **0 = 4 x that station's dock radius** (480 / 720 units), the same distance at which the HUD's DOCK prompt appears (`docking.prompt_range` default), so gravity starts backing off exactly when the game starts telling you a dock is near. |
 | `gravity.dock_assist_min` | 0.1 | Fraction of gravity left at/inside the dock zone. 0.1 cuts a planetary pad's ~38 m/s^2 to ~3.8 m/s^2 (easily out-thrusted, still "down" so it feels like landing, not floating). **1 = no assist (the old behaviour).** Not 0: a ship that hovers in the zone without pressing G still settles slowly instead of drifting forever. |
+| `gravity.debug_gradient_rings` | true | F7 debug draw only (3.5g): the gradient rings + the `gravity.gradient` watch. Draws nothing unless core/debugger's draw hooks are on. |
 | `gravity.sun_range` | 2 | The sun pulls out to this many times the outermost planet's orbit radius. |
 
 ## Interactions
@@ -58,8 +59,23 @@ Note: the moons' SOIs are small (a few hundred units above their surfaces) becau
 
 ## Debugging
 - `engine.log_level: debug`: once per second while gravity acts, `Planet 1: distance 1019 (altitude 610), soi 14305, g 9.636 m/s^2, energy -4902.5, eccentricity 0.002` (computed only when debug logging is on), plus a line whenever the dominant body changes.
-- core/debugger (F6, docs/DEBUGGER.md), optional: watches `gravity.dominant`, `gravity.accel`, `gravity.local_g`, `gravity.soi`; draw hook `gravity.draw` = the dominant body's SOI circle (blue, in the ship's orbital plane), the acceleration vector (red) and a 60-segment forecast arc (yellow, same symplectic scheme at 0.5 s steps, fixed buffers, no allocation). Dominant-body changes go to the debugger's event log. Without the debugger the module registers nothing and costs nothing extra.
+- core/debugger (F6, docs/DEBUGGER.md), optional: watches `gravity.dominant`, `gravity.accel`, `gravity.local_g`, `gravity.soi`, `gravity.gradient`; draw hook `gravity.draw` = the dominant body's SOI circle (blue, in the ship's orbital plane), the acceleration vector (red) and a 60-segment forecast arc (yellow, same symplectic scheme at 0.5 s steps, fixed buffers, no allocation) and the gradient rings (below). Dominant-body changes go to the debugger's event log. Without the debugger the module registers nothing and costs nothing extra.
 - Dev flags: `--gravity-test=FRAME` (one info line: dominant body, distance, SOI, acceleration at that frame); `--auto-gravity` (force on) / `--no-gravity` (force off) without editing game.json; `--gravity-scenario=orbit|drop|deep` places the ship at frame 5 and logs altitude/speed every simulated second (`orbit`: 1.5 radii above body `--gravity-body=N`, default 1 = Planet 1, at the guide's circular speed; `drop`: same spot at rest relative to the body; `deep`: 2.5x the sun range out, drifting at 10 m/s); `dock` (3.5f): 1000 units above the first planetary station's pad, a scripted "pilot" holds a 10 m/s descent relative to the station (setting the velocity before gravity's kick, so the logged `|a|` is what the player has to fight) and stops 40 units above the centre; `dockmiss`: 3000 units above the far side of the same planet (no station near). Both log station distance, assist factor and applied `|a|`. `--gravity-dock-assist-off` forces the factor to 1 for A/B runs.
+
+## Gradient debugger (3.5g, user: "see the gradient of gravity around the planet")
+Part of the existing `gravity.draw` hook (F6 opens the debugger, F7 switches draws on; no new key). Around the dominant body (planet, moon or sun) it draws
+up to 6 rings at **1.1 / 1.5 / 2 / 3 / 5 / 8 body radii**, clamped just inside the SOI (a moon's small SOI merges the outer ones into one ring at its
+edge). Each ring is coloured by the local |g| there on a log scale: **red = strongest (innermost), amber, blue = weakest**. The rings face the camera
+so they always read as circles (the SOI ring stays in the orbital plane). The magnitudes come from the same `gravity::acceleration()` the ship feels
+(`gravity::gradientMagnitude`), so `min_radius` / `max_accel` apply too. Watch `gravity.gradient` (Watches tab, and F8's dump) has the numbers first:
+```text
+gradient = 49.6 26.7 15.0 6.7 2.4 0.9 m/s^2 @ 1.1/1.5/2/3/5/8 R (Planet 1, R 408)
+gradient = 49.6 26.7 15.0 6.7 3.6 m/s^2 @ 1.1/1.5/2/3/4.11 R (Planet 4 Moon 1, R 126)
+```
+(Identical numbers per multiple on every body: surface gravity is `orbit.gravity_scale` for all of them, 60 m/s^2 by default.) Deep space: nothing drawn, watch
+says `none (deep space)`. Cost: nothing runs with F7 off (all work is inside the draw hook / watch lambda; the debugger pass does not run); with F7 on
+the whole debugger pass (SOI + arc + vector + 6 rings, 390 vertices, fixed buffer) measured 0.019 ms avg (`--profile --no-vsync`, 900 frames, 3 runs).
+Pure parts in `gravity_rules.h` (`gradientDistances`, `gradientMagnitude`, `gradientT`, `gradientColor`), tests `gravity_gradient_*`.
 
 ## How it was tested (3.5e)
 `SDL_AUDIODRIVER=dummy ./space_game_v2 --frames=2600 --gravity-scenario=orbit`: altitude 612.3 -> 610.2 -> 611.7 over 43 s (eccentricity 0.002, speed 98.98-99.16 m/s): a real orbit. `drop`: 612 -> 12 altitude in 10 s, speed 0 -> 145 m/s, then the planet impact above. `deep`: speed 10.0000 m/s for 38 s, dominant none. `--no-gravity` + `drop`: altitude 612.3 for 14 s (no pull). Orbit lock (`--auto-orbit-lock=60` after the orbit scenario): locked radius 1020.392-1020.427 with gravity on vs 1031.361-1032.484 (settle included) with it off - equally stable. Unit tests: `make test` (gravity_*).
