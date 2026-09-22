@@ -87,15 +87,14 @@ public:
             std::string nm, why; float d = 0; bool ok = false;
             if (!held && (found = dock->nearestDockable(nm, d, ok, why))) {
                 stDist = d;
-                auto p0 = ship->position();
-                if (auto* sts = eng.services.get<world::IStations>()) { int i = sts->nearest({p0.x, p0.y, p0.z}); if (i >= 0) zone = sts->info(i).radius; }
+                world::Vec3d p0 = ship->positionD();
+                if (auto* sts = eng.services.get<world::IStations>()) { int i = sts->nearest(p0); if (i >= 0) zone = sts->info(i).radius; }
             }
         }
         double range = assistRange_ > 0 ? assistRange_ : 4.0 * zone;
         assist_ = gravity::dockAssist(found && zone > 0, assistOn_, stDist, zone, range, assistMin_);
         stationDist_ = found ? stDist : -1;
-        auto p = ship->position();
-        world::Vec3d pos{p.x, p.y, p.z};
+        world::Vec3d pos = ship->positionD();       // the ship's true (double) position: everything below is body-relative math
         int prev = dominant_;
         dominant_ = gravity::dominantBody(src_, pos, dominant_, hysteresis_);
         if (dominant_ != prev) {
@@ -174,7 +173,7 @@ private:
             pos = scenario_ == "dock" ? orbit::add(si.position, orbit::mul(si.up, 1000.0)) : orbit::add(par.pos, orbit::mul(dir, r0));
             vel = si.velocity;
             scenarioRef_ = si.parent;
-            ship->setPose({(float)pos.x, (float)pos.y, (float)pos.z}, {0, 0, 1}, {(float)si.up.x, (float)si.up.y, (float)si.up.z});
+            ship->setPoseD(pos, {0, 0, 1}, {(float)si.up.x, (float)si.up.y, (float)si.up.z});
             ship->setVelocity({(float)vel.x, (float)vel.y, (float)vel.z});
             scenarioT_ = 0; scenarioLogT_ = 1.0;
             LOG_I("gravity", "scenario %s: station %s (zone %.0f), start %.1f from it", scenario_.c_str(), si.name.c_str(), si.radius, orbit::length(orbit::sub(pos, si.position)));
@@ -190,7 +189,7 @@ private:
             if (scenario_ == "orbit") vel = orbit::add(vel, {0, 0, orbit::circularSpeed(s.mu, r)});
             scenarioRef_ = b;
         }
-        ship->setPose({(float)pos.x, (float)pos.y, (float)pos.z}, {0, 0, 1}, {0, 1, 0});
+        ship->setPoseD(pos, {0, 0, 1}, {0, 1, 0});
         ship->setVelocity({(float)vel.x, (float)vel.y, (float)vel.z});
         scenarioT_ = 0; scenarioLogT_ = 1.0;
         LOG_I("gravity", "scenario %s: body %d, start distance %.1f, speed %.2f (relative %.2f)", scenario_.c_str(), b, orbit::length(orbit::sub(pos, s.pos)), orbit::length(vel), orbit::length(orbit::sub(vel, bv)));
@@ -203,8 +202,8 @@ private:
         auto* dock = eng.services.get<ship::IDocking>();
         if (!sts || dockStation_ < 0 || (dock && dock->busy())) return;
         auto si = sts->info(dockStation_);
-        auto p = ship->position();
-        double h = orbit::dot(orbit::sub({p.x, p.y, p.z}, si.position), si.up);
+        world::Vec3d p = ship->positionD();
+        double h = orbit::dot(orbit::sub(p, si.position), si.up);
         world::Vec3d v = orbit::add(si.velocity, orbit::mul(si.up, h > 40.0 ? -10.0 : 0.0));
         ship->setVelocity({(float)v.x, (float)v.y, (float)v.z});
     }
@@ -214,11 +213,11 @@ private:
         scenarioT_ += dt;
         if ((scenarioLogT_ += dt) < 1.0) return;
         scenarioLogT_ = 0;
-        auto p = ship->position(); auto v = ship->velocity();
+        world::Vec3d p = ship->positionD(); auto v = ship->velocity();
         if (scenarioRef_ < 0) { LOG_I("gravity", "scenario t=%.0f s: speed %.4f m/s, dominant %s", scenarioT_, orbit::length({v.x, v.y, v.z}), dominant_ >= 0 ? dominantName_.c_str() : "none"); return; }
         const auto& s = src_[(size_t)scenarioRef_];
         world::Vec3d bv = bodyVel_[(size_t)scenarioRef_];
-        double d = orbit::length(orbit::sub({p.x, p.y, p.z}, s.pos));
+        double d = orbit::length(orbit::sub(p, s.pos));
         LOG_I("gravity", "scenario t=%.0f s: altitude %.1f, relative speed %.2f m/s, alive %d, dominant %s, station %.1f, assist %.3f, |a| %.3f m/s^2", scenarioT_, d - s.radius,
               orbit::length(orbit::sub({v.x, v.y, v.z}, bv)), ship->status().alive ? 1 : 0, dominant_ >= 0 ? dominantName_.c_str() : "none", stationDist_, assist_, orbit::length(accel_));
     }
@@ -234,8 +233,8 @@ private:
                          -((double)m[8] * m[12] + (double)m[9] * m[13] + (double)m[10] * m[14])};
         m[12] = m[13] = m[14] = 0;
         const auto& s = src_[(size_t)dominant_];
-        auto p = ship->position(); auto v = ship->velocity();
-        world::Vec3d pos{p.x, p.y, p.z}, bv = (size_t)dominant_ < bodyVel_.size() ? bodyVel_[(size_t)dominant_] : world::Vec3d{};
+        world::Vec3d pos = ship->positionD(); auto v = ship->velocity();
+        world::Vec3d bv = (size_t)dominant_ < bodyVel_.size() ? bodyVel_[(size_t)dominant_] : world::Vec3d{};
         world::Vec3d rel = orbit::sub(pos, s.pos), relVel = orbit::sub({v.x, v.y, v.z}, bv);
         // the SOI circle in the ship's orbital plane (or the XZ plane when there is no plane)
         world::Vec3d n = orbit::normalized(orbit::cross(rel, relVel));

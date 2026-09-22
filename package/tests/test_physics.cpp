@@ -184,12 +184,12 @@ TEST(physics_alive_body_count_tracks_add_and_remove) {
 
 TEST(physics_interface_default_alive_body_count_is_unsupported) {
     struct Minimal : core::IPhysics {   // an IPhysics implementer that never overrides the new method still compiles and reports "unknown"
-        core::BodyId addBody(const std::string&, const engine::Vec3&, float, bool) override { return 0; }
+        core::BodyId addBody(const std::string&, const engine::Vec3d&, float, bool) override { return 0; }
         void removeBody(core::BodyId) override {}
         bool alive(core::BodyId) const override { return false; }
-        void setBody(core::BodyId, const engine::Vec3&, const engine::Vec3&) override {}
-        void teleport(core::BodyId, const engine::Vec3&) override {}
-        void query(const engine::Vec3&, float, std::vector<core::BodyId>&) const override {}
+        void setBody(core::BodyId, const engine::Vec3d&, const engine::Vec3&) override {}
+        void teleport(core::BodyId, const engine::Vec3d&) override {}
+        void query(const engine::Vec3d&, float, std::vector<core::BodyId>&) const override {}
     } m;
     CHECK_EQ(m.aliveBodyCount(), -1);
 }

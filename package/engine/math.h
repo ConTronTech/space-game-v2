@@ -15,6 +15,13 @@ struct Vec3 {
     Vec3& operator*=(float s) { x *= s; y *= s; z *= s; return *this; }
 };
 
+// Absolute WORLD positions are doubles: the star system already spans hundreds of thousands of units and the planned realistic-scale rescale
+// reaches billions, where one float step is hundreds of metres (docs/PRECISION.md). A plain aggregate on purpose: `Vec3d{1, 2, 3}` and `{}` keep
+// working everywhere, and the per-module double helpers (orbit::, world::sdetail::, ship::rules::) still apply. world::Vec3d is an alias of this.
+struct Vec3d {
+    double x = 0, y = 0, z = 0;
+};
+
 inline float dot(const Vec3& a, const Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline Vec3 cross(const Vec3& a, const Vec3& b) {
     return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};

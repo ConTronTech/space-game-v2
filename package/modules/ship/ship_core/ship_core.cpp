@@ -18,7 +18,11 @@
 #include "ship/ship_core/ship_rules.h"
 
 using engine::Vec3;
+using engine::Vec3d;
 namespace rules = ship::rules;
+
+// The ship's position is a DOUBLE (world::Vec3d): see docs/PRECISION.md. Velocity, orientation and everything ship-relative stay float.
+// Absolute positions are only narrowed to float where the value is cosmetic or already small (the drawn pose, the float position() accessor).
 
 class ShipCore : public engine::Module, public ship::IShip, public core::ISaveable, public core::ITransformSource {
 public:
@@ -67,6 +71,8 @@ public:
         col_.cooldown = c.get("ship.contact_cooldown", 0.6f, "seconds before the SAME body (rock, planet, station) can damage the ship again");
 
         parseHold(eng.flagValue("hold"));   // dev aid: --hold=thrust:1[,strafe:0.5,...] holds those axes at that value (no keyboard needed: saved-game tests of contact damage)
+        parseStart(eng.flagValue("ship-start"));                    // dev: --ship-start=X,Y,Z puts the ship (and its spawn point) there, in double
+        precisionLog_ = std::atol(eng.flagValue("precision-log", "0").c_str());   // dev: --precision-log=N logs N fixed steps of position deltas (docs/PRECISION.md)
         if ((saves_ = eng.services.get<core::ISaveSystem>())) saves_->registerSaveable(this);
         if ((audio_ = eng.services.get<core::IAudio>())) hum_ = audio_->playLoop("engine_loop", 0.0f, core::Bus::Engine);
 
@@ -163,7 +169,8 @@ public:
             float sp = engine::length(vel_);
             if (sp > maxSpeed_) vel_ *= maxSpeed_ / sp;
         }
-        pos_ += vel_ * dt;
+        rules::integrate(pos_, vel_, dt);                        // double position += float velocity * dt
+        logPrecision(dt);
         sync();
         if (physics_) physics_->setBody(shipBody_, pos_, vel_);   // the physics world sweeps this move for hits right after us
     }
@@ -178,7 +185,8 @@ public:
     // The camera module calls this each frame (blending previous->current physics state by alpha).
     core::Pose transform(float a) const override {
         core::Pose p;
-        p.pos = engine::lerp(prevPos_, pos_, a);
+        p.posD = rules::lerpD(prevPos_, pos_, (double)a);         // blended in double; p.pos is the float approximation for old consumers
+        p.pos = rules::toF(p.posD);
         Vec3 f = engine::normalize(engine::lerp(prevFwd_, fwd_, a));
         Vec3 u = engine::normalize(engine::lerp(prevUp_, up_, a));
         Vec3 r = engine::normalize(engine::cross(f, u));
@@ -191,13 +199,13 @@ public:
     // Missing keys keep the current value, so saves from before the stats existed still load.
     const char* saveId() const override { return "gameplay/flight"; }   // kept from the flight demo so existing saves still load
     engine::Json save() const override {
-        return engine::Json::object().set("pos", vec(pos_)).set("vel", vec(vel_)).set("fwd", vec(fwd_)).set("up", vec(up_))
+        return engine::Json::object().set("pos", vecD(pos_)).set("vel", vec(vel_)).set("fwd", vec(fwd_)).set("up", vec(up_))
             .set("hp", vit_.hp).set("maxHp", vit_.maxHp).set("shield", vit_.shield)
             .set("shieldInstalled", vit_.shieldInstalled).set("shieldEnabled", vit_.shieldEnabled)
             .set("warpFuel", vit_.warpFuel).set("alive", vit_.alive);
     }
     void load(const engine::Json& j) override {
-        pos_ = readVec(j["pos"], pos_);
+        pos_ = readVecD(j["pos"], pos_);
         vel_ = readVec(j["vel"], vel_);
         Vec3 f = engine::normalize(readVec(j["fwd"], fwd_)), u = engine::normalize(readVec(j["up"], up_));
         if (engine::length(f) < 0.5f || engine::length(u) < 0.5f || std::abs(engine::dot(f, u)) > 0.99f) { f = {0, 0, -1}; u = {0, 1, 0}; } // bad data
@@ -221,7 +229,8 @@ public:
 
     // ---- ship::IShip ----
     const ship::ShipStatus& status() const override { return status_; }
-    Vec3 position() const override { return pos_; }
+    Vec3 position() const override { return rules::toF(pos_); }   // approximation: see positionD()
+    Vec3d positionD() const override { return pos_; }
     Vec3 velocity() const override { return vel_; }
     Vec3 forward() const override { return fwd_; }
 
@@ -248,7 +257,8 @@ public:
         if (h && !held_) { prevPos_ = pos_; prevFwd_ = fwd_; prevUp_ = up_; pitchRate_ = yawRate_ = rollRate_ = thrustOut_ = strafeOut_ = liftOut_ = 0; }
         held_ = h;
     }
-    void setPose(const Vec3& p, const Vec3& f, const Vec3& u) override {
+    void setPose(const Vec3& p, const Vec3& f, const Vec3& u) override { setPoseD({p.x, p.y, p.z}, f, u); }
+    void setPoseD(const Vec3d& p, const Vec3& f, const Vec3& u) override {
         Vec3 nf = engine::normalize(f);
         if (engine::length(nf) < 0.5f) return;                          // bad direction: keep the current orientation
         Vec3 r = engine::normalize(engine::cross(nf, u));
@@ -291,9 +301,9 @@ private:
         if (!shipIsA && c.b != shipBody_) return;
         if (held_ && (shipIsA ? c.kindB : c.kindA) == "station") return;   // docking: the ship rides ON the station, touching it is the point
         Vec3 n = shipIsA ? c.normal : c.normal * -1.0f;             // pointing from the ship to the other body
-        Vec3 otherPos = shipIsA ? c.posB : c.posA;
+        Vec3d otherPos = shipIsA ? c.posBd : c.posAd;               // double contact position: the push-out is a metre-scale offset from it
         float otherR = shipIsA ? c.radiusB : c.radiusA;
-        pos_ = otherPos - n * (hullRadius_ + otherR + 0.02f);
+        pos_ = rules::offsetD(otherPos, n * -(hullRadius_ + otherR + 0.02f));
         // The CLOSING speed the physics reports is relative to the other body (which may be orbiting), so a planet sweeping into a parked ship knocks it
         // away instead of swallowing it; for fixed rocks this equals the old dot(vel, n).
         // Real impact (>= ship.damage_min_speed): bounce as before. Resting / scraping contact (holding thrust into a surface): the closing component is
@@ -313,6 +323,47 @@ private:
             hitsThisSecond_++; damageThisSecond_ += dmg;
             applyDamage(dmg, kind);
         }
+    }
+
+    // --ship-start=X,Y,Z (dev): start somewhere far from the origin to test precision there. The numbers are read as doubles.
+    void parseStart(const std::string& spec) {
+        if (spec.empty()) return;
+        double v[3] = {0, 0, 0};
+        size_t pos = 0;
+        for (int i = 0; i < 3 && pos <= spec.size(); i++) {
+            size_t comma = spec.find(',', pos);
+            v[i] = std::strtod(spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos).c_str(), nullptr);
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        pos_ = prevPos_ = spawnPos_ = Vec3d{v[0], v[1], v[2]};
+        LOG_I("ship", "--ship-start: %.3f, %.3f, %.3f", pos_.x, pos_.y, pos_.z);
+    }
+
+    // --precision-log=N (dev): the per-step position delta against velocity * dt, for the REAL game loop. Smooth flight means the two match
+    // every step. Alongside the live double position it carries a float MIRROR - a second position integrated exactly the way ship_core did
+    // before this change (`posF += vel * dt`, float) from the same starting point with the same velocity - so one run prints the before and the
+    // after side by side: far from the origin the mirror shows 0 on most steps and a whole float ULP (1 m at 1e7, 512 m at 5e9) on the rest.
+    void logPrecision(float dt) {
+        if (precisionLog_ <= 0) return;
+        precisionLog_--;
+        if (!mirrorStarted_) { mirrorStarted_ = true; mirror_ = rules::toF(prevPos_); mirrorFrom_ = prevPos_; }
+        Vec3 mirrorPrev = mirror_;
+        mirror_ += vel_ * dt;                                        // the OLD integration, bit for bit
+        Vec3d d{pos_.x - prevPos_.x, pos_.y - prevPos_.y, pos_.z - prevPos_.z};
+        double moved = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z), want = (double)engine::length(vel_) * dt;
+        double movedF = (double)engine::length(mirror_ - mirrorPrev);
+        precisionWorst_ = std::max(precisionWorst_, std::abs(moved - want));
+        precisionWorstF_ = std::max(precisionWorstF_, std::abs(movedF - want));
+        if (movedF == 0.0 && want > 0.0) mirrorStalls_++;             // a frame the old float position did not move at all
+        // how far each path has travelled since the log started: the double one is the truth, the mirror is what the player used to get
+        Vec3d travD{pos_.x - mirrorFrom_.x, pos_.y - mirrorFrom_.y, pos_.z - mirrorFrom_.z};
+        Vec3d travF{(double)mirror_.x - mirrorFrom_.x, (double)mirror_.y - mirrorFrom_.y, (double)mirror_.z - mirrorFrom_.z};
+        LOG_I("ship", "precision: |pos| %.1f, step double %.6f / float %.6f, velocity*dt %.6f, step error double %.3e / float %.3e "
+                      "(worst %.3e / %.3e), travelled double %.4f / float %.4f, float stalled %ld frames, pos (%.4f, %.4f, %.4f)",
+              std::sqrt(pos_.x * pos_.x + pos_.y * pos_.y + pos_.z * pos_.z), moved, movedF, want, moved - want, movedF - want,
+              precisionWorst_, precisionWorstF_, std::sqrt(travD.x * travD.x + travD.y * travD.y + travD.z * travD.z),
+              std::sqrt(travF.x * travF.x + travF.y * travF.y + travF.z * travF.z), mirrorStalls_, pos_.x, pos_.y, pos_.z);
     }
 
     // --hold=name:value,...: an axis held at a value instead of the input's (thrust, strafe, lift, pitch, yaw, roll)
@@ -355,6 +406,12 @@ private:
     static Vec3 readVec(const engine::Json& j, Vec3 def) {
         if (j.size() < 3) return def;
         return {(float)j.at(0).num(def.x), (float)j.at(1).num(def.y), (float)j.at(2).num(def.z)};
+    }
+    // The position round-trips as full double: Json numbers are doubles and are printed with the shortest text that reads back exactly.
+    static engine::Json vecD(const Vec3d& v) { return engine::Json::array().push(v.x).push(v.y).push(v.z); }
+    static Vec3d readVecD(const engine::Json& j, Vec3d def) {
+        if (j.size() < 3) return def;
+        return {j.at(0).num(def.x), j.at(1).num(def.y), j.at(2).num(def.z)};
     }
 
     struct Rock { Vec3 pos; float size; };
@@ -414,7 +471,7 @@ private:
     ship::rules::CollisionParams col_;
     ship::rules::ContactCooldown cooldown_;
     float hpRegen_ = 0.2f, maxHpCap_ = 200.0f;
-    Vec3 spawnPos_{0, 0, 0};
+    Vec3d spawnPos_{0, 0, 0};
     int hum_ = 0;
     // frame-rate independent exponential easing of 'cur' toward 'target'
     static float ease(float cur, float target, float tau, float dt) {
@@ -426,13 +483,21 @@ private:
 
     float pitchRate_ = 0, yawRate_ = 0, rollRate_ = 0;       // smoothed turn inputs
     float thrustOut_ = 0, strafeOut_ = 0, liftOut_ = 0;      // smoothed engine output
-    Vec3 pos_{0, 0, 0}, vel_{0, 0, 0};
+    Vec3d pos_{0, 0, 0};
+    Vec3 vel_{0, 0, 0};
     Vec3 fwd_{0, 0, -1}, up_{0, 1, 0}, right_{1, 0, 0};
-    Vec3 prevPos_{0, 0, 0}, prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
+    Vec3d prevPos_{0, 0, 0};
+    Vec3 prevFwd_{0, 0, -1}, prevUp_{0, 1, 0};
     std::vector<Rock> rocks_;
     bool demoRocks_ = false;
     static constexpr float kNoHold = -99.0f;
     float holdThrust_ = kNoHold, holdStrafe_ = kNoHold, holdLift_ = kNoHold, holdPitch_ = kNoHold, holdYaw_ = kNoHold, holdRoll_ = kNoHold;
+    long precisionLog_ = 0;
+    double precisionWorst_ = 0, precisionWorstF_ = 0;
+    Vec3 mirror_{0, 0, 0};               // --precision-log: the float position the OLD code would have had, integrated beside the real one
+    Vec3d mirrorFrom_{0, 0, 0};          // where both started, so the two travelled distances can be compared
+    long mirrorStalls_ = 0;
+    bool mirrorStarted_ = false;
     int hitsThisSecond_ = 0;
     float damageThisSecond_ = 0, secondTimer_ = 0;
     bool held_ = false;                                       // setHeld(): placed by the docking module

@@ -166,7 +166,7 @@ public:
             std::partial_sort(addList_.begin(), addList_.begin() + n, addList_.end());   // nearest first
             for (int k = 0; k < n; k++) {
                 int i = addList_[k].second;
-                bodyIds_[i] = physics_->addBody("asteroid", {(float)field_.x[i], (float)field_.y[i], (float)field_.z[i]}, field_.radius[i] * 0.9f, false);
+                bodyIds_[i] = physics_->addBody("asteroid", world::Vec3d{field_.x[i], field_.y[i], field_.z[i]}, field_.radius[i] * 0.9f, false);   // double: the field's own positions, unrounded
                 live_++;
             }
         }

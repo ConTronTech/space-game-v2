@@ -96,7 +96,7 @@ public:
         physics_ = eng.services.get<core::IPhysics>();
         for (size_t i = 0; i < stations_.size(); i++) {
             update(i, 0.0, true);
-            if (physics_) bodyIds_[i] = physics_->addBody("station", toF(infos_[i].position), stations_[i].half * 1.6f, false);
+            if (physics_) bodyIds_[i] = physics_->addBody("station", infos_[i].position, stations_[i].half * 1.6f, false);
             LOG_I("stations", "%s: dock zone %.0f units at (%.0f, %.0f, %.0f)", infos_[i].name.c_str(), infos_[i].radius, infos_[i].position.x, infos_[i].position.y, infos_[i].position.z);
         }
         render_ = &eng.services.require<core::RenderEngine>();
@@ -151,8 +151,8 @@ private:
         if (jump) v = {};
         in.velocity = v;
         if (physics_ && bodyIds_[i] != core::kNoBody) {
-            if (first || jump) physics_->teleport(bodyIds_[i], toF(in.position));
-            else physics_->setBody(bodyIds_[i], toF(in.position), toF(v));
+            if (first || jump) physics_->teleport(bodyIds_[i], in.position);
+            else physics_->setBody(bodyIds_[i], in.position, toF(v));
         }
     }
 

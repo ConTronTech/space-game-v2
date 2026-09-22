@@ -41,7 +41,9 @@ inline Frame orthoFrame(const engine::Vec3& fwd, const engine::Vec3& up) {
 inline Pose chasePose(const Pose& ship, float distance, float height) {
     Frame fr = orthoFrame(ship.fwd, ship.up);
     Pose c;
-    c.pos = ship.pos - fr.fwd * distance + fr.up * height;
+    engine::Vec3 off = fr.up * height - fr.fwd * distance;            // the offset is metres: float is exact enough for it
+    c.pos = ship.pos + off;
+    c.posD = {ship.posD.x + off.x, ship.posD.y + off.y, ship.posD.z + off.z};   // ... but it is added to the DOUBLE eye position
     c.fwd = fr.fwd;
     c.up = fr.up;
     return c;

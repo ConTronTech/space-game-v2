@@ -56,8 +56,7 @@ public:
         auto* st = eng_->services.get<world::IStations>();
         auto* ship = eng_->services.get<ship::IShip>();
         if (!st || !ship) return false;
-        auto p = ship->position();
-        world::Vec3d pos{p.x, p.y, p.z};
+        world::Vec3d pos = ship->positionD();
         int i = st->nearest(pos);
         if (i < 0) return false;
         auto s = st->info(i);
@@ -90,8 +89,7 @@ public:
         if (world::shouldUndock(input_->value("thrust"), input_->value("strafe"), input_->value("lift"))) { undock(eng, "thrust"); return; }
         const world::StationPose pose = poseOf(st->info(station_));
         const world::PadPose target = world::padPose(pose, heading_, restHeight_);   // where the ship must be at THIS step's station pose
-        auto p = ship->position();
-        world::Vec3d cur{p.x, p.y, p.z};
+        world::Vec3d cur = ship->positionD();   // the hold is metre-accurate work on top of the station's absolute position
         world::Vec3d pos = target.pos, fwd = target.forward, up = target.up, vel;
         if (state_ == State::Approaching) {
             elapsed_ += dt;
@@ -104,17 +102,17 @@ public:
             vel = world::padPointVelocity(pose, pos);                              // the pad point's true velocity: station motion + spin
         }
         ship->setVelocity({(float)vel.x, (float)vel.y, (float)vel.z});
-        ship->setPose({(float)pos.x, (float)pos.y, (float)pos.z}, {(float)fwd.x, (float)fwd.y, (float)fwd.z}, {(float)up.x, (float)up.y, (float)up.z});
+        ship->setPoseD(pos, {(float)fwd.x, (float)fwd.y, (float)fwd.z}, {(float)up.x, (float)up.y, (float)up.z});
         if (state_ == State::Docked && refill_) { ship->heal(1000.0f); ship->addWarpFuel(1000.0f); ship->installShield(true); }
         if (state_ == State::Docked && (logTimer_ += dt) >= 1.0f) {
             logTimer_ = 0;
-            auto q = ship->position();
+            world::Vec3d q = ship->positionD();
             auto v = ship->velocity();
             world::Vec3d padPoint = world::padPose(pose, heading_, restHeight_).pos;
             double upDot = std::clamp(world::sdetail::dot(up, pose.up), -1.0, 1.0);
             LOG_D("docking", "docked at %s: distance to the pad point %.4f units, ship up vs station up %.5f deg, speed relative to the pad %.4f m/s",
-                  name_.c_str(), world::sdetail::length(world::sdetail::sub({q.x, q.y, q.z}, padPoint)), std::acos(upDot) * 57.29578,
-                  world::sdetail::length(world::sdetail::sub({v.x, v.y, v.z}, world::padPointVelocity(pose, {q.x, q.y, q.z}))));
+                  name_.c_str(), world::sdetail::length(world::sdetail::sub(q, padPoint)), std::acos(upDot) * 57.29578,
+                  world::sdetail::length(world::sdetail::sub({v.x, v.y, v.z}, world::padPointVelocity(pose, q))));
         }
     }
 
@@ -135,8 +133,7 @@ private:
         auto* ship = eng.services.get<ship::IShip>();
         auto* st = eng.services.get<world::IStations>();
         if (!ship || !st) { LOG_I("docking", "cannot dock: no %s", ship ? "stations" : "ship"); return; }
-        auto p = ship->position();
-        world::Vec3d pos{p.x, p.y, p.z};
+        world::Vec3d pos = ship->positionD();
         int i = st->nearest(pos);
         if (i < 0) { LOG_I("docking", "cannot dock: %s", world::dockReason(world::DockCheck::NoStation)); return; }
         auto s = st->info(i);
@@ -178,8 +175,7 @@ private:
         auto* st = eng.services.get<world::IStations>();
         if (ship && st && station_ < st->count()) {
             auto in = st->info(station_);
-            auto p = ship->position();
-            world::Vec3d point{p.x, p.y, p.z};
+            world::Vec3d point = ship->positionD();
             // leave with the velocity of the pad point under the ship (station motion + spin) and a small push out from the station
             world::Vec3d v = world::undockVelocity(world::padPointVelocity(poseOf(in), point), point, in.position, push_);
             ship->setVelocity({(float)v.x, (float)v.y, (float)v.z});
