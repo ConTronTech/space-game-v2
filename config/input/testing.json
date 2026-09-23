@@ -48,8 +48,12 @@
     "menu_tab_next": [ { "device": "keyboard", "key": "]" } ],   // game menu: next tab
     "menu_discard":  [ { "device": "keyboard", "key": "Delete" }, { "device": "keyboard", "key": "Backspace" } ],   // CARGO grid: discard the selected slot (press twice to confirm)
     "quick_bar_open":    [ { "device": "keyboard", "key": "B" } ],        // quick action bar (docs/QUICK_ACTION_BAR.md): open / close
-    "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry
-    "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry
+    "quick_bar_up":      [ { "device": "keyboard", "key": "W" } ],        // while open: previous row - shares W with thrust on purpose (both fire)
+    "quick_bar_down":    [ { "device": "keyboard", "key": "S" } ],        // while open: next row - shares S with thrust
+    "quick_bar_left":    [ { "device": "keyboard", "key": "A" } ],        // while open: previous entry in the row - shares A with strafe
+    "quick_bar_right":   [ { "device": "keyboard", "key": "D" } ],        // while open: next entry in the row - shares D with strafe
+    "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry in the row
+    "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry in the row
     "quick_bar_confirm": [ { "device": "keyboard", "key": "Return" } ],   // while open: use the selected entry
     "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view

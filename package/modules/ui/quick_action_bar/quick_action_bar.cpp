@@ -1,15 +1,22 @@
-// ui/quick_action_bar - a No Man's Sky-style quick menu for flight: a strip of secondary actions opened with one key (B), scrolled with
-// , / . and fired with Return, WITHOUT pausing the game. See docs/QUICK_ACTION_BAR.md; the pure rules are in quick_bar_rules.h.
+// ui/quick_action_bar - a No Man's Sky-style quick menu for flight: category ROWS of secondary actions opened with one key (B), navigated
+// with W/S (rows) and A/D (entries in a row) - the SAME keys as thrust/strafe, both fire, on purpose - or the mouse (hover selects, click
+// uses) when the cursor is free, and fired with Return, WITHOUT pausing the game. See docs/QUICK_ACTION_BAR.md; the pure rules are in
+// quick_bar_rules.h.
 //
-// The entries are rebuilt from live services every frame (data-driven: only what the ship actually has shows up):
-//   weapons      combat::ICombat          one Instant entry per weapon slot that has an input action (weapon_1..weapon_3)
-//   WARP         ship::IWarpDrive         Toggle, greyed without fuel (same rule as warp_rules.h canEngage)
-//   ORBIT LOCK   ship::IOrbitGuide        Toggle, greyed with no body in guide range (docked / warping / dead included)
-//   ORE / ANOMALY SCANNER  gameplay::IInventory perks - shown only once installed, always greyed: both are PASSIVE today (nothing to "use")
+// The rows are rebuilt from live services every frame (data-driven: only what the ship actually has shows up; an empty row is not drawn):
+//   WEAPONS        combat::ICombat          one Instant entry per weapon slot that has an input action (weapon_1..weapon_3)
+//   SHIP SYSTEMS   ship::IWarpDrive         WARP Toggle, greyed without fuel (same rule as warp_rules.h canEngage)
+//                  ship::IOrbitGuide        ORBIT LOCK Toggle, greyed with no body in guide range (docked / warping / dead included)
+//                  (new ship-level toggles register here)
+//   ITEMS / PERKS  gameplay::IInventory perks - ORE / ANOMALY SCANNER, shown only once installed, always greyed: both are PASSIVE today
 //
 // Activating an entry does not call into the target module: it injects that module's own input action for this frame
 // (IInput::contribute right after the input poll), so the bar is just another front door to the same code path as the dedicated key -
 // warp's fuel check, orbit lock's alignment refusal, the weapon-changed event, logging, all unchanged.
+//
+// Flight input is never suppressed or consumed while the bar is open (explicit user decision, 2026-09-23), and the bar never touches mouse
+// capture: with the cursor captured the mouse keeps steering and the bar is keyboard-only; with it free (Tab, or a capture-off profile)
+// hover and click work.
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -58,6 +65,14 @@ public:
     // Input runs here, right after core/input_handler polled (it inits first), so an activation can inject the target's action into THIS
     // frame and every module's onUpdate sees it as a fresh press.
     void onFrameBegin(engine::Engine& eng) override {
+        // mouse edges, tracked every frame (also while closed) so a button already held when the bar opens is not a click
+        const bool held = ui_->mouseHeld();
+        const bool clickEdge = held && !prevHeld_;
+        prevHeld_ = held;
+        const bool mouseMoved = ui_->mouseX() != lastMx_ || ui_->mouseY() != lastMy_;   // hover takes the selection only when the mouse really moved
+        lastMx_ = ui_->mouseX(); lastMy_ = ui_->mouseY();
+        if (!st_.open) tiles_.clear();                     // last frame's tiles belong to a bar that is not on screen
+
         if (eng.paused() || otherScreenOpen()) {          // the pause menu / game menu / controller screen owns the keys: stand down
             if (st_.open) quickbar::close(st_);
             return;
@@ -68,10 +83,21 @@ public:
         rebuild(eng);
         in.openReleased = input_->released("quick_bar_open");
         in.closePressed = input_->pressed("quick_bar_close");
+        // W/S and A/D: these actions share their keys with thrust / strafe; both read the key independently, nothing is consumed, so the
+        // ship keeps flying while the selection moves (docs/QUICK_ACTION_BAR.md, "Why it doesn't pause flight")
+        in.up = input_->pressed("quick_bar_up");
+        in.down = input_->pressed("quick_bar_down");
+        in.left = input_->pressed("quick_bar_left");
+        in.right = input_->pressed("quick_bar_right");
         in.prev = input_->pressed("quick_bar_prev");
         in.next = input_->pressed("quick_bar_next");
         in.confirm = input_->pressed("quick_bar_confirm");
-        auto r = quickbar::step(st_, entries_, in, cfg_);
+        // mouse: hit-test the tiles drawn last frame (hovered() is false while the cursor is captured, so a steering mouse never selects)
+        for (const auto& t : tiles_)
+            if (ui_->hovered(t.x, t.y, t.w, t.h)) { in.hoverId = t.id; break; }
+        in.mouseMoved = mouseMoved;
+        in.click = clickEdge;
+        auto r = quickbar::step(st_, rows_, in, cfg_);
         switch (r.outcome) {
             case quickbar::Outcome::Opened:    sound("ui_click", 0.5f); break;
             case quickbar::Outcome::Moved:     sound("ui_click", 0.4f); break;
@@ -95,11 +121,15 @@ private:
 
     static std::string upper(std::string s) { for (auto& ch : s) ch = (char)std::toupper((unsigned char)ch); return s; }
 
-    // ---- the data-driven entry list, from whatever services exist this frame ----
+    // ---- the data-driven rows, from whatever services exist this frame ----
+    // Row order is fixed (WEAPONS, SHIP SYSTEMS, ITEMS / PERKS); a row that ends up with no entries is dropped, so it is neither drawn nor
+    // reachable. New ship-level toggles go in `systems`, future consumables / active perks in `items`.
     void rebuild(engine::Engine& eng) {
-        entries_.clear();
+        rows_.clear();
         actions_.clear();
-        auto add = [&](quickbar::Entry e, std::string action) { actions_[e.id] = std::move(action); entries_.push_back(std::move(e)); };
+        quickbar::Row weapons{"WEAPONS", {}}, systems{"SHIP SYSTEMS", {}}, items{"ITEMS / PERKS", {}};
+        quickbar::Row* cur = &weapons;
+        auto add = [&](quickbar::Entry e, std::string action) { actions_[e.id] = std::move(action); cur->entries.push_back(std::move(e)); };
 
         if (auto* c = eng.services.get<combat::ICombat>()) {
             int n = c->weaponCount();
@@ -118,6 +148,7 @@ private:
             }
         }
 
+        cur = &systems;
         auto* ship = eng.services.get<ship::IShip>();
         if (auto* warp = eng.services.get<ship::IWarpDrive>()) {
             quickbar::Entry e;
@@ -142,6 +173,7 @@ private:
 
         // Scanner perks: both are passive (installed = always on; the crafted item's "use" is what installs them), so there is no action to
         // fire. They show up once installed as a greyed, honest status entry rather than a button that pretends to do something.
+        cur = &items;
         if (auto* inv = eng.services.get<gameplay::IInventory>()) {
             static const struct { const char* perk; const char* label; } kPerks[] = {{"ore_scanner", "ORE SCANNER"}, {"anomaly_scanner", "ANOMALY SCANNER"}};
             for (const auto& p : kPerks) {
@@ -152,6 +184,9 @@ private:
                 add(std::move(e), std::string());
             }
         }
+
+        for (auto* r : {&weapons, &systems, &items})
+            if (!r->entries.empty()) rows_.push_back(std::move(*r));
     }
 
     void activate(const std::string& id) {
@@ -162,18 +197,31 @@ private:
         LOG_I("quick_bar", "%s -> %s", id.c_str(), it->second.c_str());
     }
 
-    // ---- drawing (glass strip, bottom centre, above the HUD's bottom row) ----
+    // ---- drawing: one glass panel, bottom centre, above the HUD's bottom row; a row per category, a label gutter on the left ----
+    // Tiles are the same as the original flat strip (glass, label, detail line, ON/OFF, dimmed when unavailable, cooldown fill-down); every
+    // row uses the same tile width so the columns line up. The drawn tile rects are kept for next frame's mouse hit test (onFrameBegin).
     void draw(core::UIHandler& ui) {
-        const int n = (int)entries_.size();
-        if (n == 0) return;
+        tiles_.clear();
+        const int nRows = (int)rows_.size();
+        if (nRows == 0) return;
+        int maxCols = 1;
+        for (const auto& r : rows_) maxCols = std::max(maxCols, (int)r.entries.size());
         const float sc = ui.scale, W = (float)ui.width(), H = (float)ui.height();
         auto fs = [&](int px) { return std::max(9, (int)std::lround(px * sc)); };
-        const float pad = 10 * sc, gap = 8 * sc, itemH = 62 * sc, headH = 22 * sc, footH = 20 * sc;
+        const float pad = 10 * sc, gap = 8 * sc, rowGap = 8 * sc, itemH = 62 * sc, headH = 22 * sc, footH = 20 * sc, labelW = 118 * sc;
+
+        std::string hint = key("quick_bar_up", "W") + "/" + key("quick_bar_down", "S") + ": row   " + key("quick_bar_left", "A") + "/" +
+                           key("quick_bar_right", "D") + ": select   " + key("quick_bar_confirm", "Return") + ": use   " + key("quick_bar_open", "B") +
+                           (cfg_.holdToOpen ? ": release to close" : ": close") + (ui.pointerFree() ? "   mouse: click to use" : "");
+        const float hintW = (float)ui.textWidth(hint, fs(11));
+
         float itemW = 138 * sc;
-        float maxW = W - 32 * sc;
-        if (n * itemW + (n - 1) * gap + pad * 2 > maxW) itemW = std::max(60 * sc, (maxW - pad * 2 - (n - 1) * gap) / n);   // many entries / narrow window
-        const float totalW = n * itemW + (n - 1) * gap + pad * 2, totalH = headH + itemH + footH + pad * 2;
-        const float x0 = (W - totalW) / 2, y0 = H - totalH - 150 * sc;
+        const float maxW = W - 32 * sc;
+        auto rowsW = [&](float iw) { return labelW + maxCols * iw + (maxCols - 1) * gap + pad * 2; };
+        if (rowsW(itemW) > maxW) itemW = std::max(60 * sc, (maxW - labelW - pad * 2 - (maxCols - 1) * gap) / maxCols);   // many entries / narrow window
+        const float totalW = std::min(maxW, std::max(rowsW(itemW), hintW + pad * 2));
+        const float totalH = pad * 2 + headH + nRows * itemH + (nRows - 1) * rowGap + footH;
+        const float x0 = (W - totalW) / 2, y0 = std::max(8 * sc, H - totalH - 150 * sc);
         ui.roundedRect(x0, y0, totalW, totalH, 12 * sc, {0.02f, 0.03f, 0.06f, 0.70f}, {0.02f, 0.03f, 0.06f, 0.70f});   // dark backing: readable over a bright planet
         ui.glass(x0, y0, totalW, totalH, 1.0f, false, 12 * sc);
         ui.text(x0 + pad, y0 + pad - 2 * sc, "QUICK ACTIONS", fs(12), ui.theme.textDim);
@@ -182,31 +230,38 @@ private:
                 ui.theme.accent.r, ui.theme.accent.g, ui.theme.accent.b, 0.5f);
 
         const core::Color grey{0.42f, 0.45f, 0.50f, 0.8f}, onCol{0.35f, 0.95f, 0.55f, 1.0f}, offCol{0.85f, 0.45f, 0.40f, 0.9f};
-        const float iy = y0 + pad + headH;
-        for (int i = 0; i < n; i++) {
-            const auto& e = entries_[(size_t)i];
-            const float ix = x0 + pad + i * (itemW + gap);
-            const bool sel = i == st_.selected;
-            const bool ready = quickbar::usable(st_, e);
-            ui.glass(ix, iy, itemW, itemH, e.available ? 1.0f : 0.5f, sel, 8 * sc);
-            if (!e.available) ui.rect(ix, iy, itemW, itemH, 0.0f, 0.0f, 0.0f, 0.35f);   // greyed
-            if (sel) {                                          // accent frame on the selection
-                const float t = 2 * sc; const auto& a = ui.theme.accent;
-                ui.rect(ix, iy, itemW, t, a.r, a.g, a.b, 0.9f); ui.rect(ix, iy + itemH - t, itemW, t, a.r, a.g, a.b, 0.9f);
-                ui.rect(ix, iy, t, itemH, a.r, a.g, a.b, 0.9f); ui.rect(ix + itemW - t, iy, t, itemH, a.r, a.g, a.b, 0.9f);
-            }
-            // state line (top): ON/OFF for toggles (an instant entry's "current" state is in its detail line, e.g. SELECTED)
-            if (e.kind == quickbar::Kind::Toggle) ui.textCentered(ix + itemW / 2, iy + 5 * sc, e.on ? "ON" : "OFF", fs(11), e.on ? onCol : offCol);
-            const core::Color& labelCol = !ready ? grey : sel ? ui.theme.text : ui.theme.textDim;
-            ui.textCentered(ix + itemW / 2, iy + 22 * sc, e.label, fs(14), labelCol);
-            if (!e.detail.empty()) ui.textCentered(ix + itemW / 2, iy + 42 * sc, e.detail, fs(10), e.available ? ui.theme.textDim : grey);
-            // cooldown: a dark fill that shrinks from the right as it runs down
-            float cd = quickbar::cooldownFraction(st_, e);
-            if (cd > 0) ui.rect(ix, iy, itemW * cd, itemH, 0.0f, 0.0f, 0.0f, 0.5f);
-        }
+        const auto& a = ui.theme.accent;
+        for (int r = 0; r < nRows; r++) {
+            const auto& row = rows_[(size_t)r];
+            const float ry = y0 + pad + headH + r * (itemH + rowGap);
+            const bool curRow = r == st_.row;
+            // category label in the gutter; the current row gets an accent bar and the accent colour
+            if (curRow) ui.rect(x0 + pad, ry, 3 * sc, itemH, a.r, a.g, a.b, 0.9f);
+            ui.text(x0 + pad + 9 * sc, ry + itemH / 2 - 8 * sc, row.name, fs(12), curRow ? a : ui.theme.textDim);
 
-        std::string hint = key("quick_bar_prev", ",") + " / " + key("quick_bar_next", ".") + ": select     " + key("quick_bar_confirm", "Return") +
-                           ": use     " + key("quick_bar_open", "B") + (cfg_.holdToOpen ? ": release to close" : ": close");
+            for (int c = 0; c < (int)row.entries.size(); c++) {
+                const auto& e = row.entries[(size_t)c];
+                const float ix = x0 + pad + labelW + c * (itemW + gap), iy = ry;
+                tiles_.push_back({e.id, ix, iy, itemW, itemH});
+                const bool sel = curRow && c == st_.col;
+                const bool ready = quickbar::usable(st_, e);
+                ui.glass(ix, iy, itemW, itemH, e.available ? 1.0f : 0.5f, sel, 8 * sc);
+                if (!e.available) ui.rect(ix, iy, itemW, itemH, 0.0f, 0.0f, 0.0f, 0.35f);   // greyed
+                if (sel) {                                      // accent frame on the selection
+                    const float t = 2 * sc;
+                    ui.rect(ix, iy, itemW, t, a.r, a.g, a.b, 0.9f); ui.rect(ix, iy + itemH - t, itemW, t, a.r, a.g, a.b, 0.9f);
+                    ui.rect(ix, iy, t, itemH, a.r, a.g, a.b, 0.9f); ui.rect(ix + itemW - t, iy, t, itemH, a.r, a.g, a.b, 0.9f);
+                }
+                // state line (top): ON/OFF for toggles (an instant entry's "current" state is in its detail line, e.g. SELECTED)
+                if (e.kind == quickbar::Kind::Toggle) ui.textCentered(ix + itemW / 2, iy + 5 * sc, e.on ? "ON" : "OFF", fs(11), e.on ? onCol : offCol);
+                const core::Color& labelCol = !ready ? grey : sel ? ui.theme.text : ui.theme.textDim;
+                ui.textCentered(ix + itemW / 2, iy + 22 * sc, e.label, fs(14), labelCol);
+                if (!e.detail.empty()) ui.textCentered(ix + itemW / 2, iy + 42 * sc, e.detail, fs(10), e.available ? ui.theme.textDim : grey);
+                // cooldown: a dark fill that shrinks from the right as it runs down
+                float cd = quickbar::cooldownFraction(st_, e);
+                if (cd > 0) ui.rect(ix, iy, itemW * cd, itemH, 0.0f, 0.0f, 0.0f, 0.5f);
+            }
+        }
         ui.textCentered(W / 2, y0 + totalH - pad - footH + 6 * sc, hint, fs(11), ui.theme.textDim);
     }
     std::string key(const char* action, const char* fallback) const {
@@ -219,7 +274,11 @@ private:
     core::UIHandler* ui_ = nullptr;
     quickbar::Settings cfg_;
     quickbar::State st_;
-    std::vector<quickbar::Entry> entries_;
+    std::vector<quickbar::Row> rows_;
+    struct Tile { std::string id; float x, y, w, h; };
+    std::vector<Tile> tiles_;                      // tiles drawn last frame, for the mouse hit test
+    bool prevHeld_ = false;
+    int lastMx_ = -1, lastMy_ = -1;
     std::map<std::string, std::string> actions_;   // entry id -> the input action it injects ("" = nothing to fire)
     float toggleCooldown_ = 0.5f, warpMinFuel_ = 1.0f;
     bool orbitLocked_ = false;

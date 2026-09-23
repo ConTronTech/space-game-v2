@@ -43,11 +43,16 @@
     "menu_tab_prev": [ { "device": "keyboard", "key": "[" } ],   // game menu: previous tab (dedicated key - the menu does not pause flight, so it must not share A/D/strafe)
     "menu_tab_next": [ { "device": "keyboard", "key": "]" } ],   // game menu: next tab
     "menu_discard":  [ { "device": "keyboard", "key": "Delete" }, { "device": "keyboard", "key": "Backspace" } ],   // CARGO grid: discard the selected slot (press twice to confirm)
-    // quick action bar (docs/QUICK_ACTION_BAR.md): a strip of secondary actions (weapon select, warp, orbit lock, ...) that does NOT pause
-    // flight - so none of these share a flight key (Q is roll, A/D strafe, Space lift)
+    // quick action bar (docs/QUICK_ACTION_BAR.md): category rows of secondary actions (weapons, ship systems, items / perks) that does NOT
+    // pause flight. up/down/left/right deliberately SHARE W/S/A/D with thrust/strafe: both actions read the key, so the ship keeps flying
+    // while the selection moves (the user's call: "it's the user's decision to be quick"). Nothing is consumed.
     "quick_bar_open":    [ { "device": "keyboard", "key": "B" } ],        // open / close the bar (quick_bar.hold_to_open: open only while held)
-    "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry (wraps)
-    "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry (wraps)
+    "quick_bar_up":      [ { "device": "keyboard", "key": "W" } ],        // while open: previous row (wraps) - same key as thrust
+    "quick_bar_down":    [ { "device": "keyboard", "key": "S" } ],        // while open: next row (wraps) - same key as reverse thrust
+    "quick_bar_left":    [ { "device": "keyboard", "key": "A" } ],        // while open: previous entry in the row (wraps) - same key as strafe
+    "quick_bar_right":   [ { "device": "keyboard", "key": "D" } ],        // while open: next entry in the row (wraps) - same key as strafe
+    "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry in the row (wraps; for controllers / wheels)
+    "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry in the row (wraps)
     "quick_bar_confirm": [ { "device": "keyboard", "key": "Return" } ],   // while open: use the selected entry
     "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view

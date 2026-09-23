@@ -2,8 +2,8 @@
 
 A No Man's Sky-style quick menu for flight: reach for a secondary action without pausing or leaving flight. Redesigned 2026-09-23 (user
 feedback after the first version) from a single flat row into a grid of category ROWS, with mouse support and WASD reuse. This section is
-the current design spec (not yet built); the "As built, original flat-row version" section further down is the first build's reference
-(still accurate for entry contents/tunables, only layout and navigation changed).
+the design spec, **built 2026-09-23** - see "As built (2026-09-23, category rows)" below for the specifics; the "As built, original flat-row
+version" section further down is the first build's reference (still accurate for entry contents/tunables, only layout and navigation changed).
 
 ## Why it doesn't pause flight (explicit user decision, 2026-09-23)
 This is a genuinely LIVE menu: the ship keeps flying while it's open, on purpose - "it's the user's decision to be quick." That means input
@@ -40,6 +40,44 @@ Everything else about the original flat-row version carries over unchanged: entr
 instant vs toggle entry kinds with per-entry availability/cooldown, activating an entry injects the target module's own input action for
 that frame rather than calling into it directly (so warp's fuel check, orbit lock's alignment refusal, etc. all still go through their
 normal code path), the idle timeout auto-close, and drawing via `core::UIHandler` panels (order 850).
+
+## As built (2026-09-23, category rows)
+- **Model** (`quick_bar_rules.h`): `struct Row { name; entries; }`; `State` holds `row`/`col` (plus `selectedId`, which the selection
+  follows across rebuilds). `step()`/`resync()` take `std::vector<Row>`. The module's `rebuild()` fills WEAPONS, SHIP SYSTEMS and
+  ITEMS / PERKS in that fixed order and drops any row that ends up empty. The rules also skip empty rows, as a safety net.
+- **Controls** (in both `config/input/default.json` and `testing.json`):
+
+  | action | key | does |
+  |---|---|---|
+  | `quick_bar_up` / `quick_bar_down` | `W` / `S` (same keys as `thrust`) | previous / next row, wrapping last <-> first |
+  | `quick_bar_left` / `quick_bar_right` | `A` / `D` (same keys as `strafe`) | previous / next entry in the current row, wrapping within the row |
+  | `quick_bar_prev` / `quick_bar_next` | `,` / `.` | same as left / right (same-row only, per the spec) |
+  | `quick_bar_open`, `quick_bar_confirm`, `quick_bar_close` | `B`, `Return`, unbound | unchanged |
+
+  Nothing is consumed: while the bar is open, W/S/A/D fly the ship and move the selection in the same frame. Up + down, left + right or
+  prev + next pressed together cancel out.
+- **Row change keeps the column where it fits.** Moving from column 2 into a two-entry row lands on that row's last entry. With only one
+  non-empty row, up/down do nothing (no `Moved`, no click sound). The same goes for left/right in a one-entry row.
+- **Priority within one frame:** open/close, mouse click, up/down, left/right (prev/next), mouse hover, confirm. At most one outcome per
+  frame.
+- **Mouse** (the CARGO-grid / main-menu pattern): `onFrameBegin` hit-tests the tile rects the bar drew last frame with `UIHandler::hovered`.
+  Hover takes the selection **only on a frame the cursor actually moved** (`mouseX/Y != lastMx_/lastMy_`, as in `main_menu.cpp` /
+  `pause_menu.cpp`). This lets W/S/A/D move away from a tile the cursor is parked on without being pulled back, and the keyboard wins a frame
+  where both happen. A left-button press edge (`mouseHeld()` rising) over a tile selects it and activates it through the same
+  availability/cooldown gate as `Return`. Hovering and clicking reset the idle timer.
+- **The bar never changes mouse capture.** `hovered()` is false while the cursor is captured, so in the default profile (mouse look on), the
+  mouse keeps steering and the bar is keyboard-only. Hover and click work once the cursor is free: `Tab` (`mouse_capture_toggle`), or a
+  capture-off profile such as `testing.json`. Weapons refuse to fire while the cursor is free, so clicks on the bar never shoot. The footer
+  adds "mouse: click to use" only while the cursor is free. Freeing the cursor on open, as the game menu does, was left out on purpose: it
+  would stop mouse look, which counts as flight suppression. The fake-`PauseChanged` trick would also nest badly with the game and pause
+  menus, which share the mouse module's single "captured before pause" memory.
+- **Look:** a single glass panel at the bottom centre, with rows stacked vertically. A 118 px (scaled) label gutter on the left holds each
+  row's name. The current row gets an accent bar and accent-coloured text. The tiles are unchanged from the flat version. Every row uses the
+  same tile width so the columns line up; tiles shrink to fit the widest row on narrow windows. The panel grows upward from the same bottom
+  edge as before, and the footer lists the live keys from `primaryBindingLabel`.
+- **Controllers:** still no profile binds the bar. Once the SideWinder hat is identified, the natural D-pad mapping is
+  `{"index": 0, "up": "quick_bar_up", "down": "quick_bar_down", "left": "quick_bar_left", "right": "quick_bar_right"}`, with open and
+  confirm on buttons. `prev`/`next` alone cannot leave the current row.
 
 ## As built, original flat-row version (2026-09-22, superseded above by the 2026-09-23 redesign)
 Kept for reference - the entry table, scanner/shield notes and tunables below are still accurate for what exists in each entry; only the
@@ -114,8 +152,8 @@ live key labels (`IInput::primaryBindingLabel`). On narrow windows or with many 
 
 ### Code
 - `package/modules/ui/quick_action_bar/quick_bar_rules.h`: pure rules, unit-tested in `package/tests/test_quick_action_bar.cpp`.
-  `step()` handles one frame of input (open/close, wrap-around selection, confirm gated by `available` and the cooldown). `tick()`
-  runs cooldowns down (also while the bar is closed) and the idle timer. `resync()` keeps the selection on the same entry id when the
-  list is rebuilt. Cooldowns are keyed by id for the same reason.
+  `step()` handles one frame of input (open/close, row and in-row wrap-around selection, mouse hover/click, confirm gated by `available`
+  and the cooldown). `tick()` runs cooldowns down (also while the bar is closed) and the idle timer. `resync()` keeps the selection on the
+  same entry id when the rows are rebuilt. Cooldowns are keyed by id for the same reason.
 - `package/modules/ui/quick_action_bar/quick_action_bar.cpp`: the module (entry building, input injection, drawing with
   `core::UIHandler` at panel order 850, under the game menu and pause menu).
