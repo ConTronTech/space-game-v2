@@ -42,6 +42,12 @@
     "toggle_menu": [ { "device": "keyboard", "key": "I" } ],                      // the game menu (cargo, crafting, ...): I or Esc closes it
     "menu_tab_prev": [ { "device": "keyboard", "key": "[" } ],   // game menu: previous tab (dedicated key - the menu does not pause flight, so it must not share A/D/strafe)
     "menu_tab_next": [ { "device": "keyboard", "key": "]" } ],   // game menu: next tab
+    // quick action bar (docs/QUICK_ACTION_BAR.md): a strip of secondary actions (weapon select, warp, orbit lock, ...) that does NOT pause
+    // flight - so none of these share a flight key (Q is roll, A/D strafe, Space lift)
+    "quick_bar_open":    [ { "device": "keyboard", "key": "B" } ],        // open / close the bar (quick_bar.hold_to_open: open only while held)
+    "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry (wraps)
+    "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry (wraps)
+    "quick_bar_confirm": [ { "device": "keyboard", "key": "Return" } ],   // while open: use the selected entry
     "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
     "toggle_profiler":     [ { "device": "keyboard", "key": "F3" } ],   // live profiler overlay (fps, frame graph, top consumers, hitches)
