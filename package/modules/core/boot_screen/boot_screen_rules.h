@@ -20,6 +20,13 @@ inline float progressFraction(int index, int total) {
     return std::clamp((float)index / (float)total, 0.0f, 1.0f);
 }
 
+// Same, while module number index+1 is still inside its own long job (engine::BootStep), `sub` (0..1) of the way through:
+// the bar moves on within that module's slice instead of sitting still. Never past (index+1)/total, never backwards of index/total.
+inline float progressFraction(int index, int total, float sub) {
+    if (total <= 0) return 0.0f;
+    return std::clamp(((float)index + std::clamp(sub, 0.0f, 1.0f)) / (float)total, 0.0f, 1.0f);
+}
+
 // The fill rectangle inside `track`, scaled by `fraction` (grows left to right), never wider than the track itself.
 inline Rect fillRect(const Rect& track, float fraction) {
     Rect r = track;

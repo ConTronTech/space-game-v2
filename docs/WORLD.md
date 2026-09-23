@@ -136,26 +136,44 @@ fits in the one-build-per-frame rule. Memory: level 3 = 31 KB, level 4 = 121 KB 
 
 At debug log level the module prints each build (time, memory) and, every 2 s, the meshes drawn, triangles this frame, cache size and the slowest build.
 
+## Surface textures (diffuse colour only)
+Depth stays **100% in the mesh geometry** above; textures only add colour/material variety. No normal or bump mapping (no shaders, and dot3-combiner tricks fight the old-GPU target).
+Pure code in `world/star_system/planet_texture.h`, tested in `package/tests/test_planet_texture.cpp`.
+
+**Technique: one cube map per body, no UVs.** Each planet/moon gets a `GL_TEXTURE_CUBE_MAP` (GL 1.3 core: every GL 2.1 driver has it, including Ironlake/GMA; only constants, no new entry points). The draw passes the mesh's own vertex positions as a 3-component texture coordinate (`glTexCoordPointer(3, ..., kStride, positions)`): a cube map is looked up by *direction*, and the displaced position points the same way as the unit direction it was built from. So the mesh format is unchanged (no UVs), and there is **no longitude seam and no pole pinch** (an equirectangular UV wrap on an icosphere would need duplicated seam vertices and still smear at the poles). The fallback spheres (not-yet-built mesh, far dots) are textured the same way, so nothing changes colour when a mesh level pops in. `GL_MODULATE` with white vertex colour: the texel is lit exactly like the old vertex colour was.
+
+**What is in a texel.** `surfaceColor` = the *same* `biomeColor` palette the vertices use, from the *same* `terrainNoise` the geometry is displaced by (coastlines and snow caps line up with the relief, now at texel resolution instead of one colour per vertex), times a per-material detail pattern whose mean is ~1:
+| Material (`surfaceMaterial`) | Who | Pattern |
+|---|---|---|
+| terran | planets with an ocean | fine grain on land, subtle ripple on water |
+| rock | barren, neither warm nor (by seed) icy | warped horizontal strata + grain |
+| sand | barren, warm colour (red > blue + 0.15) | wind ripples along latitude, bent by noise; warm tint |
+| ice | barren cool-coloured planets (half, by seed); 1 in 4 moons | blue-white sheet with dark ridged cracks |
+| regolith | the other moons | desaturated, darker maria, pits with bright rims |
+The unit tests pin that terran/rock/sand average within 0.07 per channel of the vertex palette, regolith keeps its brightness, and ice only gets paler.
+
+**Multitexture survey (the open item from docs/NEXT_UP.md).** The codebase used no `glActiveTexture`, no `GL_COMBINE` and no second texture unit anywhere, so any two-unit blend (`ARB_multitexture` + `ARB_texture_env_combine` `GL_INTERPOLATE` with a mask in a texture's alpha) would be unproven on the Ironlake target. It is also not needed for what the plan wanted it for: "snow cap vs equator band", "rock vs sand by latitude" are **baked per texel on the CPU** (`biomeColor` already blends water/sand/grass/rock/snow by height and latitude, and the material pass layers on top), which gives any number of masked layers for zero draw-time cost and one texture unit. Where hardware multitexture *would* still add something: a small tiling detail texture on unit 1 (`GL_COMBINE` `GL_ADD_SIGNED` or modulate-2x) for close-range grain beyond the cube-map resolution. Not done; it needs the entry points looked up (as `render_engine` does for FBOs) and a live test on the laptop first.
+
+**Baked at boot, never mid-flight.** `generate()` bakes every body's six faces and uploads them (level 0 plus a CPU box-filtered mip chain down to 1x1, `GL_LINEAR_MIPMAP_LINEAR`, clamp-to-edge; same upload calls as `world/skybox`). The six faces of a body are baked on up to six `std::thread`s (pure, independent: same bytes either way; serial fallback). Between bodies it calls `Engine::bootStep`, which shows `LOADING world/star_system: planet textures 3/12` and moves the bar within the module's slice (`engine::BootStep`, `core/boot_screen`), and pumps one boot frame so the window stays responsive. Loading a save with a different seed re-bakes mid-game (a one-off wait at load time, logged). Startup logs `baked N surface textures (S px cube faces, X MB with mips) in T ms during boot`.
+
+**Cost** (this dev machine, -O2, single thread per body): 64 px 10 ms, 128 px 42 ms, 256 px 168 ms, 512 px ~670 ms per body; divide by up to 6 with the face threads. A typical system has ~10-15 bodies. GPU memory per body (RGB + mips): 64 px 96 KB, 128 px 384 KB, 256 px 1.5 MB, 512 px 6 MB.
+
+| Tunable | Default | |
+|---|---|---|
+| `world.planet_texture_size` | 128 | cube-map face size, a power of two 16-1024 (rounded down; capped by `GL_MAX_CUBE_MAP_TEXTURE_SIZE`); 0 = off (vertex colours, the old look). Presets: Low 64, Medium 128, High 256, Ultra 512 |
+
 ## Planet atmospheres (3.3b)
 `world/atmosphere` (passes `world/atmosphere` order 120 and `world/atmosphere_tint` order 150) draws a rim-glow shell around each nearby planet and a faint
 screen tint inside it. It reads `IStarSystem` only; visual only (no physics). See docs/ATMOSPHERE.md.
 
 ## `world/asteroids` (3.6, pass `asteroids`, order 60: after the star system, before the demo rocks)
-Belts, rings and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and ring / cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
+Belts and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
 indices are stable for the whole run. Without `world/star_system` nothing is generated.
 
 **Generation** (`asteroid_rules.h`, pure, seeded from `world.seed`; `generateField`): a belt is a band around the sun in the XZ plane between two planet orbits (at most `beltMaxWidth` = 3,000 units wide, about 1,000 thick, patchy: a noise field thins some parts out);
-a ring is a flat band around a planet in the XZ plane through its centre (inner edge 1.3-1.5 planet radii, 0.3-0.5 radii wide, capped at 2.0 radii so it stays inside the moons' orbits and outside the ~1.06 R atmosphere shell; +-2% of the radius thick, clamped 4-25 units);
-a cluster is a flattened shell around a planet (outside its moons) or a moon.
-
-- **Belt count and placement:** each system rolls 1-5 belts (seeded, `rollBeltCount`; `asteroids.belt_count` >= 0 forces a count), capped by the eligible orbit gaps (> 4,000 units wide).
-  Gaps are picked by weighted sampling without replacement with weight (rank from the sun + 1)^2 (`pickGapsOutward`): a 1-belt system usually has it in one of the outer gaps (with 6 gaps: about 67% in the outer two, about 1% in the innermost), higher rolls fill the inner gaps too.
-  Belt width and asteroids per belt are unchanged.
-- **Planets and moons have separate budgets:** every planet gets exactly one thing nearby: a ring with a seeded per-planet chance (`asteroids.ring_chance`, 0.4; `planetHasRing`, independent of every other roll), otherwise a shell cluster.
-  Moons never take a planet's slot: `asteroids.moon_cluster_count` (2) moons, picked by seeded shuffle, get a shell cluster. Sizes follow the old game (belts: 50% radius 1-5, 25% 5-15, 15% 15-35, 7% 35-60, 3% 60-120; clusters mostly 0.5-4); ore ids and rarity weights come from `data/ores.json` through `core::IData` (else "rock");
+a cluster is a flattened shell around a planet (outside its moons) or a moon. Sizes follow the old game (belts: 50% radius 1-5, 25% 5-15, 15% 15-35, 7% 35-60, 3% 60-120; clusters mostly 0.5-4); ore ids and rarity weights come from `data/ores.json` through `core::IData` (else "rock");
 each has a spin axis and rate and one of 4 shared mesh variants. Stored as struct-of-arrays (about 60 bytes each). Physics radius = radius x 0.9, so the ship damage tiers (`asteroid` radius < 5 small, < 30 medium, else big) apply to the physics radius.
-Default field: 1-5 belts of 1,500, a 300-asteroid ring or a 60-asteroid shell per planet, 2 moon shells of 60 (so roughly 2,000-9,000 asteroids depending on the seed), 12 shared meshes.
-The old fixed default (1 belt + 4 clusters = 1,740 asteroids) generated in 0.8 ms on the dev machine, 117 KB; generation and memory scale linearly with the count (about 60 bytes per asteroid).
+Default field (1 belt of 1,500 + 4 clusters of 60 = 1,740 asteroids, 12 shared meshes): generated in 0.8 ms on the dev machine (about 5-10 ms estimated on the laptop), 117 KB.
 
 **Drawing:** camera-relative (double subtract, then float), distance-culled (`asteroids.draw_distance`) and view-cone-culled; meshes are lumpy icospheres of 20 / 80 / 320 triangles built once (4 variants x 3 levels) and drawn with client vertex arrays,
 one push/translate/rotate(spin)/scale per asteroid. The level follows the on-screen size (`asteroids.lod_edge_px`); at most `asteroids.max_drawn` meshes are drawn, nearest first, within `asteroids.triangle_budget` triangles (the farthest are lowered first, then turned to points);
@@ -167,9 +185,8 @@ A warp crash into a registered asteroid reports the full closing speed (checked:
 | Tunable | Default | |
 |---|---|---|
 | `asteroids.enabled` | true | |
-| `asteroids.belt_count` / `belt_asteroids` | -1 / 1500 | -1 = seeded random 1-5 per system, outer gaps preferred; >= 0 forces the count |
-| `asteroids.ring_chance` / `ring_asteroids` | 0.4 / 300 | per-planet ring chance (seeded); a ring-less planet gets a shell cluster |
-| `asteroids.moon_cluster_count` / `cluster_asteroids` | 2 / 60 | shell clusters around moons (own budget); `cluster_asteroids` is per shell (planets and moons). Replaces `asteroids.cluster_count` |
+| `asteroids.belt_count` / `belt_asteroids` | 1 / 1500 | |
+| `asteroids.cluster_count` / `cluster_asteroids` | 4 / 60 | |
 | `asteroids.draw_distance` | 6000 | units |
 | `asteroids.max_drawn` | 400 | meshes per frame |
 | `asteroids.triangle_budget` | 15000 | per frame |
@@ -181,7 +198,7 @@ Laptop notes: a stress run with 21,500 asteroids drew 25 meshes and about 4,000 
 The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::nearest(shipPos, N, out)` (see docs/COCKPIT.md).
 
 ### Ore zones (6.3, `data/ore_zones.json`)
-Which ore an asteroid holds depends on how far its belt / cluster is from the sun: `data/ore_zones.json` lists distance bands, each multiplying the `data/ores.json` rarity per ore (then renormalized; `world::zoneOreTable` in `asteroid_rules.h`, pure, unit-tested). A **belt** uses its orbit-gap midpoint (halfway between the two planet orbits it sits between), a **ring** or **cluster** its planet/moon's distance from the sun at generation. Placement, sizes and the RNG sequence are unchanged: only the ore pick's weights differ.
+Which ore an asteroid holds depends on how far its belt / cluster is from the sun: `data/ore_zones.json` lists distance bands, each multiplying the `data/ores.json` rarity per ore (then renormalized; `world::zoneOreTable` in `asteroid_rules.h`, pure, unit-tested). A **belt** uses its orbit-gap midpoint (halfway between the two planet orbits it sits between), a **cluster** its planet/moon's distance from the sun at generation. Placement, sizes and the RNG sequence are unchanged: only the ore pick's weights differ.
 Boundaries are grounded in seed 1234's planet orbits (46,493 / 90,501 / 140,369 / 218,380 / 280,726 / 352,200; the belt's gap midpoint is 179,375):
 
 | Zone | Distance | Holds (seed 1234) | Multipliers (missing = 1) | Result (share of the table) |

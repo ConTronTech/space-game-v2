@@ -55,3 +55,14 @@ TEST(boot_screen_fill_rect_grows_with_fraction_never_wider_than_track) {
     CHECK_EQ(fillRect(track, 0.3f).x, track.x);    // fill starts at the track's left edge
     CHECK_EQ(fillRect(track, 0.3f).y, track.y);
 }
+
+TEST(boot_screen_sub_progress_moves_within_the_modules_own_slice) {
+    // module 3 of 10 is inside its init() (engine::BootStep): the bar sits between 3/10 and 4/10
+    CHECK_EQ(progressFraction(3, 10, 0.0f), progressFraction(3, 10));
+    CHECK(std::fabs(progressFraction(3, 10, 0.5f) - 0.35f) < 1e-6f);
+    CHECK(std::fabs(progressFraction(3, 10, 1.0f) - 0.4f) < 1e-6f);
+    CHECK(std::fabs(progressFraction(3, 10, 7.0f) - 0.4f) < 1e-6f);    // a bad fraction never jumps past the slice
+    CHECK_EQ(progressFraction(3, 10, -1.0f), progressFraction(3, 10));  // ... or goes backwards
+    CHECK_EQ(progressFraction(10, 10, 1.0f), 1.0f);                     // never past 100%
+    CHECK_EQ(progressFraction(2, 0, 0.5f), 0.0f);                       // no total yet: 0, not a divide-by-zero
+}

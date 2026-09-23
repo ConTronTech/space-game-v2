@@ -86,6 +86,7 @@ bool Engine::loadModules() {
     }
 
     std::unordered_set<std::string> alive;
+    struct BootingFlag { bool& f; explicit BootingFlag(bool& b) : f(b) { f = true; } ~BootingFlag() { f = false; } } bootingFlag(booting_);
     const int total = (int)sorted.size();
     int index = 0;
     for (auto& m : sorted) {
@@ -120,10 +121,21 @@ bool Engine::loadModules() {
         // still in progress). So: onFrameBegin pumps events and clears, onBootOverlay draws the boot indicator (the one
         // thing that IS meant to show here - core/boot_screen reacts to the ModuleLoaded event below), onPresent swaps.
         events.emit(ModuleLoaded{n, index, total});
-        for (auto& loaded : modules_) loaded->onFrameBegin(*this);
-        for (auto& loaded : modules_) loaded->onBootOverlay(*this);
-        for (auto& loaded : modules_) loaded->onPresent(*this);
+        bootFrame();
     }
+    return true;
+}
+
+void Engine::bootFrame() {
+    for (auto& loaded : modules_) loaded->onFrameBegin(*this);
+    for (auto& loaded : modules_) loaded->onBootOverlay(*this);
+    for (auto& loaded : modules_) loaded->onPresent(*this);
+}
+
+bool Engine::bootStep(const std::string& module, const std::string& detail, float fraction) {
+    if (!booting_) return false;
+    events.emit(BootStep{module, detail, fraction});
+    bootFrame();
     return true;
 }
 

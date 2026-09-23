@@ -46,6 +46,7 @@ Medium equals the built-in defaults, so an unknown machine plays exactly as befo
 | `world.planet_max_lod` | 2 | 3 | 3 | 5 |
 | `world.planet_triangle_budget` | 8000 | 20000 | 40000 | 160000 |
 | `world.planet_lod_edge_px` (smaller = finer) | 20 | 12 | 8 | 6 |
+| `world.planet_texture_size` (cube-map face px, baked at boot; docs/WORLD.md) | 64 | 128 | 256 | 512 |
 | `asteroids.belt_asteroids` | 600 | 1500 | 2500 | 4000 |
 | `asteroids.cluster_asteroids` | 30 | 60 | 100 | 150 |
 | `asteroids.max_drawn` | 150 | 400 | 700 | 1200 |

@@ -1,10 +1,14 @@
 // world/star_system - one seeded sun with planets and moons on analytic orbits. Planets and moons are LOD terrain meshes (planet_mesh.h),
-// built lazily one per frame; the sun and far dots use a low-poly sphere.
+// built lazily one per frame; the sun and far dots use a low-poly sphere. Every planet/moon also gets a diffuse cube-map
+// texture (planet_texture.h), baked and uploaded ONCE while the game boots (never mid-flight), sampled with the vertex
+// position as its 3D texture coordinate.
 // Provides world::IStarSystem. Rules in star_system_rules.h; approach and tunables in docs/WORLD.md.
 #include <GL/gl.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <thread>
 #include <unordered_map>
 #include "core/physics_world/physics_api.h"
 #include "core/render_engine/render_engine.h"
@@ -12,6 +16,7 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "world/star_system/planet_mesh.h"
+#include "world/star_system/planet_texture.h"
 #include "world/star_system/star_system_api.h"
 #include "world/star_system/star_system_rules.h"
 
@@ -36,6 +41,12 @@ public:
         triBudget_ = std::max(100, c.get("world.planet_triangle_budget", 20000, "most planet triangles drawn per frame"));
         edgePx_ = std::max(2.0f, c.get("world.planet_lod_edge_px", 12.0f, "target on-screen size of a mesh edge in pixels (smaller = more detail)"));
         cacheSeconds_ = std::max(1.0f, c.get("world.planet_mesh_cache_seconds", 30.0f, "free a planet mesh level after it was unused this long"));
+        texSize_ = world::surfaceTextureSize(c.get("world.planet_texture_size", 128, "planet/moon surface texture: cube-map face size in pixels, a power of two 16-1024 (0 = off, vertex colours only); baked at boot"));
+        if (texSize_ > 0) {   // the driver's own cube-map limit (GL 1.3 core, so every GL 2.1 driver has cube maps)
+            GLint maxCube = 0;
+            glGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, &maxCube);
+            if (maxCube > 0) texSize_ = std::min(texSize_, world::surfaceTextureSize(maxCube));
+        }
         eng_ = &eng;
 
         render_ = &eng.services.require<core::RenderEngine>();
@@ -54,6 +65,7 @@ public:
         if (saves_) saves_->unregisterSaveable(this);
         unregisterBodies();
         cache_.clear();
+        freeTextures();
         eng.services.withdraw<world::IStarSystem>();
     }
 
@@ -120,6 +132,99 @@ private:
         LOG_I("star_system", "seed %u: sun radius %.0f colour (%.2f %.2f %.2f) at (%.0f, %.0f, %.0f), %zu bodies", sys_.seed, s.radius, s.color[0], s.color[1], s.color[2], sys_.sun.x, sys_.sun.y, sys_.sun.z, sys_.bodies.size());
         for (auto& b : sys_.bodies)
             LOG_D("star_system", "%-18s r=%6.0f orbit=%8.0f period=%9.0f s parent=%d", b.name.c_str(), b.radius, b.orbitRadius, b.period, b.parent);
+        bakeTextures();
+    }
+
+    // What planet_mesh.h / planet_texture.h need to know about body `id` (the same for its mesh and its texture).
+    world::PlanetParams paramsFor(int id) const {
+        const auto& b = sys_.bodies[id];
+        world::PlanetParams pp;
+        pp.seed = world::mixSeed(params_.seed, (uint32_t)id);
+        pp.terrainHeight = terrainHeight_;
+        pp.moon = b.kind == world::BodyKind::Moon;
+        for (int k = 0; k < 3; k++) pp.color[k] = b.color[k];
+        return pp;
+    }
+
+    // ---- surface textures: baked on the CPU and uploaded once per body, during boot (engine bootStep keeps the loading
+    // screen moving between bodies). A save with another seed re-runs this mid-game: a one-off wait at load, logged.
+    void freeTextures() {
+        for (auto& t : tex_) if (t) glDeleteTextures(1, &t);
+        tex_.clear();
+    }
+
+    void bakeTextures() {
+        freeTextures();
+        tex_.assign(sys_.bodies.size(), 0U);
+        if (texSize_ <= 0) return;
+        int count = 0, done = 0;
+        for (auto& b : sys_.bodies) count += b.kind != world::BodyKind::Sun;
+        uint64_t t0 = nowMicros();
+        std::vector<uint8_t> faces[6];
+        for (auto& b : sys_.bodies) {
+            if (b.kind == world::BodyKind::Sun) continue;
+            if (eng_) {
+                char what[96];
+                std::snprintf(what, sizeof what, "planet textures %d/%d", done + 1, count);
+                eng_->bootStep(name(), what, (float)done / (float)count);
+            }
+            world::PlanetParams pp = paramsFor(b.id);
+            bakeFaces(pp, faces);
+            tex_[b.id] = uploadCube(faces);
+            done++;
+        }
+        double ms = (double)(nowMicros() - t0) / 1000.0;
+        LOG_I("star_system", "baked %d surface textures (%d px cube faces, %.1f MB with mips) in %.0f ms%s", count, texSize_,
+              (double)(world::surfaceTextureBytes(texSize_) * (size_t)count) / (1024.0 * 1024.0), ms, eng_ && eng_->booting() ? " during boot" : " (mid-game: new seed)");
+    }
+
+    // The six faces of one body, each on its own thread when the machine has them (pure, independent, same bytes either way).
+    void bakeFaces(const world::PlanetParams& pp, std::vector<uint8_t> (&faces)[6]) {
+        const int n = texSize_;
+        unsigned hw = std::thread::hardware_concurrency();
+        if (hw > 1) {
+            std::vector<std::thread> workers;
+            try {
+                for (int f = 0; f < 6; f++) workers.emplace_back([&pp, &faces, f, n] { world::buildSurfaceFace(pp, f, n, faces[f]); });
+                for (auto& w : workers) w.join();
+                return;
+            } catch (...) {   // could not start a thread: finish whatever is left on this one
+                for (auto& w : workers) if (w.joinable()) w.join();
+                for (int f = (int)workers.size(); f < 6; f++) world::buildSurfaceFace(pp, f, n, faces[f]);
+                return;
+            }
+        }
+        for (int f = 0; f < 6; f++) world::buildSurfaceFace(pp, f, n, faces[f]);
+    }
+
+    // One GL cube map with a full box-filtered mip chain (trilinear: no shimmer on a far, small planet). Same upload calls as
+    // world/skybox (tight RGB rows, unpack alignment 1, clamp-to-edge), on the GL_TEXTURE_CUBE_MAP_POSITIVE_X + face targets.
+    unsigned uploadCube(std::vector<uint8_t> (&faces)[6]) {
+        unsigned t = 0;
+        glGenTextures(1, &t);
+        if (!t) return 0;
+        glBindTexture(GL_TEXTURE_CUBE_MAP, t);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        std::vector<uint8_t> half;
+        for (int f = 0; f < 6; f++) {
+            std::vector<uint8_t>& px = faces[f];
+            int n = texSize_;
+            for (int level = 0;; level++) {
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, level, GL_RGB, n, n, 0, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+                if (n == 1) break;
+                world::halveRGB(px, n, half);
+                px.swap(half);
+                n /= 2;
+            }
+        }
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        return t;
     }
 
     void drawBody(const world::Body& b, const world::Projected& p, const float* view) {
@@ -138,24 +243,39 @@ private:
             glColor3fv(b.color);
         }
         glScalef(p.radius, p.radius, p.radius);
+        // surface texture: a cube map looked up by direction, so the (unscaled, body-local) vertex position IS the texture
+        // coordinate - no UVs in the mesh. The texture carries the biome colours, so the vertices go white and the lit
+        // white is MODULATEd by the texel (lighting and relief shading unchanged).
+        const unsigned tex = b.kind != world::BodyKind::Sun && b.id < (int)tex_.size() ? tex_[b.id] : 0U;
+        if (tex) {
+            glEnable(GL_TEXTURE_CUBE_MAP);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+            glColor3f(1.0f, 1.0f, 1.0f);
+        }
         const world::PlanetMesh* mesh = b.kind == world::BodyKind::Sun ? nullptr : meshFor_[b.id];
         if (mesh) {   // terrain mesh: interleaved position / normal / colour
             const char* base = (const char*)mesh->verts.data();
             glVertexPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base);
             glNormalPointer(GL_FLOAT, world::PlanetMesh::kStride, base + 3 * sizeof(float));
-            glColorPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base + 6 * sizeof(float));
-            glEnableClientState(GL_COLOR_ARRAY);
+            if (tex) glTexCoordPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base);
+            else { glColorPointer(3, GL_FLOAT, world::PlanetMesh::kStride, base + 6 * sizeof(float)); glEnableClientState(GL_COLOR_ARRAY); }
             glDrawElements(GL_TRIANGLES, (GLsizei)mesh->indices.size(), GL_UNSIGNED_SHORT, mesh->indices.data());
-            glDisableClientState(GL_COLOR_ARRAY);
+            if (!tex) glDisableClientState(GL_COLOR_ARRAY);
             glVertexPointer(3, GL_FLOAT, 0, sphere_.verts.data());
             glNormalPointer(GL_FLOAT, 0, sphere_.verts.data());
             trisDrawn_ += mesh->triangleCount();
         } else {   // the sun, or a body too small on screen for a mesh: a plain sphere (a very coarse one for dots)
             const world::SphereMesh& sph = (meshes_ && b.kind != world::BodyKind::Sun) ? dot_ : sphere_;
             if (&sph != &sphere_) { glVertexPointer(3, GL_FLOAT, 0, sph.verts.data()); glNormalPointer(GL_FLOAT, 0, sph.verts.data()); }
+            if (tex) glTexCoordPointer(3, GL_FLOAT, 0, sph.verts.data());   // unit sphere: position = direction = texture coordinate
             glDrawElements(GL_TRIANGLES, (GLsizei)sph.indices.size(), GL_UNSIGNED_SHORT, sph.indices.data());
             if (&sph != &sphere_) { glVertexPointer(3, GL_FLOAT, 0, sphere_.verts.data()); glNormalPointer(GL_FLOAT, 0, sphere_.verts.data()); }
             trisDrawn_ += (int)sph.indices.size() / 3;
+        }
+        if (tex) {
+            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+            glDisable(GL_TEXTURE_CUBE_MAP);
         }
         glPopMatrix();
         if (b.kind == world::BodyKind::Sun) drawGlow(b, p, view);
@@ -203,7 +323,8 @@ private:
         trisDrawn_ = 0;
         planMeshes(r);
 
-        glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_POLYGON_BIT);
+        glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_POLYGON_BIT | GL_TEXTURE_BIT);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);   // surface textures: texel x lit colour (restored by GL_TEXTURE_BIT)
         glEnable(GL_LIGHT0);
         const float sc[3] = {sys_.bodies[0].color[0], sys_.bodies[0].color[1], sys_.bodies[0].color[2]};
         const float diffuse[4] = {sc[0], sc[1], sc[2], 1}, ambient[4] = {0, 0, 0, 1}, globalAmbient[4] = {0.06f, 0.06f, 0.08f, 1};
@@ -276,11 +397,7 @@ private:
 
     void build(int id, int level) {
         const auto& b = sys_.bodies[id];
-        world::PlanetParams pp;
-        pp.seed = world::mixSeed(params_.seed, (uint32_t)id);
-        pp.terrainHeight = terrainHeight_;
-        pp.moon = b.kind == world::BodyKind::Moon;
-        for (int k = 0; k < 3; k++) pp.color[k] = b.color[k];
+        world::PlanetParams pp = paramsFor(id);
         uint64_t t0 = nowMicros();
         Entry e;
         e.mesh = world::buildPlanetMesh(level, pp);
@@ -317,6 +434,8 @@ private:
     engine::Engine* eng_ = nullptr;
     bool meshes_ = true;
     float terrainHeight_ = 0.03f, edgePx_ = 12.0f, cacheSeconds_ = 30.0f;
+    std::vector<unsigned> tex_;            // surface cube map per body id (0 = none: the sun, or texturing off)
+    int texSize_ = 0;
     int maxLod_ = 3, triBudget_ = 20000, trisDrawn_ = 0, builds_ = 0;
     double lastReport_ = -10, worstBuildMs_ = 0;
     size_t meshBytes_ = 0;

@@ -37,9 +37,12 @@ public:
         win_ = eng.services.get<Window>();
         if (!win_) return true;   // no window (headless test build) - nothing to draw
         eng.events.subscribe<engine::ModuleLoaded>([this](const engine::ModuleLoaded& e) {
-            index_ = e.index; total_ = e.total; label_ = e.name;
+            index_ = e.index; total_ = e.total; label_ = e.name; detail_.clear(); sub_ = 0.0f;
             if (e.index >= e.total) reachedTotal_ = true;
         });
+        // a module still inside its init() reporting a long job (engine::Engine::bootStep): show it on the current line
+        // and move the bar within that module's slice; the next ModuleLoaded clears it
+        eng.events.subscribe<engine::BootStep>([this](const engine::BootStep& e) { detail_ = e.module + ": " + e.detail; sub_ = e.fraction; });
         return true;
     }
 
@@ -52,7 +55,7 @@ public:
         if (!d.draw || !win_) return;
         boot::Rect track = boot::trackRect(win_->width(), win_->height());
         if (track.w <= 0 || track.h <= 0) return;
-        boot::Rect fill = boot::fillRect(track, boot::progressFraction(index_, total_));
+        boot::Rect fill = boot::fillRect(track, detail_.empty() ? boot::progressFraction(index_, total_) : boot::progressFraction(index_, total_, sub_));
         const float textHeight = track.h * 1.3f;
 
         glMatrixMode(GL_PROJECTION);
@@ -72,7 +75,8 @@ public:
 
         boot::Rect lbl = boot::labelPos(track, textHeight);
         char line[160];
-        std::snprintf(line, sizeof line, "LOADING %s (%d/%d)", label_.c_str(), index_, total_);
+        if (detail_.empty()) std::snprintf(line, sizeof line, "LOADING %s (%d/%d)", label_.c_str(), index_, total_);
+        else std::snprintf(line, sizeof line, "LOADING %s (%d/%d)", detail_.c_str(), index_ + 1, total_);
         drawText(line, lbl.x, lbl.y, textHeight, 0.85f, 0.90f, 0.98f);
         // a short scrolling log of the last few modules, so the user can see real progress (not just one changing name)
         // above the current line - oldest at the top, newest just above the bar. Spaced by the LOG lines' own (smaller)
@@ -129,7 +133,8 @@ private:
     static constexpr size_t kLogLines = 5;
     Window* win_ = nullptr;
     int index_ = 0, total_ = 1;
-    std::string label_, lastLogged_;
+    std::string label_, lastLogged_, detail_;
+    float sub_ = 0.0f;
     std::vector<std::string> log_;
     bool done_ = false, reachedTotal_ = false;
 };
