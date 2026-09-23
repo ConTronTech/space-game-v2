@@ -87,6 +87,30 @@ only after the full check passes, so it should always run.
   worker); balance (spawn interval, lifetime, reward) is a first guess, not playtested; the black box item has no use yet beyond being carried.
 - **Next:** Phase 6 item 6, cargo pods (`docs/GAME_LOOPS.md`).
 
+## Leap 66 - 2026-09-22 (DONE, tag `good-20260922-29`): Phase 6 item 6, `world/cargo_pods` - pauses the overnight autonomous run here
+- **Changed:** a small pool (6, `cargo_pods.pool_size`) of drifting, always-visible loot pods scattered through the system (`docs/CARGO_PODS.md`)
+  - deliberately the third, "ambient background" shape of loot after anomalies (fixed, scanner-gated) and distress beacons (recurring, urgent,
+  timed): each pod slot has its own independent seeded respawn timer, no perk needed, magnet-then-scoop pickup reusing `gameplay/mining`'s
+  capsule feel and config keys directly, a rarity-weighted ore reward plus a 15% chance of a bonus item, and a real drawn marker (camera-facing
+  amber crate billboard, recoloured from the mining capsule's). Unclaimed pods expire after 900s and relocate.
+- Same pipeline as the last three leaps: coordinator wrote the design spec, one worker agent built it in an isolated worktree, coordinator
+  reviewed + integrated + tested + verified live.
+- **Verified:** 636 tests under ASan+UBSan (up from 627), full `smoke.sh` (52 modules), live run (`--cargo-pods-now --frames=200`) confirmed all
+  6 slots spawned with real positions and rolled rewards (cobalt/copper/iron), no GL errors in the log.
+- **Not verified:** no radar/HUD marker beyond the in-world billboard; balance is a first guess.
+- **Stopping the autonomous run here, on purpose - not because the list ran out.** `docs/GAME_LOOPS.md` items 1-6 (anomalies, blueprints, ore
+  zones, solar flares, distress beacons, cargo pods) were all "things to find" hazards/loot, matching the user's original ordering decision
+  (Leap 43/44: "something to find over something to fight" while combat depth stays parked). **Item 7 (ship module upgrades) is a player-
+  progression system design, not a drop-in hazard** - the kind of thing worth the user's actual input rather than an invented-overnight design
+  (compare: `docs/ROADMAP.md`'s "Parked ideas" table explicitly withholds station economy design until the user's own spec arrives, for the
+  same reason). **Item 8 (derelict turrets) needs actual enemies/weapon fire from something, which directly requires the combat-depth /
+  NPC design decision the user explicitly deferred** (Leap 43/44, `docs/GAME_LOOPS.md`'s own note: "Combat depth ... is NOT on this list: it is
+  a separate, larger design decision the user chose to defer"). Building past item 6 without that decision risks guessing at exactly the thing
+  the user asked to be consulted on. Everything built tonight (docs/NEXT_UP.md's 10 items + Phase 6 items 4-6) is merged, tested, and tagged;
+  `docs/QUESTIONS.md` #15-20 has the open judgement calls to review on waking.
+- **Next (after the user reviews and decides on ship-module scope / combat depth):** Phase 6 item 7, ship module upgrades - design needs the
+  user's input first, not a spec written solo.
+
 ## Leap 16 - 2026-09-21 (DONE, tag `good-20260921-11`): Phase 3.7 stations + docking - PHASE 3 COMPLETE
 - **Changed:** `world/stations` (seeded 1-3 stations, orbital or planetary, analytic positions, placeholder cube + cylinder models, static physics bodies, `world::IStations`) and `ship/docking` (`G` key: dock inside the zone (scale*60) below `docking.max_speed` 15 m/s, refusals logged with reasons, steered hold like orbit_lock, thrust or `G` undocks with a small push, events + `ship::IDocking`). `docking.test_refill` (default FALSE, test only: real fuel/shield come from mining). `stations.seed_offset` re-rolls stations only (default seed puts both on Planet 2 as surface stations).
 - **Verified:** 235 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game scenarios: dock/hold (distance stayed 112.38 over 7 s while the station moved ~140 units)/undock, too fast, too far, planetary dock, station collision (other-tier damage + bounce), screenshots of both station types; benchmark unchanged.
