@@ -40,6 +40,8 @@
     "lock_clear":  [ { "device": "keyboard", "key": "Y" } ],                      // drop the lock
     "weapon_next": [ { "device": "mouse", "axis": "wheel", "scale": 1 } ],         // mouse wheel: next weapon
     "toggle_menu": [ { "device": "keyboard", "key": "I" } ],                      // the game menu (cargo, crafting, ...): I or Esc closes it
+    "menu_tab_prev": [ { "device": "keyboard", "key": "[" } ],   // game menu: previous tab (dedicated key - the menu does not pause flight, so it must not share A/D/strafe)
+    "menu_tab_next": [ { "device": "keyboard", "key": "]" } ],   // game menu: next tab
     "dock": [ { "device": "keyboard", "key": "G" } ],                 // dock at / undock from a station (inside its dock zone, slowly)
     "camera_next": [ { "device": "keyboard", "key": "V" } ],   // cockpit <-> chase view
     "toggle_profiler":     [ { "device": "keyboard", "key": "F3" } ],   // live profiler overlay (fps, frame graph, top consumers, hitches)

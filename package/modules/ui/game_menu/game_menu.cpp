@@ -58,8 +58,11 @@ public:
         if (closeRequested_) { closeRequested_ = false; if (open_) close(); return; }
         if (toggle) { if (open_) close(); else open(); return; }
         if (!open_) return;
-        if (input_->pressed("ui_left")) selected_ = core::cycleTab(selected_, (int)tabs_.size(), -1);
-        if (input_->pressed("ui_right")) selected_ = core::cycleTab(selected_, (int)tabs_.size(), +1);
+        // Dedicated tab keys, NOT ui_left/ui_right: this menu does not pause flight (menu.pause_game is off by
+        // default), and ui_left/ui_right share A/D with strafe - reusing them here would strafe the ship while
+        // switching tabs (docs/QUESTIONS.md #12, fixed 2026-09-22).
+        if (input_->pressed("menu_tab_prev")) selected_ = core::cycleTab(selected_, (int)tabs_.size(), -1);
+        if (input_->pressed("menu_tab_next")) selected_ = core::cycleTab(selected_, (int)tabs_.size(), +1);
     }
 
     // ---- ui::IGameMenu ----
