@@ -36,10 +36,16 @@ only after the full check passes, so it should always run.
   10. `ui/quick_action_bar` (`B` key): weapon select / warp / orbit lock, doesn't pause flight; ported from the old game's D-pad quick menu idea,
      researched against real No Man's Sky controls first (docs cite the research).
 - **Verified:** every merge ran `make test-san` clean (final count 610 tests, up from 572 at the start of the night); two full `smoke.sh` runs
-  (post-atmosphere/keybind/save/asteroid/input batch: 47 modules; post-inventory: 49 modules, +2 for the new UI modules), both green.
-- **Not verified:** none of it has been SEEN running by a human yet (the user was asleep) - agents building GL/UI-facing code could only
-  `-fsyntax-only` check and reason about it, not look at the screen. Flagged explicitly for a first-launch look: the planet textures (face
-  orientation, brightness), the CARGO grid's actual layout/mouse feel, and the quick action bar's on-screen appearance.
+  (post-atmosphere/keybind/save/asteroid/input batch: 47 modules; post-inventory: 49 modules, +2 for the new UI modules), both green. After the
+  full merge, the coordinator (not an agent - agents could only `-fsyntax-only` check GL/UI code, never launch it) rebuilt the root binary and ran
+  it for real with screenshots: the main menu renders correctly (`--main-menu`, New Game/Load/Settings/Quit, "No saved games yet"); the CARGO tab
+  shows the working 96-slot grid with a live item (iron: 50/100 in a slot, side info panel, DISCARD 1/DISCARD STACK, TRASH box, `[ / ]` tab hint);
+  `logs/game.log` confirms 14 surface textures baked at boot (512px Ultra, 1682 ms, no errors) and a visibly textured planet was captured in a
+  warp-flyby screenshot (surface shading, not a flat colour disc, no black/garbled faces). Quick action bar and the dock-key HUD label were not
+  individually screenshotted this pass (lower risk, code-reviewed) - worth a quick look in person too.
+- **Not fully verified:** face-by-face texture orientation at very close range, the CARGO grid's mouse-drag feel, and the quick action bar's
+  on-screen appearance under `B` specifically all still want a hands-on look; `std::thread` (new to this project) has only run on the dev PC, not
+  the laptop target.
 - **Known open questions logged for the user, `docs/QUESTIONS.md` #15-20:** save-system active-slot edge cases, asteroid generation tuning numbers
   (ring chance, counts) and a note that total asteroid count per system roughly doubled-to-quintupled, main menu Continue-picks-newest-including-
   autosave, quick bar's passive scanners and skipped shield toggle, planet texture judgement calls (moon material mix, distant-dot colour,
