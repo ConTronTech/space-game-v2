@@ -1,4 +1,49 @@
-# Quick Action Bar (`ui/quick_action_bar`)
+# Quick Action Bar (`ui/quick_action_bar`, B key)
+
+A No Man's Sky-style quick menu for flight: reach for a secondary action without pausing or leaving flight. Redesigned 2026-09-23 (user
+feedback after the first version) from a single flat row into a grid of category ROWS, with mouse support and WASD reuse. This section is
+the current design spec (not yet built); the "As built, original flat-row version" section further down is the first build's reference
+(still accurate for entry contents/tunables, only layout and navigation changed).
+
+## Why it doesn't pause flight (explicit user decision, 2026-09-23)
+This is a genuinely LIVE menu: the ship keeps flying while it's open, on purpose - "it's the user's decision to be quick." That means input
+keys can be **reused** between flight and menu navigation rather than the menu suspending flight controls. The general mechanism (works for
+any future system, not just this one): `core::IInput`'s binding table maps *action names* to keys, and nothing stops two different action
+names from both listing the same physical key - each action reads that key's state independently every frame, with no conflict or
+suppression. So `quick_bar_up`/`down`/`left`/`right` can bind to the SAME keys `thrust`/`strafe`/`lift` already use: pressing W fires both
+`thrust` (ship moves) and `quick_bar_up` (selection moves) in the same frame, genuinely simultaneous. Using the bar costs you some flying
+precision, on purpose - that's the tradeoff of it being fast instead of safe. (If a future system ever needs to genuinely STEAL a key away
+from another action instead of sharing it, `IInput::consume()` is the tool for that - not the default behavior, and not needed here.)
+
+## Layout: rows of categories, like NMS's quick menu
+Not a single flat strip - a small grid, one ROW per category, entries within a row scrollable/selectable individually:
+- **WEAPONS** row: one entry per weapon slot with an input action (`weapon_1..3`), same as today's flat version.
+- **SHIP SYSTEMS** row: WARP (toggle), ORBIT LOCK (toggle), and a slot for whatever ship-level toggles get added later (shield enable/disable
+  once that exists, future ship modules) - this row is explicitly where new systems should register their quick-bar entries as the game grows.
+- **ITEMS / PERKS** row: Ore Scanner / Anomaly Scanner (today: shown greyed, "PASSIVE - ALWAYS ON", since neither has an active-use action
+  yet - keep that behavior, don't fake activation), and a slot for future consumables/perk items.
+- Category rows are **data-driven from the same live-service rebuild the flat version already does** - a category with zero live entries
+  simply doesn't draw a row that frame, same spirit as the original "only what's actually available shows up."
+
+## Navigation
+- **WASD reused directly** (see above): W/S move the selection up/down BETWEEN rows, A/D move LEFT/RIGHT WITHIN the current row. This is
+  in ADDITION to the existing flight bindings on those same keys - both fire.
+- `quick_bar_confirm` (`Return`) activates the selected entry, same as today.
+- **Mouse**: hover a row/entry to highlight it (same hover pattern the CARGO grid uses - `core::UIHandler::hovered`), click to activate it
+  directly (skips needing to move the WASD selection there first). Mouse and WASD selection should stay in sync (hovering updates `selected`,
+  same as the CARGO grid's mouse+keyboard coexistence).
+- `quick_bar_open` (`B`) still opens/closes the whole bar; `quick_bar_prev`/`next` (`,`/`.`) can stay as a secondary same-row scroll for
+  controller/wheel use (no WASD-equivalent hat mapping yet) - don't remove them, just add WASD/mouse alongside.
+
+## What stays the same from the original build
+Everything else about the original flat-row version carries over unchanged: entries rebuilt from live services every frame (not cached),
+instant vs toggle entry kinds with per-entry availability/cooldown, activating an entry injects the target module's own input action for
+that frame rather than calling into it directly (so warp's fuel check, orbit lock's alignment refusal, etc. all still go through their
+normal code path), the idle timeout auto-close, and drawing via `core::UIHandler` panels (order 850).
+
+## As built, original flat-row version (2026-09-22, superseded above by the 2026-09-23 redesign)
+Kept for reference - the entry table, scanner/shield notes and tunables below are still accurate for what exists in each entry; only the
+LAYOUT (flat strip vs. category rows) and navigation (keyboard-only vs. WASD + mouse) changed.
 
 An in-flight quick menu in the spirit of No Man's Sky's Quick Menu: a strip of secondary actions near the bottom of the screen, opened
 with one key, **without pausing the game** or leaving flight. It was ported in concept from the old game's `QuickActionBar`
@@ -7,7 +52,7 @@ with one key, **without pausing the game** or leaving flight. It was ported in c
 
 Fire, thrust, steering and docking are **not** in the bar. They stay on their own always-live controls.
 
-## Controls (config/input/default.json)
+### Controls (config/input/default.json)
 | action | default key | does |
 |---|---|---|
 | `quick_bar_open` | `B` | open the bar; press again to close (with `quick_bar.hold_to_open`: open while held, close on release) |
@@ -16,8 +61,7 @@ Fire, thrust, steering and docking are **not** in the bar. They stay on their ow
 | `quick_bar_confirm` | `Return` | use the selected entry |
 | `quick_bar_close` | (unbound) | optional explicit close, e.g. D-pad down on a controller |
 
-None of these share a flight key: `Q` is roll, `A`/`D` strafe, `Space` lift, the mouse wheel is `weapon_next`. `Return` is also
-`ui_confirm`, but only the pause menu reads that, and only while paused. The bar closes itself when the game pauses.
+`Return` is also `ui_confirm`, but only the pause menu reads that, and only while paused. The bar closes itself when the game pauses.
 
 The bar also closes on its own after `quick_bar.timeout` seconds with no input (5 s, the old game's `TIMEOUT_DURATION`). Any bar key
 restarts that timer, and a thin accent line under the title shows the time left. The bar stands down while the pause menu, the game
@@ -28,7 +72,7 @@ menu (`I`) or the controller setup screen is open.
 `{"index": 0, "up": "quick_bar_open", "down": "quick_bar_close", "left": "quick_bar_prev", "right": "quick_bar_next"}`, plus a button
 with `"action": "quick_bar_confirm"`.
 
-## What is in the bar
+### What is in the bar
 The list is **data-driven**: while the bar is open it is rebuilt every frame from the services that exist, so only what the ship actually
 has appears. A module that is not loaded simply contributes nothing.
 
@@ -51,15 +95,16 @@ but never pretends to fire them. If an active scan pulse is added later, give it
 cooldown.
 
 **Not in the bar yet:** shield on/off (the ship contract has no enable/disable call; `installShield` refills the shield, so it cannot
-double as a toggle) and the beacon/distress-signal scan (the Phase 6 item does not exist yet).
+double as a toggle) and the beacon/distress-signal scan - **update (2026-09-23): distress beacons exist now** (`world/distress_beacons`),
+so an ITEMS/PERKS-row entry for it is a reasonable follow-up once the redesign lands.
 
-## Look
-The bar is a glass strip at the bottom centre, with a dark backing so it stays readable over a bright planet. Each entry is a glass tile
-with its label, a small detail line and, for toggles, a green ON or red OFF. The selected tile gets an accent frame. An unavailable tile
-is dimmed and its label greyed. A tile on cooldown is covered by a dark fill that shrinks as the cooldown runs down. The footer shows the
-live key labels (`IInput::primaryBindingLabel`). On narrow windows or with many entries the tiles shrink to fit.
+### Look (original)
+The bar was a glass strip at the bottom centre, with a dark backing so it stays readable over a bright planet. Each entry was a glass tile
+with its label, a small detail line and, for toggles, a green ON or red OFF. The selected tile got an accent frame. An unavailable tile
+was dimmed and its label greyed. A tile on cooldown was covered by a dark fill that shrinks as the cooldown runs down. The footer showed the
+live key labels (`IInput::primaryBindingLabel`). On narrow windows or with many entries the tiles shrank to fit.
 
-## Tunables (config)
+### Tunables (config)
 | key | default | meaning |
 |---|---|---|
 | `quick_bar.timeout` | 5.0 | idle seconds before the bar closes; 0 = never |
@@ -67,7 +112,7 @@ live key labels (`IInput::primaryBindingLabel`). On narrow windows or with many 
 | `quick_bar.close_on_use` | false | close right after an entry fires |
 | `quick_bar.toggle_cooldown` | 0.5 | seconds a toggle (warp, orbit lock) is locked after use, so a double tap cannot flip it straight back |
 
-## Code
+### Code
 - `package/modules/ui/quick_action_bar/quick_bar_rules.h`: pure rules, unit-tested in `package/tests/test_quick_action_bar.cpp`.
   `step()` handles one frame of input (open/close, wrap-around selection, confirm gated by `available` and the cooldown). `tick()`
   runs cooldowns down (also while the bar is closed) and the idle timer. `resync()` keeps the selection on the same entry id when the
