@@ -13,7 +13,7 @@ only by the camera distance. So the whole disc had the same haze (no bright limb
 atmosphere it turned depth testing off and tinted the screen, which let things behind other geometry bleed through.
 
 ## Technique (no shaders: OpenGL 2.1 fixed function)
-One low-poly sphere shell per planet (radius 1.06 x the planet), drawn with client vertex arrays and a per-VERTEX colour whose alpha is
+One low-poly sphere shell per planet (radius 1.4 x the planet, user decision 2026-09-22: 40% above the body), drawn with client vertex arrays and a per-VERTEX colour whose alpha is
 recomputed on the CPU every frame (the rim moves as the camera moves):
 
 * **Rim (Fresnel-style) falloff**: `c = dot(normal, direction to camera)`; `alpha = rim_alpha * (1 - |c|)^rim_power`. Edge-on vertices (the
@@ -29,9 +29,9 @@ recomputed on the CPU every frame (the rim moves as the camera moves):
 * **Only near, real-geometry planets**: moons and the sun get none; a planet farther than `range_factor` radii, or drawn by star_system as the
   depth-less far backdrop (beyond 0.75 x far plane), is skipped.
 
-Why these numbers: terrain peaks reach 1.03 x the radius, so the shell at 1.06 always clears them but stays a thin band on screen
-(a thick shell looks like a glass bubble). 12 radii: at that distance the planet is ~10 degrees across and the rim is still a few pixels;
-beyond it the glow is sub-pixel and not worth the fill.
+Terrain peaks reach 1.03 x the radius, so the shell always clears them; the user chose a visibly thicker 1.4x shell (2026-09-22) over the
+originally thinner 1.06x. 12 radii: at that distance the planet is ~10 degrees across and the rim is still a few pixels; beyond it the glow
+is sub-pixel and not worth the fill.
 
 ## Inside the atmosphere
 While the camera is inside a shell, a full-screen quad in the atmosphere colour is blended over the 3D world in a later pass (order 150,
@@ -44,7 +44,7 @@ The cockpit interior is drawn after it and stays untinted (the haze is outside t
 |---|---|---|
 | `atmosphere.enabled` | true (Low preset: false) | draw atmospheres |
 | `atmosphere.range_factor` | 12 | drawn within this many planet radii |
-| `atmosphere.shell_radius_factor` | 1.06 | shell radius / planet radius (1.035-1.3) |
+| `atmosphere.shell_radius_factor` | 1.4 | shell radius / planet radius (1.035-1.5) |
 | `atmosphere.inside_tint_max` | 0.12 | tint alpha at the surface; 0 = no tint pass |
 | `atmosphere.rim_alpha` | 0.85 | glow at the limb |
 | `atmosphere.rim_power` | 3 | falloff exponent (higher = thinner limb) |

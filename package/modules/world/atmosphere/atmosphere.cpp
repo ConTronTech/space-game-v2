@@ -23,7 +23,7 @@ public:
         if (eng.hasFlag("force-atmosphere")) on = true;     // test flag: on even where the preset turns it off (Low)
         if (!on) return true;
         p_.rangeFactor = std::max(1.5f, c.get("atmosphere.range_factor", 12.0f, "draw a planet's atmosphere while within this many planet radii of its centre"));
-        p_.shellFactor = std::clamp(c.get("atmosphere.shell_radius_factor", 1.06f, "atmosphere shell radius as a multiple of the planet radius (1.035-1.3)"), 1.035f, 1.3f);
+        p_.shellFactor = std::clamp(c.get("atmosphere.shell_radius_factor", 1.4f, "atmosphere shell radius as a multiple of the planet radius (1.035-1.5); user decision 2026-09-22: 40% above the body"), 1.035f, 1.5f);
         p_.insideTintMax = std::clamp(c.get("atmosphere.inside_tint_max", 0.12f, "screen tint alpha at the surface while inside an atmosphere (0 = off)"), 0.0f, 0.5f);
         p_.rimAlpha = std::clamp(c.get("atmosphere.rim_alpha", 0.85f, "atmosphere glow strength at the limb, 0-1"), 0.0f, 1.0f);
         p_.rimPower = std::clamp(c.get("atmosphere.rim_power", 3.0f, "rim falloff exponent: higher = thinner limb, clearer disc"), 0.5f, 8.0f);

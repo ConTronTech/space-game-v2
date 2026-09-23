@@ -10,7 +10,7 @@
 namespace world {
 
 struct AtmosphereParams {
-    float shellFactor = 1.06f;     // shell radius / body radius (terrain peaks reach 1.03, so the shell always clears them)
+    float shellFactor = 1.4f;      // shell radius / body radius (terrain peaks reach 1.03, so the shell always clears them; user decision 2026-09-22: 40% above the body)
     float rangeFactor = 12.0f;     // drawn while the camera is within this many body radii of the centre
     float fadeStart = 0.7f;        // fraction of the range where the distance fade starts (fully faded at the range)
     float rimPower = 3.0f;         // exponent of the rim curve: higher = thinner, sharper limb
