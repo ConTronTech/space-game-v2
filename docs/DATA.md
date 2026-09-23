@@ -24,7 +24,7 @@ data.has("items", "repair_kit");
 |---|---|
 | `data/ores.json` | 8 ores: name, `color` [r,g,b], `rarity` (spawn weight) |
 | `data/ore_zones.json` | ore tiers by distance from the sun (world/asteroids, docs/WORLD.md "Ore zones"): per zone id, `min_distance` / `max_distance` (world units, [min, max), first match in file order), `weight_multiplier` {ore id: x} (missing = 1; never 0). Missing/empty file = the plain `rarity` weights |
-| `data/items.json` | 8 items: name, description, color, `effect` (e.g. `{"warp_fuel": 25}`), optional `permanent` |
+| `data/items.json` | 10 items: name, description, color, `effect` (e.g. `{"warp_fuel": 25}`; `{}` = a flavour item with no use, e.g. `black_box` from distress beacons), optional `permanent` |
 | `data/cargo.json` | 4 cargo hold upgrade levels: name, `stack_mult` (x every stack cap; the grid slot count is fixed): 1 / 2 / 4 / 6 (docs/INVENTORY.md) |
 | `data/anomalies.json` | 5 anomaly kinds: name, `messages`, `rewards` [{ore, min, max, weight}], `detect_mult`, `weight`, optional `blueprint` (docs/ANOMALIES.md) |
 | `data/blueprints.json` | blueprint id -> `name` (docs/BLUEPRINTS.md) |

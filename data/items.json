@@ -8,5 +8,6 @@
   "hull_plating":     { "name": "Hull Plating",     "description": "+10 Max HP (perm)",   "color": [0.6, 0.6, 0.7], "permanent": true, "effect": { "max_hp": 10, "max_hp_cap": 200 } },
   "shield_generator": { "name": "Shield Generator", "description": "Enables Shields",     "color": [0.4, 0.7, 1.0], "permanent": true, "effect": { "shield_enabled": true } },
   "ore_scanner":      { "name": "Ore Scanner",      "description": "Ore on HUD (perm)",   "color": [0.3, 0.8, 0.6], "permanent": true, "effect": { "hud_ore_labels": true } },
-  "anomaly_scanner":  { "name": "Anomaly Scanner",  "description": "Anomalies on radar (perm)", "color": [0.8, 0.35, 1.0], "permanent": true, "effect": { "anomaly_scan": true } }
+  "anomaly_scanner":  { "name": "Anomaly Scanner",  "description": "Anomalies on radar (perm)", "color": [0.8, 0.35, 1.0], "permanent": true, "effect": { "anomaly_scan": true } },
+  "black_box":        { "name": "Black Box",        "description": "Recovered flight recorder", "color": [0.95, 0.45, 0.1], "effect": {} }
 }
