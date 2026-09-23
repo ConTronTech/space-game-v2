@@ -54,6 +54,25 @@ only after the full check passes, so it should always run.
 - **Next:** review `docs/QUESTIONS.md` #15-20 in person, then resume the Phase 6 game-loop order at `gameplay/solar_flares` (`docs/GAME_LOOPS.md`
   item 4, per the user's original "anomalies + scanner first" ordering).
 
+## Leap 64 - 2026-09-22 (DONE, tag `good-20260922-27`): Phase 6 item 4, `world/solar_flares`
+- **Changed:** the sun periodically erupts (seeded interval, `solar_flares.interval_min/max` 90-240s) - a warning countdown toast at T-15s, then
+  an expanding damage front sweeps outward from the sun at 4000 u/s and hits the ship once as it passes, scaled by distance from the sun (full
+  damage inside 5000 units, 0 past a separate `damage_falloff_range`, default 30000). Docked ships are immune (the mechanical reason to make it to
+  a station in time). No save needed - the next flare re-rolls from the world seed on load. `docs/SOLAR_FLARES.md` has the full design + as-built
+  notes.
+- **Design spec written by the coordinator first** (matching the style of `docs/ANOMALIES.md`), then one worker agent built it in an isolated
+  worktree following the same overnight pipeline as Leap 63.
+- **Caught in review before merge:** the agent's own report flagged that damage falloff was tied to `max_range` (the front's travel distance,
+  ~3x the outer planet orbit by default) - since that's huge, damage barely dropped off by the time the front reached most planets, making
+  docking nearly the only real defence anywhere in the system. Fixed by decoupling: `damage_falloff_range` is now its own, much shorter tunable,
+  independent of how far the front physically travels. Added a unit test pinning the decoupling (`solar_flares_damage_falloff_is_independent_of_max_range`)
+  and verified live: `--solar-flare-now --frames=1350` produced a real eruption and a correctly-scaled hit (87.5 damage at 11,777 units from the sun,
+  full damage caps at 5000, zero past 30000).
+- **Verified:** 618 tests under ASan+UBSan (up from 610), full `smoke.sh` (50 modules), and the live-run check above.
+- **Not verified:** no HUD countdown line yet (the toast warning is the only visible cue right now - `ISolarFlares::etaSeconds()`/`SolarFlareWarning`
+  are ready for a HUD worker to pick up); balance (interval, damage, falloff range) is a first guess, not playtested.
+- **Next:** Phase 6 item 5, distress beacons + black boxes (`docs/GAME_LOOPS.md`).
+
 ## Leap 16 - 2026-09-21 (DONE, tag `good-20260921-11`): Phase 3.7 stations + docking - PHASE 3 COMPLETE
 - **Changed:** `world/stations` (seeded 1-3 stations, orbital or planetary, analytic positions, placeholder cube + cylinder models, static physics bodies, `world::IStations`) and `ship/docking` (`G` key: dock inside the zone (scale*60) below `docking.max_speed` 15 m/s, refusals logged with reasons, steered hold like orbit_lock, thrust or `G` undocks with a small push, events + `ship::IDocking`). `docking.test_refill` (default FALSE, test only: real fuel/shield come from mining). `stations.seed_offset` re-rolls stations only (default seed puts both on Planet 2 as surface stations).
 - **Verified:** 235 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game scenarios: dock/hold (distance stayed 112.38 over 7 s while the station moved ~140 units)/undock, too fast, too far, planetary dock, station collision (other-tier damage + bounce), screenshots of both station types; benchmark unchanged.
