@@ -51,12 +51,6 @@ Full build details, every command-line flag, and the full control scheme: `docs/
 - `docs/MODULES.md` - how the module system works, if you want to add or change something.
 - `docs/DEVLOG.md` - the full, newest-first history of every verified change.
 
-## On the development process
-
-Large parts of this codebase were built with AI coding assistance (Claude, via Claude Code) working from specs and
-under review by the author, alongside hand-written fixes for foundational/architectural pieces. `docs/DEVLOG.md`
-documents this plainly, leap by leap. The design, direction, and every decision are the author's own.
-
 ## License
 
 GNU General Public License v3.0 - see `LICENSE`. Free to use, study, modify, and share; any derivative work must
