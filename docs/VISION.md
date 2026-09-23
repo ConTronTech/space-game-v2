@@ -1,6 +1,6 @@
 # Vision and release plan
 
-Written from the user's own words (2026-09-20). This is direction, not a schedule.
+The author's own vision for the game (2026-09-20). This is direction, not a schedule.
 
 ## What the game is
 A **hard, strategic** space game: "you're in space, use your tools wisely". Realistic movement (Newtonian, no drag, no speed cap), survival pressure,
@@ -10,7 +10,7 @@ exploration, mining, crafting. It is **not** meant to be an easy game and **not*
 ## Release plan (later)
 - Release the **source on GitHub** and a **dedicated build package on itch.io** as the playable game.
 - The itch.io page must **warn clearly that this is NOT an easy game**: it is strategic, not a reward-loop game.
-- The user will feel happy releasing when it **runs smoothly standalone on their laptop** (a dedicated testing rig may come later) and, **if** LAN/networking
+- I'll feel happy releasing when it **runs smoothly standalone on my laptop** (a dedicated testing rig may come later) and, **if** LAN/networking
   (server + client) is added, when that works well too.
 - Related: Linux only "for now" (see the parked browser / mobile ideas in docs/ROADMAP.md).
 
@@ -21,10 +21,10 @@ for the player and for NPCs alike.
 
 ## Research task (later): real space physics
 Study how real space physics works, since the game is effectively a gargantuan simulation of a solar system. Take inspiration, then **remove what does not work**,
-judged by the user's hand-testing or the coordinator's tests, so the physics stays correct **and fun to play**. This is computationally expensive, so **optimisation
+judged by hand-testing and automated tests, so the physics stays correct **and fun to play**. This is computationally expensive, so **optimisation
 is absolutely necessary**: budget for it (spatial structures, level of detail, fixed-step interpolation already exist; profile before adding more).
 
-## Target hardware (the user's laptop, "crap-top", 2026-09-20)
+## Target hardware (my laptop, "crap-top", 2026-09-20)
 | | |
 |---|---|
 | Machine | Acer Aspire 5733 |
@@ -42,7 +42,7 @@ What this means for the code (rules until measured otherwise):
    `glPushAttrib(GL_ALL_ATTRIB_BITS)` if profiling points at them, and budget triangles/draw calls for the world (planets, asteroids) before adding them.
 4. **Memory/textures:** the old skybox faces are 4-8 MB PNGs each (huge textures). They must be downscaled/capped when loaded (Phase 3.1), since graphics memory is shared.
 5. **Resolutions:** support 1366x768 and 1280x1024 (5:4) properly; the HUD scales by `min(w/1280, h/720)`, so check both.
-6. **Budget:** aim for 60 fps at 1280x720 on this laptop, with 30 fps as the floor. A `--benchmark` mode (frame-time stats) is planned so the user can run it on the laptop and paste the result.
+6. **Budget:** aim for 60 fps at 1280x720 on this laptop, with 30 fps as the floor. A `--benchmark` mode (frame-time stats) is planned so it can be run on the laptop and the result checked.
 
 ## Performance target
-Smooth on the user's laptop (specs above). Measure it before big simulation features land: benchmark mode + startup hardware log come before the heavy world work.
+Smooth on my laptop (specs above). Measure it before big simulation features land: benchmark mode + startup hardware log come before the heavy world work.
