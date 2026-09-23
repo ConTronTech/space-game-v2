@@ -30,6 +30,7 @@ Put every number a player might want to tune here instead of hard-coding it.
 - `flight.*` - `thrust`, `turn_rate`, `turn_tau`, `engine_tau`, `drift`, `assist_strength`, `brake`, `max_speed`
 - `solar_flares.*` - `enabled`, `interval_min`, `interval_max`, `warning_seconds`, `shell_speed`, `shell_thickness`, `max_range`, `damage_at_sun`, `damage_min_range`, `damage_falloff_range` (docs/SOLAR_FLARES.md)
 - `distress_beacons.*` - `enabled`, `interval_min`, `interval_max`, `lifetime_seconds`, `detect_range`, `investigate_range`, `ore_reward_id`, `ore_reward_amount` (docs/DISTRESS_BEACONS.md)
+- `cargo_pods.*` - `enabled`, `pool_size`, `respawn_min`, `respawn_max`, `lifetime_seconds`, `ore_reward_min`, `ore_reward_max`, `item_chance`, `item_ids`, `drift_speed`; pickup reuses `mining.magnet_radius`, `magnet_speed`, `scoop_radius`, `scoop_speed` (docs/CARGO_PODS.md)
 - `save.autosave_interval_seconds` - autosave every N seconds of play (default 300, 0 = off; docs/SAVES.md)
 
 Related but separate files: `config/input/*.json` (bindings), `config/ui/theme.json` (glass look).

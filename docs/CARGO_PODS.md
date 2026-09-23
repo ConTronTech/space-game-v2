@@ -42,3 +42,33 @@ inventing a new pickup feel), reward roll; unit-tested in `package/tests/test_ca
 ## Events and service
 `world::CargoPodSpawned{slot, x, y, z}`, `world::CargoPodCollected{slot, oreGiven, amount}`. `world::ICargoPods`: `count()` (active pods right
 now), `position(i)`, `alive(i)` - enough for a future radar/world-marker pass, matching the shape of `world::IAsteroids`'s query API.
+
+## As built (2026-09-22)
+- Required: `world/star_system`. Optional: `core/data_registry` (ore rarities, item names), `core/render_engine` (the pod markers),
+  `core/audio`, `fx/particles`, `gameplay/inventory`, `ui/toast`, `ship/ship_core`, `world/asteroids` (belt sites), `world/stations`
+  (near-body clearance).
+- Defaults: `enabled` true, `pool_size` 6 (max 32), `respawn_min` 60, `respawn_max` 240, `lifetime_seconds` 900 (0 = until collected),
+  `ore_reward_min` 2, `ore_reward_max` 6, `item_chance` 0.15, `item_ids` `"repair_kit,missile_pack"`, `drift_speed` 2 m/s.
+- Slots: each has its own seed (`podSlotSeed(seed, slot)`) and cycle counter. The boot wait is uniform in [0, `respawn_min`) so the field
+  fills (staggered) within the first minute; later waits are [`respawn_min`, `respawn_max`].
+- Expiry: **expire and relocate** - an unclaimed pod drifts off after `lifetime_seconds` and its slot re-rolls a fresh site/reward after a
+  new wait. `lifetime_seconds` 0 keeps pods until collected.
+- Placement: `pod_rules.h` holds a trimmed **copy** of `world/distress_beacons`' zone pick (same zones, margins, ring gaps; not an include
+  - that would make deleting `world/distress_beacons` break this module). One candidate per zone; a seeded zone is kept unless it is within
+  2x the magnet radius of the ship (then the next zone; all too close: the farthest). No reachability constraint. Near-body pods move with
+  their body. Every pod drifts slowly (seeded direction, 0.25-1x `drift_speed`).
+- Pickup: reads the **same** `mining.magnet_radius` / `magnet_speed` / `scoop_radius` / `scoop_speed` keys (and defaults) as the mining
+  capsules, and a copy of their magnet formula. **Coupling:** change those keys and both change. Hold full: the remainder stays in the pod,
+  which stops and flashes red, and is retried once there is room (like a capsule).
+- Reward: rolled at spawn from the site seed: a rarity-weighted ore (data/ores.json `rarity`, rock excluded) x 2-6 units, plus with
+  `item_chance` one uniform pick from `item_ids` (unknown ids skipped with a warning).
+- Feedback: ore emits `gameplay::OreMined` (the ship HUD's "+N ORE" banner), plus sparks and the "pickup" sound. The **only** toast is a
+  short cyan "Cargo pod: REPAIR KIT recovered" when a bonus item is picked up; spawns and expiries are log-only.
+- Drawing: a camera-facing amber square with a pulsing white diamond core (the mining capsule billboard, recoloured), never under a few
+  pixels, pass `world/cargo_pods` at 67; clipped beyond the camera far plane. Red while the hold refuses it.
+- Service: `count()` is the SLOT count (stable indices, like `IAsteroids::count()`), `alive(i)` / `position(i)` per slot, plus
+  `activeCount()` for "pods right now". Events: `CargoPodSpawned{slot, x, y, z}`, `CargoPodCollected{slot, oreGiven, amount, item}` (once
+  per pickup; a partial pickup emits again when the rest is taken).
+- No save: a reload re-rolls every slot from the seed.
+- Test flag `--cargo-pods-now`: every slot spawns within the first ~2.5 s.
+- Follow-ups: a radar/HUD marker (read `ICargoPods`); maybe hoist the zone pick (now copied twice) into `world/star_system`.
