@@ -11,7 +11,7 @@ combat depth is parked until the user is around to steer it; see docs/QUESTIONS.
    via `ui/toast` (the first real thing wired to it). See docs/ANOMALIES.md once built.
 2. **`gameplay/blueprints`** - BUILT (2026-09-22, docs/BLUEPRINTS.md). Unlocks that gate crafting.
 3. **Ore tiers by zone** - BUILT (2026-09-22, Leap 54, `data/ore_zones.json`). Distance from the sun shifts ore odds: rarer/valuable ores (platinum, uranium, crystal) skew more common far out, common ones (iron, copper) skew more common near the sun.
-4. `gameplay/solar_flares`.
+4. **`world/solar_flares`** - BUILT (2026-09-22, docs/SOLAR_FLARES.md). The sun periodically erupts (seeded 90-240s gaps, 15s warning): an expanding front sweeps out through the system and hits the ship once as it passes, worse closer to the sun; docked ships are immune. Warning/eruption toasts; a live HUD countdown is a follow-up.
 5. Distress beacons + black boxes.
 6. Cargo pods.
 7. Ship modules (upgrades).

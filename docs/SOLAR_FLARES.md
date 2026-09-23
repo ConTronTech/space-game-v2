@@ -28,11 +28,29 @@ damage-at-distance falloff, warning countdown; unit-tested in `package/tests/tes
 - **No damage to stations, planets or asteroids** - this is a ship-survival hazard only, keep scope tight for a first version.
 
 ## Data / tunables (`config/game.json`, key `solar_flares.*`)
-`enabled` (default true), `interval_min`/`interval_max`, `warning_seconds`, `shell_speed`, `shell_thickness`, `max_range`, `damage_at_sun` (damage
-at distance 0, falling off with distance the same shape as the missile blast falloff), `damage_min_range` (inside this distance of the sun, always
-max damage - matches the existing instant-death-at-the-sun rule already in `ship::IShip`, `ship.sun_kills`).
+`enabled` (default true), `interval_min`/`interval_max`, `warning_seconds`, `shell_speed`, `shell_thickness`, `max_range` (how far the front
+physically travels before the flare ends), `damage_at_sun` (damage at distance 0, falling off with distance the same shape as the missile blast
+falloff), `damage_min_range` (inside this distance of the sun, always max damage - matches the existing instant-death-at-the-sun rule already in
+`ship::IShip`, `ship.sun_kills`), `damage_falloff_range` (damage reaches 0 here - independent of `max_range`, which is far past the outer planets
+by design: without its own, much shorter falloff, damage would barely drop by the time the front reaches most of the system).
 
 ## Events and service
 `world::SolarFlareWarning{etaSeconds}`, `world::SolarFlareErupted{}`, `world::SolarFlareEnded{}`. `world::ISolarFlares`: `active()`,
 `etaSeconds()` (-1 if none pending / already erupted this cycle), `shellRadius()` (-1 if not currently erupting) - what a HUD warning or a radar
 overlay would read.
+
+## As built (2026-09-22)
+- Folder is `world/solar_flares` (the GAME_LOOPS.md line said `gameplay/`; it depends on the star system and hurts only the ship, so it sits with
+  the other world hazards). Required: `world/star_system`. Optional: `ship/ship_core`, `ship/docking`, `ui/toast`.
+- Defaults: `interval_min` 90, `interval_max` 240, `warning_seconds` 15, `shell_speed` 4000, `shell_thickness` 1500, `max_range` 0 (= auto,
+  3x the outermost planet orbit), `damage_at_sun` 120, `damage_min_range` 5000, `damage_falloff_range` 30000 (units from the sun's centre).
+  Distances are from the sun's centre; the front starts at the sun's surface. **Fixed post-build (2026-09-22, coordinator review):** the first
+  draft used `max_range` as the damage falloff distance too, so with the auto `max_range` (~3x the outer orbit) damage barely dropped by the
+  time the front reached most planets - `damage_falloff_range` is now a separate, much shorter tunable so most of the system is actually safe
+  from flare damage and only the region close to the sun is genuinely dangerous.
+- The next countdown starts when a flare ENDS (the front passes `max_range`), so two fronts never overlap.
+- One hit per flare: the hit test is swept (the front's radius at the previous step to this step, +/- half the thickness), so a fast front or
+  a long step never skips the ship. If the front passes while docked, that flare is spent for the ship (no second try after undocking).
+- Toasts: one amber "SOLAR FLARE IN Ns - dock at a station" when the warning starts, one red "SOLAR FLARE ERUPTED". A live HUD countdown (read
+  `ISolarFlares::etaSeconds()` or `SolarFlareWarning`) is a follow-up. Damage source string: `"solar_flare"`.
+- Test flag `--solar-flare-now`: the first eruption comes `warning_seconds + 1` s after boot.
