@@ -14,6 +14,40 @@ only after the full check passes, so it should always run.
 
 ---
 
+## Leap 63 - 2026-09-22 (DONE, tag `good-20260922-26`): overnight polish pass, docs/NEXT_UP.md (all 10 items)
+- **Context:** a planning chat with the user (touched-up planets/moons, inventory, keybinds, missing old-game mechanics) produced `docs/NEXT_UP.md`,
+  a 10-item punch list. The user then said to build the whole list overnight without stopping for questions (log them instead) and went to bed.
+  Coordinator dispatched one worker agent per item (isolated git worktrees, agents write code + tests only, never build/run the game - the standing
+  "one build/smoke run at a time" rule stayed in force the whole night), reviewed each diff, built + ran `make test-san` after every merge, and did
+  a full `package/tools/smoke.sh` after the two riskiest ones (main menu, inventory grid).
+- **Built:**
+  1. Atmosphere shell size 1.06x -> 1.4x planet radius (`world/atmosphere`).
+  2. Diffuse cube-map surface textures for planets/moons, baked once at boot with its own loading-screen progress step (new `Engine::bootStep`/
+     `BootStep` event); depth stays 100% in the existing procedural terrain mesh, no UVs needed (`world/star_system/planet_texture.h`).
+  3. `ui/main_menu`: Continue / New Game / Load / Settings / Quit before gameplay starts, gated via the existing pause mechanism rather than a new
+     engine phase (lower-risk call, explained in the commit and `docs/MAIN_MENU.md`).
+  4. `core/save_system`: active-slot tracking, timed autosave (reserved `autosave` slot), pause menu Save (overwrite) vs Save As (new slot).
+  5+6. `world/asteroids`: per-planet seeded ring chance (a ring OR a shell cluster - every planet gets something nearby), moons get their own
+     separate budget so they can't crowd planets out, belt count randomised 1-5 per system with an outward placement bias.
+  7. `gameplay/inventory`: unified slot grid (ore + items together, fixed slot count), stack cap per item scales with cargo level instead of slot
+     count growing, auto-stack on pickup, drag-to-trash CARGO tab with a two-press controller-friendly discard.
+  8. `[`/`]` dedicated game-menu tab keys (previously shared A/D with strafe - QUESTIONS.md #12).
+  9. HUD dock-key label reads the real binding (`IInput::primaryBindingLabel`) instead of a hardcoded "G" - QUESTIONS.md #7.
+  10. `ui/quick_action_bar` (`B` key): weapon select / warp / orbit lock, doesn't pause flight; ported from the old game's D-pad quick menu idea,
+     researched against real No Man's Sky controls first (docs cite the research).
+- **Verified:** every merge ran `make test-san` clean (final count 610 tests, up from 572 at the start of the night); two full `smoke.sh` runs
+  (post-atmosphere/keybind/save/asteroid/input batch: 47 modules; post-inventory: 49 modules, +2 for the new UI modules), both green.
+- **Not verified:** none of it has been SEEN running by a human yet (the user was asleep) - agents building GL/UI-facing code could only
+  `-fsyntax-only` check and reason about it, not look at the screen. Flagged explicitly for a first-launch look: the planet textures (face
+  orientation, brightness), the CARGO grid's actual layout/mouse feel, and the quick action bar's on-screen appearance.
+- **Known open questions logged for the user, `docs/QUESTIONS.md` #15-20:** save-system active-slot edge cases, asteroid generation tuning numbers
+  (ring chance, counts) and a note that total asteroid count per system roughly doubled-to-quintupled, main menu Continue-picks-newest-including-
+  autosave, quick bar's passive scanners and skipped shield toggle, planet texture judgement calls (moon material mix, distant-dot colour,
+  first-use-of-std::thread needs a laptop check), and inventory balance (96 slots at old per-item caps is a much bigger total hold than before -
+  may want the grid size or ore caps tuned down).
+- **Next:** review `docs/QUESTIONS.md` #15-20 in person, then resume the Phase 6 game-loop order at `gameplay/solar_flares` (`docs/GAME_LOOPS.md`
+  item 4, per the user's original "anomalies + scanner first" ordering).
+
 ## Leap 16 - 2026-09-21 (DONE, tag `good-20260921-11`): Phase 3.7 stations + docking - PHASE 3 COMPLETE
 - **Changed:** `world/stations` (seeded 1-3 stations, orbital or planetary, analytic positions, placeholder cube + cylinder models, static physics bodies, `world::IStations`) and `ship/docking` (`G` key: dock inside the zone (scale*60) below `docking.max_speed` 15 m/s, refusals logged with reasons, steered hold like orbit_lock, thrust or `G` undocks with a small push, events + `ship::IDocking`). `docking.test_refill` (default FALSE, test only: real fuel/shield come from mining). `stations.seed_offset` re-rolls stations only (default seed puts both on Planet 2 as surface stations).
 - **Verified:** 235 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game scenarios: dock/hold (distance stayed 112.38 over 7 s while the station moved ~140 units)/undock, too fast, too far, planetary dock, station collision (other-tier damage + bounce), screenshots of both station types; benchmark unchanged.
@@ -23,7 +57,7 @@ only after the full check passes, so it should always run.
 ## Leap 17 - 2026-09-21 (DONE, tag `good-20260921-12`): HUD dock prompt
 - **Changed:** `ui/ship_hud` shows "STATION 1  420 m" near a station (`docking.prompt_range`, 0 = 4x dock radius), a green "DOCK [G]" when docking would work or a dim short reason ("too far", "too fast", "warp drive on", "orbit lock on"), "DOCKED: STATION 1 - [G] UNDOCK" while docked, DOCKED/UNDOCKED banners. Optional services only.
 - **Verified:** 243 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game screenshots (too far, too fast, ready, docked; cockpit and chase views).
-- **Not verified:** planetary stations on screen, a real flown approach; key label is a fixed "G" (IInput exposes no bindings).
+- **Not verified:** planetary stations on screen, a real flown approach. Key label was a fixed "G" for a long time (IInput exposed no bindings) - fixed in Leap 63 (2026-09-22): it now reads the real binding.
 - **Next:** perf pass (in flight), then station + asteroid radar markers (cockpit worker, after perf), then Phase 4.
 
 ## Leap 37 - 2026-09-21 (DONE, tags `good-20260921-37`, `-38`): visible ship thruster fix + flat planetary station merged
