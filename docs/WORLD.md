@@ -141,13 +141,21 @@ At debug log level the module prints each build (time, memory) and, every 2 s, t
 screen tint inside it. It reads `IStarSystem` only; visual only (no physics). See docs/ATMOSPHERE.md.
 
 ## `world/asteroids` (3.6, pass `asteroids`, order 60: after the star system, before the demo rocks)
-Belts and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
+Belts, rings and clusters of **static** asteroids (a belt is a shape, not a simulation: they do not orbit, and ring / cluster asteroids stay where their planet was at the start of the run). Provides `world::IAsteroids` (`asteroids_api.h`): `count()`, `position(i)`, `radius(i)`, `ore(i)`, `nearest(p, n, out)` for the radar / mining (Phase 4.3);
 indices are stable for the whole run. Without `world/star_system` nothing is generated.
 
 **Generation** (`asteroid_rules.h`, pure, seeded from `world.seed`; `generateField`): a belt is a band around the sun in the XZ plane between two planet orbits (at most `beltMaxWidth` = 3,000 units wide, about 1,000 thick, patchy: a noise field thins some parts out);
-a cluster is a flattened shell around a planet (outside its moons) or a moon. Sizes follow the old game (belts: 50% radius 1-5, 25% 5-15, 15% 15-35, 7% 35-60, 3% 60-120; clusters mostly 0.5-4); ore ids and rarity weights come from `data/ores.json` through `core::IData` (else "rock");
+a ring is a flat band around a planet in the XZ plane through its centre (inner edge 1.3-1.5 planet radii, 0.3-0.5 radii wide, capped at 2.0 radii so it stays inside the moons' orbits and outside the ~1.06 R atmosphere shell; +-2% of the radius thick, clamped 4-25 units);
+a cluster is a flattened shell around a planet (outside its moons) or a moon.
+
+- **Belt count and placement:** each system rolls 1-5 belts (seeded, `rollBeltCount`; `asteroids.belt_count` >= 0 forces a count), capped by the eligible orbit gaps (> 4,000 units wide).
+  Gaps are picked by weighted sampling without replacement with weight (rank from the sun + 1)^2 (`pickGapsOutward`): a 1-belt system usually has it in one of the outer gaps (with 6 gaps: about 67% in the outer two, about 1% in the innermost), higher rolls fill the inner gaps too.
+  Belt width and asteroids per belt are unchanged.
+- **Planets and moons have separate budgets:** every planet gets exactly one thing nearby: a ring with a seeded per-planet chance (`asteroids.ring_chance`, 0.4; `planetHasRing`, independent of every other roll), otherwise a shell cluster.
+  Moons never take a planet's slot: `asteroids.moon_cluster_count` (2) moons, picked by seeded shuffle, get a shell cluster. Sizes follow the old game (belts: 50% radius 1-5, 25% 5-15, 15% 15-35, 7% 35-60, 3% 60-120; clusters mostly 0.5-4); ore ids and rarity weights come from `data/ores.json` through `core::IData` (else "rock");
 each has a spin axis and rate and one of 4 shared mesh variants. Stored as struct-of-arrays (about 60 bytes each). Physics radius = radius x 0.9, so the ship damage tiers (`asteroid` radius < 5 small, < 30 medium, else big) apply to the physics radius.
-Default field (1 belt of 1,500 + 4 clusters of 60 = 1,740 asteroids, 12 shared meshes): generated in 0.8 ms on the dev machine (about 5-10 ms estimated on the laptop), 117 KB.
+Default field: 1-5 belts of 1,500, a 300-asteroid ring or a 60-asteroid shell per planet, 2 moon shells of 60 (so roughly 2,000-9,000 asteroids depending on the seed), 12 shared meshes.
+The old fixed default (1 belt + 4 clusters = 1,740 asteroids) generated in 0.8 ms on the dev machine, 117 KB; generation and memory scale linearly with the count (about 60 bytes per asteroid).
 
 **Drawing:** camera-relative (double subtract, then float), distance-culled (`asteroids.draw_distance`) and view-cone-culled; meshes are lumpy icospheres of 20 / 80 / 320 triangles built once (4 variants x 3 levels) and drawn with client vertex arrays,
 one push/translate/rotate(spin)/scale per asteroid. The level follows the on-screen size (`asteroids.lod_edge_px`); at most `asteroids.max_drawn` meshes are drawn, nearest first, within `asteroids.triangle_budget` triangles (the farthest are lowered first, then turned to points);
@@ -159,8 +167,9 @@ A warp crash into a registered asteroid reports the full closing speed (checked:
 | Tunable | Default | |
 |---|---|---|
 | `asteroids.enabled` | true | |
-| `asteroids.belt_count` / `belt_asteroids` | 1 / 1500 | |
-| `asteroids.cluster_count` / `cluster_asteroids` | 4 / 60 | |
+| `asteroids.belt_count` / `belt_asteroids` | -1 / 1500 | -1 = seeded random 1-5 per system, outer gaps preferred; >= 0 forces the count |
+| `asteroids.ring_chance` / `ring_asteroids` | 0.4 / 300 | per-planet ring chance (seeded); a ring-less planet gets a shell cluster |
+| `asteroids.moon_cluster_count` / `cluster_asteroids` | 2 / 60 | shell clusters around moons (own budget); `cluster_asteroids` is per shell (planets and moons). Replaces `asteroids.cluster_count` |
 | `asteroids.draw_distance` | 6000 | units |
 | `asteroids.max_drawn` | 400 | meshes per frame |
 | `asteroids.triangle_budget` | 15000 | per frame |
@@ -172,7 +181,7 @@ Laptop notes: a stress run with 21,500 asteroids drew 25 meshes and about 4,000 
 The radar does not show asteroids yet: it needs a layer that calls `IAsteroids::nearest(shipPos, N, out)` (see docs/COCKPIT.md).
 
 ### Ore zones (6.3, `data/ore_zones.json`)
-Which ore an asteroid holds depends on how far its belt / cluster is from the sun: `data/ore_zones.json` lists distance bands, each multiplying the `data/ores.json` rarity per ore (then renormalized; `world::zoneOreTable` in `asteroid_rules.h`, pure, unit-tested). A **belt** uses its orbit-gap midpoint (halfway between the two planet orbits it sits between), a **cluster** its planet/moon's distance from the sun at generation. Placement, sizes and the RNG sequence are unchanged: only the ore pick's weights differ.
+Which ore an asteroid holds depends on how far its belt / cluster is from the sun: `data/ore_zones.json` lists distance bands, each multiplying the `data/ores.json` rarity per ore (then renormalized; `world::zoneOreTable` in `asteroid_rules.h`, pure, unit-tested). A **belt** uses its orbit-gap midpoint (halfway between the two planet orbits it sits between), a **ring** or **cluster** its planet/moon's distance from the sun at generation. Placement, sizes and the RNG sequence are unchanged: only the ore pick's weights differ.
 Boundaries are grounded in seed 1234's planet orbits (46,493 / 90,501 / 140,369 / 218,380 / 280,726 / 352,200; the belt's gap midpoint is 179,375):
 
 | Zone | Distance | Holds (seed 1234) | Multipliers (missing = 1) | Result (share of the table) |

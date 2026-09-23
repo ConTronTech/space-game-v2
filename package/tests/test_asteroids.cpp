@@ -29,8 +29,12 @@ world::OreTable ores() { world::OreTable o; o.ids = {"iron", "gold"}; o.weights 
 
 TEST(asteroids_generation_is_deterministic_and_counts_match) {
     Sys s; world::GenParams gp;
-    auto a = world::generateField(gp, s.sun, s.orbits, s.targets, ores()), b = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
-    CHECK_EQ(a.count(), 1 * 1500 + 4 * 60);
+    std::vector<world::OreGroup> groups;
+    auto a = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, nullptr, &groups), b = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
+    int sum = 0;
+    for (auto& g : groups) sum += g.count;
+    CHECK_EQ(a.count(), sum);                                      // every asteroid belongs to exactly one belt / ring / cluster
+    CHECK(a.count() >= 1500);                                       // at least one belt
     CHECK_EQ(a.count(), b.count());
     for (int i = 0; i < a.count(); i++) {
         CHECK(close(a.x[i], b.x[i], 1e-9)); CHECK(close(a.y[i], b.y[i], 1e-9)); CHECK(close(a.z[i], b.z[i], 1e-9));
@@ -51,7 +55,7 @@ TEST(asteroids_generation_is_deterministic_and_counts_match) {
 }
 
 TEST(asteroids_belt_lies_between_two_orbits_in_the_orbital_plane) {
-    Sys s; world::GenParams gp; gp.clusterCount = 0;
+    Sys s; world::GenParams gp; gp.beltCount = 1; gp.ringChance = 0; gp.planetShells = false; gp.moonClusterCount = 0;
     std::vector<world::BeltInfo> belts;
     auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), &belts);
     CHECK_EQ(belts.size(), (size_t)1);
@@ -69,9 +73,11 @@ TEST(asteroids_belt_lies_between_two_orbits_in_the_orbital_plane) {
 }
 
 TEST(asteroids_clusters_surround_their_bodies_and_tiers_are_sensible) {
-    Sys s; world::GenParams gp; gp.beltCount = 0; gp.clusterCount = 4; gp.clusterAsteroids = 60;
+    Sys s; world::GenParams gp; gp.beltCount = 0; gp.ringChance = 0; gp.moonClusterCount = 2; gp.clusterAsteroids = 60;
     auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores());
-    CHECK_EQ(f.count(), 240);
+    int planets = 0, moons = 0;
+    for (auto& t : s.targets) (t.moon ? moons : planets)++;
+    CHECK_EQ(f.count(), (planets + std::min(2, moons)) * 60);       // no rings: every planet gets a shell, plus the moon budget
     // every asteroid sits in the (flattened) shell of at least one target body
     int small = 0;
     for (int i = 0; i < f.count(); i++) {
@@ -84,9 +90,9 @@ TEST(asteroids_clusters_surround_their_bodies_and_tiers_are_sensible) {
         CHECK(inShell);
         if (f.radius[i] < 5.0f) small++;
     }
-    CHECK(small > 200);                                             // clusters are mostly small rocks
+    CHECK(small > f.count() * 5 / 6);                               // clusters are mostly small rocks
     // belt size tiers: about half small, some medium, few big
-    world::GenParams bp; bp.clusterCount = 0; bp.beltAsteroids = 4000;
+    world::GenParams bp; bp.beltCount = 1; bp.ringChance = 0; bp.planetShells = false; bp.moonClusterCount = 0; bp.beltAsteroids = 4000;
     auto b = world::generateField(bp, s.sun, s.orbits, s.targets, ores());
     int sm = 0, med = 0, big = 0;
     for (float r : b.radius) { if (r < 5.0f) sm++; else if (r < 30.0f) med++; else big++; }
@@ -99,9 +105,9 @@ TEST(asteroids_no_star_system_or_zero_counts_generate_nothing) {
     world::GenParams gp;
     CHECK_EQ(world::generateField(gp, {}, {}, {}, ores()).count(), 0);            // no orbits, no targets
     CHECK_EQ(world::generateField(gp, {}, {50000.0}, {}, ores()).count(), 0);     // one orbit: no gap for a belt
-    Sys s; gp.beltAsteroids = 0; gp.clusterAsteroids = 0;
+    Sys s; gp.beltAsteroids = 0; gp.clusterAsteroids = 0; gp.ringAsteroids = 0; gp.ringChance = 0.5f;
     CHECK_EQ(world::generateField(gp, s.sun, s.orbits, s.targets, ores()).count(), 0);
-    gp.beltAsteroids = 100; gp.beltCount = 50; gp.clusterCount = 0;                // more belts than gaps: as many as fit
+    gp.beltAsteroids = 100; gp.beltCount = 50; gp.ringChance = 0; gp.planetShells = false; gp.moonClusterCount = 0;   // more belts than gaps: as many as fit
     CHECK(world::generateField(gp, s.sun, s.orbits, s.targets, ores()).count() <= 100 * (int)s.orbits.size());
 }
 
@@ -256,12 +262,12 @@ TEST(asteroids_ore_zones_absent_is_exactly_the_global_table) {
     auto e = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, &empty, &groups);
     CHECK_EQ(e.count(), base.count());
     for (int i = 0; i < base.count(); i++) { CHECK_EQ(e.ore[i], base.ore[i]); CHECK_EQ(e.x[i], base.x[i]); }
-    CHECK_EQ((int)groups.size(), 1 + 4);
+    CHECK(groups.size() >= 2);                                   // at least one belt plus something near the planets
     for (auto& g : groups) CHECK_EQ(g.zone, -1);
 }
 
 TEST(asteroids_ore_zones_shift_the_distribution) {
-    Sys s; world::GenParams gp; gp.beltAsteroids = 4000; gp.clusterAsteroids = 2000;
+    Sys s; world::GenParams gp; gp.beltAsteroids = 4000; gp.clusterAsteroids = 2000; gp.ringAsteroids = 2000;
     auto z = testZones();
     std::vector<world::OreGroup> groups;
     auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, &z, &groups);
@@ -278,4 +284,109 @@ TEST(asteroids_ore_zones_shift_the_distribution) {
         total += g.count;
     }
     CHECK_EQ(total, f.count());
+}
+
+TEST(asteroids_rings_are_a_per_planet_chance_and_every_planet_gets_something) {
+    Sys s;
+    int planets = 0, moons = 0;
+    for (auto& t : s.targets) (t.moon ? moons : planets)++;
+    CHECK(planets >= 2);
+    int seedsWithRing = 0, seedsWithBare = 0, totalRings = 0;
+    for (unsigned seed = 1; seed <= 60; seed++) {
+        world::GenParams gp; gp.seed = seed; gp.beltCount = 0;
+        std::vector<world::OreGroup> groups;
+        auto f = world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, nullptr, &groups);
+        std::vector<int> perTarget(s.targets.size(), 0);
+        int rings = 0, moonGroups = 0;
+        for (auto& g : groups) {
+            CHECK(!g.belt);
+            CHECK(g.target >= 0 && g.target < (int)s.targets.size());
+            perTarget[g.target]++;
+            const world::TargetBody& t = s.targets[g.target];
+            if (t.moon) { moonGroups++; CHECK(!g.ring); continue; }
+            if (!g.ring) continue;
+            rings++;
+            CHECK_EQ(g.count, gp.ringAsteroids);
+            for (int i = g.first; i < g.first + g.count; i++) {       // a flat band around the planet's centre, clear of the planet and its moons
+                double dx = f.x[i] - t.pos.x, dz = f.z[i] - t.pos.z, r = std::sqrt(dx * dx + dz * dz);
+                CHECK(r >= t.radius * world::kRingMinInner - 1e-6 && r <= t.radius * world::kRingMaxOuter + 1e-6);
+                CHECK(std::fabs(f.y[i] - t.pos.y) <= world::ringHalfHeight(t.radius) + 1e-6);
+                for (auto& m : s.targets) if (m.moon) CHECK(dist3(f.x[i], f.y[i], f.z[i], m.pos) > m.radius);
+            }
+        }
+        for (size_t k = 0; k < s.targets.size(); k++) if (!s.targets[k].moon) CHECK_EQ(perTarget[k], 1);   // every planet: exactly one ring or shell
+        CHECK_EQ(moonGroups, std::min(gp.moonClusterCount, moons));                                      // moons have their own budget
+        if (rings > 0) seedsWithRing++;
+        if (rings < planets) seedsWithBare++;
+        totalRings += rings;
+    }
+    CHECK(seedsWithRing > 0); CHECK(seedsWithBare > 0);                    // some systems ringed, some planets bare
+    CHECK(totalRings > 0 && totalRings < 60 * planets);
+    // the per-planet roll is seeded, independent of the other planets, and follows the chance
+    int hits = 0;
+    for (unsigned seed = 1; seed <= 2000; seed++) hits += world::planetHasRing(seed, 0, 0.4f);
+    CHECK(hits > 700 && hits < 900);
+    CHECK_EQ(world::planetHasRing(77, 3, 0.4f), world::planetHasRing(77, 3, 0.4f));
+    CHECK(!world::planetHasRing(77, 3, 0.0f)); CHECK(world::planetHasRing(77, 3, 1.0f));
+    // chance 0: no rings, all shells; chance 1: every planet ringed
+    for (float chance : {0.0f, 1.0f}) {
+        world::GenParams gp; gp.beltCount = 0; gp.ringChance = chance; gp.moonClusterCount = 0;
+        std::vector<world::OreGroup> groups;
+        world::generateField(gp, s.sun, s.orbits, s.targets, ores(), nullptr, nullptr, &groups);
+        CHECK_EQ((int)groups.size(), planets);
+        for (auto& g : groups) CHECK_EQ(g.ring, chance > 0.5f);
+    }
+}
+
+TEST(asteroids_belt_count_is_rolled_1_to_5_per_system) {
+    std::vector<double> orbits = {50000, 100000, 150000, 200000, 250000, 300000, 350000};   // 6 wide gaps
+    int seen[8] = {};
+    for (unsigned seed = 1; seed <= 300; seed++) {
+        world::GenParams gp; gp.seed = seed; gp.beltAsteroids = 5;
+        std::vector<world::BeltInfo> belts;
+        world::generateField(gp, {}, orbits, {}, ores(), &belts);
+        int n = (int)belts.size();
+        CHECK(n >= 1 && n <= 5);
+        CHECK_EQ(n, world::rollBeltCount(gp));
+        seen[std::clamp(n, 0, 7)]++;
+        for (size_t a = 0; a < belts.size(); a++) for (size_t b = a + 1; b < belts.size(); b++)   // distinct gaps: belts never overlap
+            CHECK(belts[a].outer < belts[b].inner || belts[b].outer < belts[a].inner);
+    }
+    for (int n = 1; n <= 5; n++) CHECK(seen[n] > 20);                     // every count 1..5 shows up
+    world::GenParams forced; forced.beltCount = 2; forced.beltAsteroids = 5;
+    std::vector<world::BeltInfo> belts;
+    world::generateField(forced, {}, orbits, {}, ores(), &belts);
+    CHECK_EQ((int)belts.size(), 2);                                        // a forced count still wins
+    forced.beltCount = 5; belts.clear();
+    world::generateField(forced, {}, {50000, 100000, 150000}, {}, ores(), &belts);
+    CHECK_EQ((int)belts.size(), 2);                                        // capped by the gaps
+}
+
+TEST(asteroids_belts_prefer_the_outer_gaps) {
+    std::vector<double> orbits = {50000, 100000, 150000, 200000, 250000, 300000, 350000};
+    int hist[6] = {};
+    const int runs = 600;
+    for (unsigned seed = 1; seed <= runs; seed++) {
+        world::GenParams gp; gp.seed = seed; gp.beltCount = 1; gp.beltAsteroids = 5;
+        std::vector<world::BeltInfo> belts;
+        world::generateField(gp, {}, orbits, {}, ores(), &belts);
+        CHECK_EQ((int)belts.size(), 1);
+        for (int g = 0; g < 6; g++) if (belts[0].inner > orbits[g] && belts[0].outer < orbits[g + 1]) hist[g]++;
+    }
+    CHECK_EQ(hist[0] + hist[1] + hist[2] + hist[3] + hist[4] + hist[5], runs);
+    CHECK(hist[5] > hist[4] && hist[4] > hist[2] && hist[2] > hist[0]);   // monotone-ish: farther = more likely
+    CHECK(hist[4] + hist[5] > runs / 2);                                   // a lone belt is usually in one of the two outer gaps
+    CHECK(hist[0] < runs / 20);                                            // and rarely in the innermost one
+    // the picker itself: distinct gaps, all of them when asked for all, outer first on average
+    std::vector<int> gaps = {0, 1, 2, 3, 4};
+    uint32_t st = 5;
+    auto r = [&st] { st = world::hash32(st + 1); return (float)(st >> 8) * (1.0f / 16777216.0f); };
+    auto all = world::pickGapsOutward(gaps, 9, r);
+    CHECK_EQ((int)all.size(), 5);
+    std::set<int> uniq(all.begin(), all.end());
+    CHECK_EQ((int)uniq.size(), 5);
+    CHECK(world::pickGapsOutward(gaps, 0, r).empty());
+    CHECK(world::pickGapsOutward({}, 3, r).empty());
+    CHECK_EQ(world::pickGapsOutward(gaps, 1, [] { return 0.999f; })[0], 4);   // top of the range: the outermost
+    CHECK_EQ(world::pickGapsOutward(gaps, 1, [] { return 0.0f; })[0], 0);     // bottom: the innermost (weight 1, never 0)
 }

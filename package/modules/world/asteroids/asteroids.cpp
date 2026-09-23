@@ -28,9 +28,11 @@ public:
         if (!c.get("asteroids.enabled", true, "generate and draw asteroid belts and clusters")) return true;
         world::GenParams gp;
         gp.seed = (unsigned)c.get("world.seed", 1234.0f, "seed of the star system (same seed = same system)");
-        gp.beltCount = c.get("asteroids.belt_count", 1, "asteroid belts between planet orbits");
+        gp.beltCount = c.get("asteroids.belt_count", -1, "asteroid belts between planet orbits; -1 = seeded random 1-5 per system, outer gaps preferred");
         gp.beltAsteroids = std::clamp(c.get("asteroids.belt_asteroids", 1500, "asteroids per belt"), 0, 50000);
-        gp.clusterCount = c.get("asteroids.cluster_count", 4, "asteroid clusters around planets and moons");
+        gp.ringChance = std::clamp(c.get("asteroids.ring_chance", 0.4f, "chance (seeded, per planet) that a planet has a flat asteroid ring; ring-less planets get a shell cluster"), 0.0f, 1.0f);
+        gp.ringAsteroids = std::clamp(c.get("asteroids.ring_asteroids", 300, "asteroids per planet ring"), 0, 20000);
+        gp.moonClusterCount = c.get("asteroids.moon_cluster_count", 2, "asteroid shell clusters around moons (their own budget, separate from the planets)");
         gp.clusterAsteroids = std::clamp(c.get("asteroids.cluster_asteroids", 60, "asteroids per cluster"), 0, 5000);
         drawDist_ = c.get("asteroids.draw_distance", 6000.0f, "asteroids farther than this are not drawn, units");
         maxDrawn_ = std::max(1, c.get("asteroids.max_drawn", 400, "most asteroid meshes drawn per frame (nearest first); the rest become points"));
@@ -75,7 +77,9 @@ public:
             for (int l = 0; l < world::kAsteroidLevels; l++) { meshes_[v][l] = world::buildAsteroidMesh(l, world::mixSeed(gp.seed, 400 + v)); meshBytes_ += meshes_[v][l].bytes(); }
         double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         int n = field_.count();
-        LOG_I("asteroids", "%d asteroids (%zu belts, %d clusters) and %d shared meshes generated in %.2f ms, %.0f KB", n, belts.size(), std::min<int>(gp.clusterCount, (int)targets.size()),
+        int rings = 0, clusters = 0;
+        for (auto& g : groups) { if (g.ring) rings++; else if (!g.belt) clusters++; }
+        LOG_I("asteroids", "%d asteroids (%zu belts, %d rings, %d clusters) and %d shared meshes generated in %.2f ms, %.0f KB", n, belts.size(), rings, clusters,
               world::kAsteroidVariants * world::kAsteroidLevels, ms, (double)(field_.bytes() + meshBytes_) / 1024.0);
         if (eng.hasFlag("ore-zone-dump")) {   // dev: the resolved zone, adjusted weights and the actual ore histogram of every belt / cluster
             for (auto& o : sys->bodies()) if (o.kind == world::BodyKind::Planet) LOG_I("asteroids", "ore-zone-dump: planet orbit %.0f", o.orbitRadius);
@@ -90,7 +94,7 @@ public:
                     snprintf(buf, sizeof buf, " %s %.1f%%/%d(%.1f%%)", ores_.ids[k].c_str(), tw > 0 ? 100.0 * t.weights[k] / tw : 0.0, hist[k], g.count ? 100.0 * hist[k] / g.count : 0.0);
                     line += buf;
                 }
-                LOG_I("asteroids", "ore-zone-dump: %s at %.0f from the sun, zone %s, %d asteroids; ore expected%%/count(actual%%):%s", g.belt ? "belt" : "cluster", g.distance,
+                LOG_I("asteroids", "ore-zone-dump: %s at %.0f from the sun, zone %s, %d asteroids; ore expected%%/count(actual%%):%s", g.belt ? "belt" : g.ring ? "ring" : "cluster", g.distance,
                       g.zone >= 0 ? zones_.zones[g.zone].id.c_str() : "(none)", g.count, line.c_str());
             }
         }

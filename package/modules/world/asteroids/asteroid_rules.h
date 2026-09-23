@@ -1,6 +1,7 @@
 #pragma once
 // Pure asteroid rules: no GL, no SDL, no engine types. Unit-tested in package/tests/test_asteroids.cpp.
-//   * seeded generation of belts (a band around the sun in the shared plane between two planet orbits) and clusters (shells around planets/moons)
+//   * seeded generation of belts (a band around the sun in the shared plane between two planet orbits; 1-5 per system, outer gaps first),
+//     rings (a flat band around a planet, per-planet chance) and clusters (shells around ring-less planets and a few moons)
 //   * struct-of-arrays storage, nothing allocated per frame
 //   * shared lumpy meshes (3 levels x 4 variants), culling, LOD, triangle budget, nearest-N, physics-pool hysteresis
 // Reuses the noise and icosphere helpers of planet_mesh.h (pure header of world/star_system).
@@ -82,18 +83,68 @@ inline OreTable zoneOreTable(const OreTable& base, const OreZones& zones, double
     return t;
 }
 
-// One belt or cluster of the generated field (for the --ore-zone-dump log and tests).
-struct OreGroup { bool belt = false; double distance = 0; int zone = -1; int first = 0, count = 0; };
+// One belt, ring or cluster of the generated field (for the --ore-zone-dump log and tests). `target` = index into the targets it surrounds (-1 = a belt).
+struct OreGroup { bool belt = false; double distance = 0; int zone = -1; int first = 0, count = 0; bool ring = false; int target = -1; };
 
-struct TargetBody { Vec3d pos; double radius = 0; bool moon = false; };   // a planet or moon a cluster can surround
+struct TargetBody { Vec3d pos; double radius = 0; bool moon = false; };   // a planet or moon a ring / cluster can surround
 
 struct GenParams {
     unsigned seed = 1234;
-    int beltCount = 1, beltAsteroids = 1500, clusterCount = 4, clusterAsteroids = 60;
+    // belts: beltCount < 0 = seeded random in [beltCountMin, beltCountMax] per system; >= 0 forces that many (capped by the eligible gaps).
+    // Gaps are picked weighted toward the outer ones (weight = (rank from the sun + 1)^2), so a 1-belt system usually has it far out.
+    int beltCount = -1, beltCountMin = 1, beltCountMax = 5, beltAsteroids = 1500;
     double beltMaxWidth = 3000.0;            // the belt fills at most this much of the gap between two orbits
+    // planets: each one rolls ringChance (seeded, per planet) for a flat ring; a planet without a ring gets a shell cluster instead (planetShells),
+    // so every planet has something nearby. Moons: their own budget, moonClusterCount shell clusters over a seeded shuffle of the moons.
+    float ringChance = 0.4f;
+    int ringAsteroids = 300;
+    bool planetShells = true;
+    int moonClusterCount = 2, clusterAsteroids = 60;
 };
 
 struct BeltInfo { double inner = 0, outer = 0, halfHeight = 0; };    // recorded for tests / docs
+
+// Ring band around a planet of radius R, in planet radii: inner edge 1.45-1.7 R, 0.3-0.5 R wide, never past kRingMaxOuter
+// (moons orbit at >= 2.5 R + 150 minus at most 0.3 R of moon radius; the atmosphere shell is 1.4 R, user decision 2026-09-22:
+// the ring's inner edge stays clear of it so the glow and the ring don't overlap).
+constexpr double kRingMinInner = 1.45, kRingMaxInner = 1.7, kRingMaxOuter = 2.2;
+inline double ringHalfHeight(double planetRadius) { return std::clamp(planetRadius * 0.02, 4.0, 25.0); }   // thin: a flat band, not a shell
+
+// Belt count for a system: forced (>= 0) or a seeded roll in [lo, hi].
+inline int rollBeltCount(const GenParams& gp) {
+    if (gp.beltCount >= 0) return gp.beltCount;
+    int lo = std::max(0, std::min(gp.beltCountMin, gp.beltCountMax)), hi = std::max(lo, gp.beltCountMax);
+    uint32_t h = mixSeed(gp.seed, 950);
+    return lo + (int)(h % (uint32_t)(hi - lo + 1));
+}
+
+// Does planet number `planetIndex` (0-based, in target order) have a ring? Seeded per planet, independent of every other roll.
+inline bool planetHasRing(unsigned seed, int planetIndex, float chance) {
+    if (chance <= 0.0f) return false;
+    if (chance >= 1.0f) return true;
+    float r = (float)(mixSeed(seed, 1000 + (uint32_t)planetIndex) >> 8) * (1.0f / 16777216.0f);
+    return r < chance;
+}
+
+// Outward-biased pick of `n` distinct gaps from `gaps` (ordered inner -> outer): weighted sampling without replacement, weight (rank + 1)^2.
+// Returns the picked gaps in pick order. Pure, uses only `r` (numbers in [0,1)).
+template <class Rand>
+inline std::vector<int> pickGapsOutward(const std::vector<int>& gaps, int n, Rand&& r) {
+    std::vector<int> out;
+    std::vector<double> w(gaps.size());
+    for (size_t i = 0; i < gaps.size(); i++) w[i] = (double)(i + 1) * (double)(i + 1);
+    n = std::clamp(n, 0, (int)gaps.size());
+    for (int k = 0; k < n; k++) {
+        double total = 0;
+        for (double x : w) total += x;
+        double t = std::clamp((double)r(), 0.0, 0.999999) * total, acc = 0;
+        size_t pick = gaps.size();
+        for (size_t i = 0; i < w.size(); i++) { if (w[i] <= 0) continue; acc += w[i]; pick = i; if (t < acc) break; }
+        out.push_back(gaps[pick]);
+        w[pick] = 0;
+    }
+    return out;
+}
 
 namespace detail {
 struct ARng {
@@ -126,8 +177,8 @@ inline float beltRadius(ARng& rng) {
 inline float clusterRadius(ARng& rng) { return rng.irange(0, 9) == 0 ? rng.range(4.0f, 10.0f) : rng.range(0.5f, 4.0f); }
 } // namespace detail
 
-// Belts and clusters. `planetOrbits`: orbit radii of the planets around the sun (any order). No sun/planets (fewer than 2 orbits) = no belts;
-// no targets = no clusters. Positions are in the world frame, sun at `sun`, belt plane = the XZ plane through the sun.
+// Belts, rings and clusters. `planetOrbits`: orbit radii of the planets around the sun (any order). No sun/planets (fewer than 2 orbits) = no belts;
+// no targets = no rings / clusters. Output order: belts, then per planet (target order) its ring or shell, then the moon shells. Positions are in the world frame, sun at `sun`, belt plane = the XZ plane through the sun.
 inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::vector<double> planetOrbits, const std::vector<TargetBody>& targets,
                                    const OreTable& ores, std::vector<BeltInfo>* beltsOut = nullptr,
                                    const OreZones* zones = nullptr, std::vector<OreGroup>* groupsOut = nullptr) {
@@ -137,11 +188,11 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
     detail::ARng rng(gp.seed);
     std::sort(planetOrbits.begin(), planetOrbits.end());
 
-    // belts: distinct gaps between consecutive orbits, chosen by seeded shuffle
+    // belts: distinct gaps between consecutive orbits (inner -> outer), count rolled per system, picked with an outward bias
     std::vector<int> gaps;
     for (int i = 0; i + 1 < (int)planetOrbits.size(); i++) if (planetOrbits[i + 1] - planetOrbits[i] > 4000.0) gaps.push_back(i);
-    for (int i = (int)gaps.size() - 1; i > 0; i--) std::swap(gaps[i], gaps[rng.irange(0, i)]);
-    int belts = std::min<int>(std::max(0, gp.beltCount), (int)gaps.size());
+    gaps = pickGapsOutward(gaps, rollBeltCount(gp), [&rng] { return rng.f(); });
+    int belts = (int)gaps.size();
     for (int b = 0; b < belts; b++) {
         double lo = planetOrbits[gaps[b]], hi = planetOrbits[gaps[b] + 1], gap = hi - lo;
         double margin = std::max(1500.0, gap * 0.15);
@@ -167,17 +218,13 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
         if (groupsOut) groupsOut->push_back(g);
     }
 
-    // clusters: shells around some planets / moons (outside the moons' orbits for planets)
-    std::vector<int> order;
-    for (int i = 0; i < (int)targets.size(); i++) order.push_back(i);
-    for (int i = (int)order.size() - 1; i > 0; i--) std::swap(order[i], order[rng.irange(0, i)]);
-    int clusters = std::min<int>(std::max(0, gp.clusterCount), (int)order.size());
-    for (int c = 0; c < clusters; c++) {
-        const TargetBody& t = targets[order[c]];
+    auto sunDist = [&sun](const Vec3d& p) { double dx = p.x - sun.x, dy = p.y - sun.y, dz = p.z - sun.z; return std::sqrt(dx * dx + dy * dy + dz * dz); };
+    // shell cluster: a flattened shell around a planet (outside its moons' orbits) or a moon
+    auto shell = [&](int ti) {
+        const TargetBody& t = targets[ti];
         double inner = t.moon ? t.radius * 3.0 + 100.0 : t.radius * 4.5 + 500.0;
         double width = std::max(400.0, t.radius * 3.0);
-        double dx0 = t.pos.x - sun.x, dy0 = t.pos.y - sun.y, dz0 = t.pos.z - sun.z;
-        OreGroup g{false, std::sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0), -1, F.count(), 0};   // zone by the body's distance from the sun
+        OreGroup g{false, sunDist(t.pos), -1, F.count(), 0, false, ti};   // zone by the body's distance from the sun
         const OreTable ct = zoneOreTable(ores, oz, g.distance, &g.zone);
         for (int n = 0; n < gp.clusterAsteroids; n++) {
             float dx, dy, dz, l;
@@ -187,7 +234,36 @@ inline AsteroidField generateField(const GenParams& gp, const Vec3d& sun, std::v
         }
         g.count = F.count() - g.first;
         if (groupsOut) groupsOut->push_back(g);
+    };
+    // ring: a flat band around a planet in the XZ plane through its centre (same shape as a belt: angle + radius band + thin height)
+    auto ring = [&](int ti) {
+        const TargetBody& t = targets[ti];
+        double inner = t.radius * (double)rng.range((float)kRingMinInner, (float)kRingMaxInner);
+        double outer = std::min(t.radius * kRingMaxOuter, inner + t.radius * (double)rng.range(0.3f, 0.5f));
+        double half = ringHalfHeight(t.radius);
+        OreGroup g{false, sunDist(t.pos), -1, F.count(), 0, true, ti};
+        const OreTable rt = zoneOreTable(ores, oz, g.distance, &g.zone);
+        for (int n = 0; n < gp.ringAsteroids; n++) {
+            double ang = rng.range(0.0f, 6.2831853f);
+            double r = inner + (outer - inner) * rng.f();
+            double h = half * (rng.f() + rng.f() - 1.0);
+            detail::pushAsteroid(F, rng, {t.pos.x + r * std::cos(ang), t.pos.y + h, t.pos.z + r * std::sin(ang)}, detail::clusterRadius(rng), rt);
+        }
+        g.count = F.count() - g.first;
+        if (groupsOut) groupsOut->push_back(g);
+    };
+
+    // planets: every planet gets a ring (seeded per-planet chance) or else a shell cluster; moons never compete for these
+    std::vector<int> moons;
+    for (int i = 0, planet = 0; i < (int)targets.size(); i++) {
+        if (targets[i].moon) { moons.push_back(i); continue; }
+        if (planetHasRing(gp.seed, planet++, gp.ringChance)) ring(i);
+        else if (gp.planetShells) shell(i);
     }
+    // moons: their own smaller budget, seeded shuffle
+    for (int i = (int)moons.size() - 1; i > 0; i--) std::swap(moons[i], moons[rng.irange(0, i)]);
+    int moonClusters = std::min<int>(std::max(0, gp.moonClusterCount), (int)moons.size());
+    for (int c = 0; c < moonClusters; c++) shell(moons[c]);
     return F;
 }
 
