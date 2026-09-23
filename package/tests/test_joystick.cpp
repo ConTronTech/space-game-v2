@@ -110,6 +110,18 @@ TEST(joystick_hat_becomes_four_buttons) {
     out.clear(); RawState none; m.evaluate(p, none, t, out); CHECK(out.empty());   // no hat on the device
 }
 
+TEST(joystick_binding_label_names_buttons_one_based_and_hats) {
+    Profile p = parse(R"({"buttons":[{"index":2,"action":"dock"},{"index":0,"action":"fire"}],
+                          "hats":[{"index":0,"up":"weapon_1","right":"camera_next"}],
+                          "groups":[{"action":"throttle_limit","buttons":{"12":0.5}}]})");
+    CHECK_EQ(bindingLabel(p, "dock"), std::string("Button 3"));        // SDL index 2 = the third button
+    CHECK_EQ(bindingLabel(p, "fire"), std::string("Button 1"));
+    CHECK_EQ(bindingLabel(p, "weapon_1"), std::string("Hat Up"));
+    CHECK_EQ(bindingLabel(p, "camera_next"), std::string("Hat Right"));
+    CHECK_EQ(bindingLabel(p, "throttle_limit"), std::string(""));      // groups are not named
+    CHECK_EQ(bindingLabel(p, "nope"), std::string(""));
+}
+
 TEST(joystick_button_groups_give_discrete_values_and_a_default) {
     Profile p = parse(R"({"groups":[{"action":"throttle_limit","buttons":{"12":0.2,"13":0.5,"14":1.0},"default":0.0}]})");
     Mapper m; Tuning t; RawState s; s.buttons.assign(20, 0);

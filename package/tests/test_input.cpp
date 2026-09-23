@@ -1,4 +1,5 @@
 // InputHandler action logic driven by a fake device (no SDL, no window).
+#include <map>
 #include "core/input_handler/input_handler.h"
 #include "engine/engine.h"
 #include "tests/test.h"
@@ -10,6 +11,18 @@ struct FakeDevice : core::InputMethod {
     bool addBinding(const std::string&, const engine::Json&, std::string&) override { return true; }
     void clearBindings() override {}
     void poll(core::IInput& in) override { if (level != 0) in.contribute("act", level); }
+};
+
+// A device that names its bindings from a fixed table (for primaryBindingLabel).
+struct LabelDevice : core::InputMethod {
+    const char* dev;
+    std::map<std::string, std::string> labels;
+    explicit LabelDevice(const char* d) : dev(d) {}
+    const char* device() const override { return dev; }
+    bool addBinding(const std::string&, const engine::Json&, std::string&) override { return true; }
+    void clearBindings() override {}
+    void poll(core::IInput&) override {}
+    std::string bindingLabel(const std::string& a) const override { auto it = labels.find(a); return it == labels.end() ? std::string() : it->second; }
 };
 
 struct Rig {
@@ -101,4 +114,31 @@ TEST(input_consume_beats_a_manual_offset_when_two_sources_press_the_same_action)
     CHECK(r.in.down("pause"));
     r.in.consume("pause");
     CHECK(!r.in.down("pause"));
+}
+
+TEST(input_binding_label_prefers_keyboard_then_mouse_then_joystick_then_others) {
+    Rig r;                                              // its "fake" device names nothing (InputMethod's default)
+    LabelDevice kb("keyboard"), mouse("mouse"), joy("joystick"), zz("zz_agent"), aa("aa_wheel");
+    for (auto* d : {&zz, &aa, &joy, &mouse, &kb}) r.in.registerMethod(d);
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string(""));   // nothing bound anywhere: caller picks a fallback
+    zz.labels["dock"] = "Z"; aa.labels["dock"] = "A";
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string("A"));  // unknown devices: alphabetical, not hash order
+    joy.labels["dock"] = "Button 3";
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string("Button 3"));
+    mouse.labels["dock"] = "Right Click";
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string("Right Click"));
+    kb.labels["dock"] = "G";
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string("G"));  // keyboard wins
+    CHECK_EQ(r.in.primaryBindingLabel("fire"), std::string(""));   // other actions unaffected
+    r.in.unregisterMethod(&kb);
+    CHECK_EQ(r.in.primaryBindingLabel("dock"), std::string("Right Click"));
+}
+
+TEST(input_mouse_labels_are_readable) {
+    CHECK_EQ(core::input_label::mouseButton(1), std::string("Left Click"));
+    CHECK_EQ(core::input_label::mouseButton(2), std::string("Middle Click"));
+    CHECK_EQ(core::input_label::mouseButton(3), std::string("Right Click"));
+    CHECK_EQ(core::input_label::mouseButton(5), std::string("Mouse 5"));
+    CHECK_EQ(core::input_label::mouseButton(9), std::string(""));
+    CHECK_EQ(core::input_label::mouseAxis(2), std::string("Mouse Wheel"));
 }

@@ -37,6 +37,7 @@ public:
     void unregisterMethod(InputMethod* m) override { methods_.erase(m->device()); }
     void contribute(const std::string& action, float v) override { cur_[action] += v; }
     void consume(const std::string& action) override { cur_[action] = 0.0f; }
+    std::string primaryBindingLabel(const std::string& action) const override;
 
     // Load config/input/<name>.json now (replaces the current profile). Returns false on error.
     bool loadProfile(const std::string& name) override;

@@ -155,9 +155,12 @@ struct Pickup { std::string ore, label, text; RGB colour; int amount = 0; double
 
 // ---- station docking prompt (ship::IDocking) ----
 constexpr float kDockPromptFactor = 4.0f;       // prompt shows within this many dock radii (docking.prompt_range overrides, in units)
-inline const char* dockKeyLabel() { return "G"; }   // core::IInput does not expose bindings: the default profile's key
-
 inline std::string upper(std::string s) { for (auto& c : s) c = (char)std::toupper((unsigned char)c); return s; }
+
+// The dock key as the prompt shows it: what core::IInput::primaryBindingLabel("dock") returned, upper-cased ("G", "LEFT SHIFT",
+// "BUTTON 3"), or the default profile's "G" when nothing readable is bound (no keyboard method, a controller with no nameable binding).
+constexpr const char* kDefaultDockKey = "G";
+inline std::string dockKeyLabel(const std::string& bound = {}) { return bound.empty() ? std::string(kDefaultDockKey) : upper(bound); }
 
 // "Station 1 (Planet 1, orbital)" -> "Station 1": the HUD line only needs the short name
 inline std::string shortStationName(const std::string& name) {
@@ -192,17 +195,17 @@ struct DockQuery { bool has = false, ok = false; float distance = 0; std::string
 struct DockPrompt { bool show = false, ready = false; std::string status, action; };   // status: "STATION 1  420 m"; action: "DOCK [G]" or the short reason
 
 // What to show while flying near a station. Nothing when there is no station, it is out of range, or we are docked.
-inline DockPrompt dockPrompt(const DockQuery& q, float dockRadius, float tunableRange, bool docked) {
+inline DockPrompt dockPrompt(const DockQuery& q, float dockRadius, float tunableRange, bool docked, const std::string& key = {}) {
     DockPrompt p;
     if (docked || !q.has || !inDockPromptRange(q.distance, dockRadius, tunableRange)) return p;
     p.show = true;
     p.ready = q.ok;
     p.status = upper(shortStationName(q.name)) + "  " + distanceText(q.distance);
-    p.action = q.ok ? std::string("DOCK [") + dockKeyLabel() + "]" : shortDockReason(q.reason);
+    p.action = q.ok ? "DOCK [" + dockKeyLabel(key) + "]" : shortDockReason(q.reason);
     return p;
 }
-inline std::string dockedText(const std::string& station) {
-    return "DOCKED: " + upper(shortStationName(station)) + " - [" + dockKeyLabel() + "] UNDOCK";
+inline std::string dockedText(const std::string& station, const std::string& key = {}) {
+    return "DOCKED: " + upper(shortStationName(station)) + " - [" + dockKeyLabel(key) + "] UNDOCK";
 }
 
 class HudState {
@@ -222,7 +225,7 @@ public:
     bool orbitLocked() const { return orbitLocked_; }
     const std::string& orbitStatus() const { return orbitLocked_ ? orbitText_ : empty_; }   // built once per event, not per frame
     // ship::Docked / Undocked
-    void onDocked(const std::string& station, double now) { docked_ = true; dockedAt_ = now; undockedAt_ = kNever; dockedName_ = station; dockedText_ = dockedText(station); }
+    void onDocked(const std::string& station, double now, const std::string& key = {}) { docked_ = true; dockedAt_ = now; undockedAt_ = kNever; dockedName_ = station; dockedText_ = dockedText(station, key); }
     void onUndocked(double now) { if (docked_) { undockedAt_ = now; dockedAt_ = kNever; } docked_ = false; }
     bool docked() const { return docked_; }
     const std::string& dockedStatus() const { return docked_ ? dockedText_ : empty_; }

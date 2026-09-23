@@ -29,6 +29,11 @@ public:
         const Uint8* state = SDL_GetKeyboardState(nullptr);
         for (auto& b : bindings_) if (state[b.key]) in.contribute(b.action, b.scale);
     }
+    std::string bindingLabel(const std::string& action) const override {
+        for (auto& b : bindings_)
+            if (b.action == action) { const char* n = SDL_GetScancodeName(b.key); if (n && *n) return n; }
+        return {};
+    }
 
 private:
     struct Binding { std::string action; SDL_Scancode key; float scale; };

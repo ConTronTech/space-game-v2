@@ -299,6 +299,19 @@ TEST(hud_station_names_are_shortened) {
     CHECK_EQ(dockedText("Station 1 (Planet 1, orbital)"), std::string("DOCKED: STATION 1 - [G] UNDOCK"));
 }
 
+TEST(hud_dock_key_label_follows_the_binding_and_falls_back_to_g) {
+    CHECK_EQ(dockKeyLabel(""), std::string("G"));                     // nothing readable bound
+    CHECK_EQ(dockKeyLabel("F"), std::string("F"));
+    CHECK_EQ(dockKeyLabel("Left Shift"), std::string("LEFT SHIFT"));  // SDL scancode names, upper-cased like the rest of the HUD
+    DockQuery q; q.has = true; q.ok = true; q.distance = 100; q.name = "Station 1";
+    CHECK_EQ(dockPrompt(q, 120, 0, false, "Right Click").action, std::string("DOCK [RIGHT CLICK]"));
+    CHECK_EQ(dockPrompt(q, 120, 0, false, "").action, std::string("DOCK [G]"));
+    CHECK_EQ(dockedText("Station 1", "F"), std::string("DOCKED: STATION 1 - [F] UNDOCK"));
+    HudState h;
+    h.onDocked("Station 1", 1.0, "Button 3");
+    CHECK_EQ(h.dockedStatus(), std::string("DOCKED: STATION 1 - [BUTTON 3] UNDOCK"));
+}
+
 TEST(hud_dock_banners_replace_each_other) {
     HudState h;
     Snapshot s;

@@ -98,4 +98,17 @@ inline bool parseProfile(const engine::Json& j, Profile& out, std::string& err) 
     return true;
 }
 
+// On-screen name of what a device profile maps to `action`: "Button 3" (1-based, like most controllers print them; the profile's
+// "index" is SDL's 0-based number) or "Hat Up" etc. Axes and button groups are not named (they are analog / multi-button). "" = none.
+inline std::string bindingLabel(const Profile& p, const std::string& action) {
+    for (auto& b : p.buttons) if (b.action == action) return "Button " + std::to_string(b.index + 1);
+    for (auto& h : p.hats) {
+        if (h.up == action) return "Hat Up";
+        if (h.down == action) return "Hat Down";
+        if (h.left == action) return "Hat Left";
+        if (h.right == action) return "Hat Right";
+    }
+    return {};
+}
+
 } // namespace joystick

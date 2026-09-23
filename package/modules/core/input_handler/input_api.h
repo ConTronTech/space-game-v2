@@ -29,6 +29,12 @@ public:
     // fresh poll is unaffected. Non-pure (default no-op) so any other IInput implementation keeps compiling.
     virtual void consume(const std::string&) {}
 
+    // A short, human-readable name for what the current profile binds to an action, for on-screen prompts ("G", "Left Click",
+    // "Button 3"). Devices are asked in a fixed order (keyboard, mouse, joystick, then any others) and the first one with a
+    // readable binding wins. Returns "" when nothing readable is bound: callers pick their own fallback. Non-pure (default "")
+    // so any other IInput implementation keeps compiling.
+    virtual std::string primaryBindingLabel(const std::string&) const { return {}; }
+
     // ---- profiles ----
     virtual bool loadProfile(const std::string& name) = 0;
     virtual const std::string& profile() const = 0;

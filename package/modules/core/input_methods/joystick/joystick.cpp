@@ -79,6 +79,13 @@ public:
         return false;
     }
 
+    std::string bindingLabel(const std::string& action) const override {   // first open device whose profile maps the action to a button / hat
+        if (!enabled_ || !sdlOk_) return {};
+        for (auto& d : devs_)
+            if (d.open && d.profile) { std::string s = joystick::bindingLabel(*d.profile, action); if (!s.empty()) return s; }
+        return {};
+    }
+
     static constexpr int kSettlePolls = 45;
 
     void poll(core::IInput& in) override {

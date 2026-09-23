@@ -1,4 +1,5 @@
 #include "core/input_handler/input_handler.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -40,6 +41,26 @@ bool InputHandler::pressed(const std::string& a) const {
 }
 bool InputHandler::released(const std::string& a) const {
     return !(std::abs(value(a)) > kThreshold) && std::abs(prevValue(a)) > kThreshold;
+}
+
+std::string InputHandler::primaryBindingLabel(const std::string& action) const {
+    // methods_ is unordered: ask in a fixed order so the answer does not depend on hashing (keyboard+mouse is the primary profile)
+    static const char* const kOrder[] = {"keyboard", "mouse", "joystick"};
+    for (const char* dev : kOrder) {
+        auto it = methods_.find(dev);
+        if (it == methods_.end()) continue;
+        std::string s = it->second->bindingLabel(action);
+        if (!s.empty()) return s;
+    }
+    std::vector<std::string> rest;
+    for (auto& [dev, m] : methods_)
+        if (dev != "keyboard" && dev != "mouse" && dev != "joystick") rest.push_back(dev);
+    std::sort(rest.begin(), rest.end());
+    for (auto& dev : rest) {
+        std::string s = methods_.at(dev)->bindingLabel(action);
+        if (!s.empty()) return s;
+    }
+    return {};
 }
 
 bool InputHandler::loadProfile(const std::string& name) {

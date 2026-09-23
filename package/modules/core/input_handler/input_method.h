@@ -21,6 +21,26 @@ public:
     virtual void configure(const engine::Json&) {}       // profile "devices": { "<device>": {...} }
     // Once per frame: read the device and call in.contribute(action, value) for each active binding.
     virtual void poll(IInput& in) = 0;
+    // Display name of this device's first binding for `action` ("G", "Left Click", ...), or "" if it has none / cannot name it.
+    // Used by IInput::primaryBindingLabel for on-screen prompts. Optional: the default says "nothing readable".
+    virtual std::string bindingLabel(const std::string&) const { return {}; }
 };
+
+// Display names shared by input methods (pure: no SDL needed, so tests can check them directly).
+namespace input_label {
+// SDL mouse button numbers: 1 left, 2 middle, 3 right, 4 x1, 5 x2
+inline std::string mouseButton(int sdlButton) {
+    switch (sdlButton) {
+        case 1: return "Left Click";
+        case 2: return "Middle Click";
+        case 3: return "Right Click";
+        case 4: return "Mouse 4";
+        case 5: return "Mouse 5";
+        default: return {};
+    }
+}
+// mouse method axis codes: 0 x, 1 y, 2 wheel
+inline std::string mouseAxis(int code) { return code == 0 ? "Mouse X" : code == 1 ? "Mouse Y" : code == 2 ? "Mouse Wheel" : std::string(); }
+} // namespace input_label
 
 } // namespace core

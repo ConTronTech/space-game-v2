@@ -7,6 +7,7 @@
 #include "engine/engine.h"
 #include "engine/log.h"
 #include "core/data_registry/data_api.h"
+#include "core/input_handler/input_api.h"
 #include "gameplay/inventory/inventory_api.h"
 #include "gameplay/mining/mining_api.h"
 #include "ship/cockpit/cockpit_screens_api.h"
@@ -34,7 +35,7 @@ public:
         eng.events.subscribe<ship::FuelEmpty>([this](const ship::FuelEmpty&) { state_.onFuelEmpty(eng_->time()); });
         eng.events.subscribe<ship::Respawned>([this](const ship::Respawned&) { state_.onRespawned(); });
         eng.events.subscribe<ship::OrbitLockChanged>([this](const ship::OrbitLockChanged& e) { state_.onOrbitLock(e.locked, e.bodyName, eng_->time()); });
-        eng.events.subscribe<ship::Docked>([this](const ship::Docked& e) { state_.onDocked(e.stationName, eng_->time()); });
+        eng.events.subscribe<ship::Docked>([this](const ship::Docked& e) { state_.onDocked(e.stationName, eng_->time(), dockKey()); });
         eng.events.subscribe<ship::Undocked>([this](const ship::Undocked&) { state_.onUndocked(eng_->time()); });
         eng.events.subscribe<combat::Overheated>([this](const combat::Overheated& e) { state_.onOverheated(e.name, eng_->time()); });
         eng.events.subscribe<combat::WeaponChanged>([this](const combat::WeaponChanged& e) { state_.onWeaponChanged(e.name, eng_->time()); });
@@ -59,6 +60,12 @@ public:
 private:
     static constexpr hud::RGB kCalm{0.45f, 0.85f, 1.0f}, kReady{0.45f, 1.0f, 0.55f}, kDim{0.62f, 0.70f, 0.80f};
     static core::Color col(const hud::RGB& c, float a = 1) { return {c.r, c.g, c.b, a}; }
+
+    // What the current input profile binds to "dock" ("" if no input service / nothing readable: hud::dockKeyLabel falls back to "G")
+    std::string dockKey() const {
+        auto* in = eng_->services.get<core::IInput>();
+        return in ? in->primaryBindingLabel("dock") : std::string();
+    }
 
     void draw(core::UIHandler& ui) {
         auto* ship = eng_->services.get<ship::IShip>();
@@ -155,7 +162,7 @@ private:
             } else if (auto* dock = busy ? nullptr : dockSvc) {      // approaching the pad (busy, not yet docked): no prompt
                 dq_.has = dock->nearestDockable(dq_.name, dq_.distance, dq_.ok, dq_.reason);
                 if (dq_.has) {
-                    hud::DockPrompt p = hud::dockPrompt(dq_, stationRadius(dq_.name), dockRange_, false);
+                    hud::DockPrompt p = hud::dockPrompt(dq_, stationRadius(dq_.name), dockRange_, false, dockKey());
                     if (p.show) {
                         drawBanner(ui, L, by, p.status, kCalm, 1.0f);
                         by += L.bannerH + L.bannerGap;

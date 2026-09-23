@@ -23,6 +23,12 @@ mouse axis can all drive `thrust` at once. Actions not in the profile just read 
 physics steps can run in one frame and the same press would count more than once. `value()` and `down()` are
 safe in both.
 
+**Prompt labels:** `in.primaryBindingLabel("dock")` returns a short name for what the current profile binds to an
+action, for on-screen prompts: keyboard = SDL scancode name ("G", "Left Shift"), mouse = "Left Click" / "Right Click" /
+"Mouse 4" / "Mouse Wheel", joystick = "Button 3" (1-based) or "Hat Up" from the device profile. Devices are asked in the
+order keyboard, mouse, joystick, then any others alphabetically; the first readable answer wins. It returns "" when nothing
+readable is bound, so the caller supplies its own fallback. The HUD's dock prompt uses it (docs/HUD.md).
+
 ## Joysticks, wheels, pedals, shifters
 A third device type, `core/input_methods/joystick` (docs/CONTROLLERS.md): raw SDL joystick axes / buttons / hats, one profile per device in `config/input/devices/`, values ADDED to the keyboard's and the mouse's (the same action names, through `contribute`). A wheel base with pedals and a shifter is ONE device with many controls. Nothing to bind in the keyboard profile.
 
@@ -62,6 +68,7 @@ Bad keys, unknown devices and broken JSON print a `[input]` message and never cr
    - `addBinding(action, json, err)` - parse your fields (e.g. `axis`, `button`, `deadzone`, `invert`)
    - `poll(in)` - read the device, call `in.contribute(action, value)` for each active binding
    - `clearBindings()`, optionally `configure(json)` for the profile's `"devices"` section
+   - optionally `bindingLabel(action)` - a short display name for your first binding of that action ("" = none), so on-screen prompts can name it
 4. Use it in a profile: `{ "device": "joystick", "axis": 1, "deadzone": 0.15, "scale": -1 }`
 
 `keyboard.cpp` is the smallest example. Nothing in the input handler or the game modules changes.

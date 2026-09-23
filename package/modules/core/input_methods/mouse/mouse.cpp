@@ -98,6 +98,15 @@ public:
         }
     }
 
+    std::string bindingLabel(const std::string& action) const override {
+        for (auto& b : bindings_)
+            if (b.action == action) {
+                std::string s = b.kind == Kind::Button ? core::input_label::mouseButton(b.code) : core::input_label::mouseAxis(b.code);
+                if (!s.empty()) return s;
+            }
+        return {};
+    }
+
     void onUpdate(engine::Engine&, float) override {
         if (!eng_->paused() && in_->pressed("mouse_capture_toggle")) { wantCapture_ = !wantCapture_; applyCapture_ = true; }
     }
