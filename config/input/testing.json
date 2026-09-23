@@ -44,6 +44,9 @@
     "lock_clear":  [ { "device": "keyboard", "key": "Y" } ],                      // drop the lock
     "weapon_next": [ { "device": "mouse", "axis": "wheel", "scale": 1 } ],         // mouse wheel: next weapon
     "toggle_menu": [ { "device": "keyboard", "key": "I" } ],                      // the game menu (cargo, crafting, ...): I or Esc closes it
+    "menu_tab_prev": [ { "device": "keyboard", "key": "[" } ],   // game menu: previous tab
+    "menu_tab_next": [ { "device": "keyboard", "key": "]" } ],   // game menu: next tab
+    "menu_discard":  [ { "device": "keyboard", "key": "Delete" }, { "device": "keyboard", "key": "Backspace" } ],   // CARGO grid: discard the selected slot (press twice to confirm)
     "quick_bar_open":    [ { "device": "keyboard", "key": "B" } ],        // quick action bar (docs/QUICK_ACTION_BAR.md): open / close
     "quick_bar_prev":    [ { "device": "keyboard", "key": "," } ],        // while open: previous entry
     "quick_bar_next":    [ { "device": "keyboard", "key": "." } ],        // while open: next entry
