@@ -39,5 +39,8 @@ Do not list `ui/game_menu` and a module that adds tabs as optional dependencies 
 ## Tunables
 `menu.pause_game` (false).
 
-## CARGO tab (cargo rework)
-Header "CARGO used / capacity" with a total bar. Left column: one row per ore with a bar ("iron 45/100"). Right column: GENERAL HOLD items with bars. Every stack has "-1" and "ALL" discard buttons (through `IInventory::remove`), usable items also have USE. Unusable items (Missile Pack, Ore Scanner) can always be discarded. A message line shows the last discard or craft/use result.
+## CARGO tab (unified slot grid, docs/INVENTORY.md)
+Header "CARGO used / capacity slots" with the hold level name and a fill bar. Left: the cargo GRID (8 x 12 by default), one stack per slot: a tinted square, a 2-letter tag, the amount and a thin fill line (amount / stack cap). Right: an info panel (the hovered stack as a tooltip, else the selected slot: name, ore/item, description, this slot / total / stack size and the next level's stack size) with USE (usable items), DISCARD 1 and DISCARD STACK buttons, and a TRASH box below it.
+Mouse: press a stack to select it; drag it onto another slot (empty = move, same id = merge up to the cap, other id = swap) or onto TRASH (discard the whole stack).
+Keyboard / wheel D-pad / joystick: `ui_up/down/left/right` move the selection (clamped at the edges), `menu_discard` (Delete / Backspace, PXN left paddle) pressed TWICE on the same slot within 3 s discards it (the first press arms it and the outline turns red). Note: ui_* share W/A/S/D with flight, so flying with the menu open also moves the cursor (harmless: discarding always needs the two presses).
+Discarding is always possible, so a full hold can never lock the player out. A message line shows the last discard or craft/use result.

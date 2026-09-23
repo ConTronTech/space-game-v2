@@ -1,7 +1,7 @@
 {
-  "_comment": "Cargo upgrade levels, in order (the first entry is level 0). resource_mult multiplies EVERY ore's cargo_cap (data/ores.json); general_mult multiplies the general hold for crafted items (inventory.general_capacity, default 30). Old files with a single capacity_mult still work: it is the fallback for both. Phase 5 crafting raises the level (gameplay::IInventory::setLevel).",
-  "level0": { "name": "Standard hold",  "resource_mult": 1, "general_mult": 1 },
-  "level1": { "name": "Extended hold",  "resource_mult": 2, "general_mult": 2 },
-  "level2": { "name": "Cargo bay",      "resource_mult": 4, "general_mult": 4 },
-  "level3": { "name": "Freighter hold", "resource_mult": 8, "general_mult": 8 }
+  "_comment": "Cargo upgrade levels, in order (the first entry is level 0). The cargo GRID has a fixed slot count (inventory.grid_columns x inventory.grid_rows, 8 x 12); a level multiplies every id's STACK CAP instead: stack_mult x cargo_cap (data/ores.json) for ores, x stack_cap (data/items.json, default 10) for items. Uranium: 10 / 20 / 40 / 60 per slot. Older files without stack_mult fall back to resource_mult, then capacity_mult. Phase 5 crafting raises the level (gameplay::IInventory::setLevel).",
+  "level0": { "name": "Standard hold",  "stack_mult": 1 },
+  "level1": { "name": "Extended hold",  "stack_mult": 2 },
+  "level2": { "name": "Cargo bay",      "stack_mult": 4 },
+  "level3": { "name": "Freighter hold", "stack_mult": 6 }
 }

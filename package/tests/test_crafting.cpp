@@ -39,7 +39,7 @@ TEST(crafting_result_needs_room_only_in_the_general_hold) {
     h.free = 1; CHECK(craftCheck(fuelCell(), h, 1.0f).ok);
     h.free = 0;
     auto d = craftCheck(fuelCell(), h, 1.0f);
-    CHECK(!d.ok); CHECK_EQ(d.reason, std::string("general hold full (use or discard an item)"));       // the exact wording the player sees
+    CHECK(!d.ok); CHECK_EQ(d.reason, std::string("cargo full (use or discard an item)"));       // the exact wording the player sees
     h.free = 0.5f; CHECK(!craftCheck(fuelCell(), h, 1.0f).ok);
     h.free = 8; CHECK(craftCheck(fuelCell(), h, 8.0f).ok); CHECK(!craftCheck(fuelCell(), h, 8.5f).ok);
     // a full iron hold never matters: crafting checks the general hold only

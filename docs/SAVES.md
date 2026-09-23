@@ -66,4 +66,4 @@ see the same thing:
 Known gaps (Phase 4.3 / later): ore chunks in flight and destroyed asteroids are **not** saved (the asteroid field regenerates on load).
 
 ## Inventory save version 2
-`gameplay/inventory` writes `{"version":2,"level":n,"stacks":[{id,amount}]}`. A save without `version` (single shared pool) loads per pool: overflow beyond an ore's or the general hold's capacity is clipped with a logged warning per stack; it never crashes.
+`gameplay/inventory` writes `{"version":3,"level":n,"slots":[{slot,id,amount}],"stacks":[{id,amount}],"perks":[...]}`: `slots` is the cargo grid layout (restored slot by slot), `stacks` the per-id totals (kept so an older build can still read it). A version 1/2 save (no `slots`) is auto-stacked into the grid. Anything that does not fit (a bad slot index, a stack over its cap, a full grid) is re-stacked and, if still no room, clipped with a logged warning per stack; it never crashes.

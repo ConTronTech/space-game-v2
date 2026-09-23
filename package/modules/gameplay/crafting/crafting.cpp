@@ -70,8 +70,12 @@ public:
         auto* bp = eng_->services.get<gameplay::IBlueprints>();            // absent = no blueprint gate at all
         std::function<bool(const std::string&)> hasBp;
         if (bp) hasBp = [bp](const std::string& k) { return bp->unlocked(k); };
+        // the unified cargo grid: the result needs room for 1 unit AFTER its ingredients are consumed (they may empty a slot); roomAfter simulates that
+        std::vector<gameplay::Stack> used;
+        for (auto& ing : r->ingredients) if (ing.need > 0) used.push_back({ing.id, ing.need});
+        float room = (float)i->roomAfter(used, r->result);
         auto d = gameplay::decideCraft(*r, [&](const std::string& k) { return i->count(k); }, [&](const std::string& k) { return volumeOf(k); },
-                                       i->free(r->result), volumeOf(r->result), requireDock_, dock && dock->docked(), [&](const std::string& k) { return !i->isResource(k); }, hasBp);
+                                       room, 1.0f, requireDock_, dock && dock->docked(), nullptr, hasBp);
         reason = d.reason;
         return d.ok;
     }

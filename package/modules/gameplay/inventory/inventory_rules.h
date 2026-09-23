@@ -1,10 +1,11 @@
 #pragma once
 // Pure cargo-hold logic: no GL, no SDL, no engine types. Unit-tested in package/tests/test_inventory.cpp.
-//   * every ORE has its own hold with its own cap (data/ores.json "cargo_cap"); filling iron can never block gold, uranium or crafting
-//   * crafted ITEMS (and any unknown id) share one GENERAL hold measured in volume units (items may carry a "volume", default 1)
-//   * add with partial accept per pool, atomic remove, stable order
-//   * upgrade levels multiply both (resource_mult, general_mult)
-//   * totals for the UI: sum of everything held / sum of every cap
+//   * ONE unified grid of slots (default 8 x 12 = 96): ores and crafted items share it, no separate pools
+//   * the slot COUNT never changes with the cargo upgrade level; the level multiplies each id's STACK CAP instead
+//     (base stack = data/ores.json "cargo_cap" for ores, data/items.json "stack_cap" (or 10 / volume) for items)
+//   * add auto-stacks: same-id slots first (up to the cap, in slot order), then new empty slots; nothing left = refused
+//   * remove is atomic across every same-id slot (taken from the LAST slots first, so full stacks stay together)
+//   * slot moves (swap / merge) and single-slot discards for the CARGO grid UI
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -15,20 +16,29 @@
 
 namespace gameplay {
 
-// ---- levels ----
-struct CargoLevel { float resourceMult = 1.0f, generalMult = 1.0f; };
-inline std::vector<CargoLevel> defaultCargoLevels() { return {{1, 1}, {2, 2}, {4, 4}, {8, 8}}; }
+// ---- levels: data/cargo.json "stack_mult" (older files: resource_mult, then capacity_mult) ----
+struct CargoLevel { float stackMult = 1.0f; };
+inline std::vector<CargoLevel> defaultCargoLevels() { return {{1}, {2}, {4}, {6}}; }
 inline int clampLevel(int level, int count) { return std::clamp(level, 0, std::max(0, count - 1)); }
 
-// ---- the ores and their caps ----
+// ---- the ores and their base stack caps ----
 struct ResourceDef {
     std::string id;
-    int cap = 20;                 // units at level 0
-    bool counted = true;          // included in the totals (ores of data/ores.json); the filler "rock" is not
+    int cap = 20;                 // units per stack at level 0 (data/ores.json "cargo_cap")
+    bool counted = true;          // listed by countedResources() (ores of data/ores.json); the filler "rock" is not
 };
 
 constexpr int kDefaultResourceCap = 20;      // an ore without "cargo_cap"
 constexpr int kRockCap = 100;                // the worthless filler
+constexpr int kDefaultItemStack = 10;        // an item (or unknown id) without "stack_cap": 10 per stack at level 0 (divided by its volume, if any)
+constexpr int kDefaultGridCols = 8, kDefaultGridRows = 12;
+
+// An item's level-0 stack from items.json: explicit stack_cap wins; else kDefaultItemStack / volume (volume <= 0 -> the default), at least 1.
+inline int itemBaseStack(double stackCap, double volume) {
+    if (stackCap > 0) return std::max(1, (int)stackCap);
+    if (volume > 0) return std::max(1, (int)std::floor(kDefaultItemStack / volume + 1e-6));
+    return kDefaultItemStack;
+}
 
 // The built-in table (data missing): the same numbers as data/ores.json.
 inline std::vector<ResourceDef> defaultResources() {
@@ -38,80 +48,113 @@ inline std::vector<ResourceDef> defaultResources() {
 
 class Cargo {
 public:
+    Cargo() { setGrid(kDefaultGridCols, kDefaultGridRows); }
+
     // ---- configuration ----
     void setResources(const std::vector<ResourceDef>& r) {
         resources_ = r;
         bool hasRock = false;
         for (auto& d : resources_) if (d.id == "rock") hasRock = true;
-        if (!hasRock) resources_.push_back({"rock", kRockCap, false});       // the filler always has a hold, but does not count in the totals
+        if (!hasRock) resources_.push_back({"rock", kRockCap, false});       // the filler always stacks, but is not listed as an ore
     }
-    void setGeneralBase(float units) { generalBase_ = std::max(0.0f, units); }
-    void setMultipliers(float resource, float general) { resMult_ = std::max(0.0f, resource); genMult_ = std::max(0.0f, general); }
-    void setVolume(const std::string& id, float v) { volumes_[id] = std::max(0.0f, v); }
-    float volumeOf(const std::string& id) const { auto it = volumes_.find(id); return it == volumes_.end() ? 1.0f : it->second; }
+    // Grid size. Resizing keeps what fits: slots past the new end are dropped (only done at init, before anything is loaded).
+    void setGrid(int cols, int rows) {
+        cols_ = std::max(1, cols); rows_ = std::max(1, rows);
+        slots_.resize((size_t)(cols_ * rows_));
+    }
+    void setStackMult(float m) { mult_ = std::max(0.0f, m); }
+    float stackMult() const { return mult_; }
+    void setItemStack(const std::string& id, int base) { itemBase_[id] = std::max(0, base); }
 
-    // ---- pools ----
+    // ---- grid ----
+    int columns() const { return cols_; }
+    int rows() const { return rows_; }
+    int slotCount() const { return (int)slots_.size(); }
+    const std::vector<Stack>& slots() const { return slots_; }            // an empty slot has an empty id and amount 0
+    int usedSlots() const { int n = 0; for (auto& s : slots_) if (!s.id.empty()) n++; return n; }
+    int freeSlots() const { return slotCount() - usedSlots(); }
+
+    // ---- stack caps ----
     bool isResource(const std::string& id) const { return def(id) != nullptr; }
-    float generalCapacity() const { return generalBase_ * genMult_; }
-    float generalUsed() const { float u = 0; for (auto& s : stacks_) if (!isResource(s.id)) u += (float)s.amount * volumeOf(s.id); return u; }
-    float generalFree() const { return std::max(0.0f, generalCapacity() - generalUsed()); }
-    int resourceCap(const std::string& id) const { const ResourceDef* d = def(id); return d ? (int)std::floor((double)d->cap * resMult_ + 1e-6) : 0; }
-    // capacity / free of the pool an id lives in (units of that pool: ore units, or volume units for the general hold)
-    float capacity(const std::string& id) const { return isResource(id) ? (float)resourceCap(id) : generalCapacity(); }
-    float used(const std::string& id) const { return isResource(id) ? (float)count(id) : generalUsed(); }
-    float free(const std::string& id) const { return std::max(0.0f, capacity(id) - used(id)); }
-
-    // ---- totals ----
-    float totalUsed() const {
-        float u = generalUsed();
-        for (auto& s : stacks_) { const ResourceDef* d = def(s.id); if (d && d->counted) u += (float)s.amount; }
-        return u;
+    int baseStack(const std::string& id) const {
+        if (const ResourceDef* d = def(id)) return d->cap;
+        auto it = itemBase_.find(id);
+        return it == itemBase_.end() ? kDefaultItemStack : it->second;
     }
-    float totalCapacity() const {
-        float c = generalCapacity();
-        for (auto& d : resources_) if (d.counted) c += (float)resourceCap(d.id);
-        return c;
+    int stackCapAt(const std::string& id, float mult) const {
+        int b = baseStack(id);
+        return b <= 0 ? 0 : std::max(1, (int)std::floor((double)b * std::max(0.0f, mult) + 1e-6));   // a positive base never scales below 1
     }
-    void countedResources(std::vector<std::string>& out) const { out.clear(); for (auto& d : resources_) if (d.counted) out.push_back(d.id); }
+    int stackCap(const std::string& id) const { return mult_ <= 0 ? 0 : stackCapAt(id, mult_); }
 
     // ---- contents ----
-    int count(const std::string& id) const { for (auto& s : stacks_) if (s.id == id) return s.amount; return 0; }
-    const std::vector<Stack>& stacks() const { return stacks_; }
-
-    // Adds up to `amount` into the id's OWN pool; returns how much fitted (0 for amount <= 0, an empty id or a full pool). Never goes over that pool's room.
-    int add(const std::string& id, int amount) {
-        if (amount <= 0 || id.empty()) return 0;
-        int fit;
-        if (isResource(id)) fit = std::min(amount, std::max(0, resourceCap(id) - count(id)));
-        else {
-            float vol = volumeOf(id);
-            fit = vol > 0.0f ? (int)std::min<double>(amount, std::floor((double)generalFree() / vol + 1e-6)) : amount;      // a zero-volume item always fits
+    int count(const std::string& id) const { long long n = 0; for (auto& s : slots_) if (s.id == id) n += s.amount; return (int)std::min<long long>(n, 2000000000LL); }
+    // How many more units of `id` would fit right now: room in its partial slots + every empty slot at a full stack.
+    int room(const std::string& id) const { return roomIn(slots_, id); }
+    // One entry per id, summed across its slots, in the order the ids first appear in the grid (the old stacks() view).
+    std::vector<Stack> totals() const {
+        std::vector<Stack> out;
+        for (auto& s : slots_) {
+            if (s.id.empty()) continue;
+            auto it = std::find_if(out.begin(), out.end(), [&](const Stack& o) { return o.id == s.id; });
+            if (it == out.end()) out.push_back(s); else it->amount += s.amount;
         }
-        if (fit <= 0) return 0;
-        for (auto& s : stacks_) if (s.id == id) { s.amount += fit; return fit; }
-        stacks_.push_back({id, fit});
-        return fit;
+        return out;
+    }
+    // Units held of the listed ores (rock excluded) plus every item: for logs / an overview.
+    long long totalUnits() const { long long n = 0; for (auto& s : slots_) if (!s.id.empty() && s.id != "rock") n += s.amount; return n; }
+    void countedResources(std::vector<std::string>& out) const { out.clear(); for (auto& d : resources_) if (d.counted) out.push_back(d.id); }
+
+    // Adds up to `amount`: tops up same-id slots first (slot order), then fills empty slots (slot order). Returns how much fitted.
+    int add(const std::string& id, int amount) { return addTo(slots_, id, amount); }
+
+    // All or nothing across every slot of the id; taken from the last slots first. An emptied slot becomes empty.
+    bool remove(const std::string& id, int amount) {
+        if (amount <= 0 || id.empty() || count(id) < amount) return false;
+        takeFrom(slots_, id, amount);
+        return true;
     }
 
-    // All or nothing. A stack that reaches 0 disappears.
-    bool remove(const std::string& id, int amount) {
-        if (amount <= 0) return false;
-        for (size_t i = 0; i < stacks_.size(); i++) {
-            if (stacks_[i].id != id) continue;
-            if (stacks_[i].amount < amount) return false;
-            stacks_[i].amount -= amount;
-            if (stacks_[i].amount == 0) stacks_.erase(stacks_.begin() + (long)i);
+    // The CARGO grid: discard `amount` from ONE slot (amount <= 0 or >= what it holds = the whole slot). Returns what was removed (0 for a bad / empty slot).
+    int discardSlot(int slot, int amount, std::string* idOut = nullptr) {
+        if (slot < 0 || slot >= slotCount() || slots_[(size_t)slot].id.empty()) return 0;
+        Stack& s = slots_[(size_t)slot];
+        int n = (amount <= 0 || amount >= s.amount) ? s.amount : amount;
+        if (idOut) *idOut = s.id;
+        s.amount -= n;
+        if (s.amount <= 0) s = Stack{};
+        return n;
+    }
+
+    // Drag one slot onto another: onto an empty slot = move; onto the same id = merge up to the cap (the rest stays behind); onto another id = swap.
+    bool moveSlot(int from, int to) {
+        if (from < 0 || to < 0 || from >= slotCount() || to >= slotCount() || from == to) return false;
+        Stack& a = slots_[(size_t)from];
+        Stack& b = slots_[(size_t)to];
+        if (a.id.empty()) return false;
+        if (b.id == a.id) {
+            int moved = std::min(a.amount, std::max(0, stackCap(a.id) - b.amount));
+            if (moved <= 0) std::swap(a, b);                                  // target already full: just swap them (harmless, same id)
+            else { b.amount += moved; a.amount -= moved; if (a.amount <= 0) a = Stack{}; }
             return true;
         }
-        return false;
+        std::swap(a, b);
+        return true;
     }
 
-    void clear() { stacks_.clear(); }
+    // Room for `id` AFTER taking the `removed` stacks out (crafting: do the ingredients free a slot for the result?). Nothing changes.
+    int roomAfter(const std::vector<Stack>& removed, const std::string& id) const {
+        std::vector<Stack> copy = slots_;
+        for (auto& r : removed) if (!r.id.empty() && r.amount > 0) takeFrom(copy, r.id, r.amount);
+        return roomIn(copy, id);
+    }
 
-    // Replaces the contents (a loaded game). Each stack goes into its pool; bad entries (empty id, amount <= 0) are dropped, duplicates merged, and anything
-    // over a pool's room is CLIPPED (returned in `clipped` so the caller can log it). Never crashes on bad data.
+    void clear() { for (auto& s : slots_) s = Stack{}; }
+
+    // Replaces the contents with auto-stacked stacks (an old save, or a --give). Bad entries (empty id, amount <= 0) are dropped;
+    // anything that does not fit is CLIPPED (returned in `clipped` so the caller can log it). Never crashes on bad data.
     void assign(const std::vector<Stack>& in, std::vector<Stack>* clipped = nullptr) {
-        stacks_.clear();
+        clear();
         if (clipped) clipped->clear();
         for (auto& s : in) {
             if (s.id.empty() || s.amount <= 0) continue;
@@ -120,13 +163,77 @@ public:
         }
     }
 
+    // Replaces the contents with a saved slot layout (version 3 saves). Each entry goes back into its own slot when that index is valid and free
+    // (and up to the stack cap); whatever could not be placed is auto-stacked afterwards, and anything still left over is clipped.
+    struct PlacedStack { int slot = -1; Stack stack; };
+    void assignSlots(const std::vector<PlacedStack>& in, std::vector<Stack>* clipped = nullptr) {
+        clear();
+        if (clipped) clipped->clear();
+        std::vector<Stack> rest;
+        for (auto& p : in) {
+            if (p.stack.id.empty() || p.stack.amount <= 0) continue;
+            int cap = stackCap(p.stack.id);
+            if (p.slot >= 0 && p.slot < slotCount() && slots_[(size_t)p.slot].id.empty() && cap > 0) {
+                int keep = std::min(p.stack.amount, cap);
+                slots_[(size_t)p.slot] = {p.stack.id, keep};
+                if (p.stack.amount > keep) rest.push_back({p.stack.id, p.stack.amount - keep});
+            } else rest.push_back(p.stack);
+        }
+        for (auto& s : rest) {
+            int got = add(s.id, s.amount);
+            if (got < s.amount && clipped) clipped->push_back({s.id, s.amount - got});
+        }
+    }
+
 private:
     const ResourceDef* def(const std::string& id) const { for (auto& d : resources_) if (d.id == id) return &d; return nullptr; }
 
+    int roomIn(const std::vector<Stack>& v, const std::string& id) const {
+        if (id.empty()) return 0;
+        int cap = stackCap(id);
+        if (cap <= 0) return 0;
+        long long r = 0;
+        for (auto& s : v) {
+            if (s.id.empty()) r += cap;
+            else if (s.id == id) r += std::max(0, cap - s.amount);            // an over-full slot (a lowered level) simply has no room
+        }
+        return (int)std::min<long long>(r, 2000000000LL);
+    }
+
+    int addTo(std::vector<Stack>& v, const std::string& id, int amount) const {
+        if (amount <= 0 || id.empty()) return 0;
+        int cap = stackCap(id);
+        if (cap <= 0) return 0;
+        int left = amount;
+        for (auto& s : v) {                                                   // 1) top up the stacks we already have
+            if (left <= 0) break;
+            if (s.id != id || s.amount >= cap) continue;
+            int put = std::min(left, cap - s.amount);
+            s.amount += put; left -= put;
+        }
+        for (auto& s : v) {                                                   // 2) spill into empty slots
+            if (left <= 0) break;
+            if (!s.id.empty()) continue;
+            int put = std::min(left, cap);
+            s = {id, put}; left -= put;
+        }
+        return amount - left;
+    }
+
+    static void takeFrom(std::vector<Stack>& v, const std::string& id, int amount) {
+        for (size_t k = v.size(); k-- > 0 && amount > 0;) {
+            if (v[k].id != id) continue;
+            int t = std::min(amount, v[k].amount);
+            v[k].amount -= t; amount -= t;
+            if (v[k].amount <= 0) v[k] = Stack{};
+        }
+    }
+
     std::vector<ResourceDef> resources_;
-    float generalBase_ = 30.0f, resMult_ = 1.0f, genMult_ = 1.0f;
-    std::vector<Stack> stacks_;
-    std::unordered_map<std::string, float> volumes_;
+    std::unordered_map<std::string, int> itemBase_;
+    std::vector<Stack> slots_;
+    int cols_ = kDefaultGridCols, rows_ = kDefaultGridRows;
+    float mult_ = 1.0f;
 };
 
 // "iron:50,copper:20" -> stacks (dev flag --give). Bad pieces are skipped.
@@ -147,7 +254,9 @@ inline std::vector<Stack> parseGive(const std::string& text) {
     return out;
 }
 
-constexpr int kSaveVersion = 2;              // 1 = the single-pool format (no "version" key), 2 = per-resource pools (same stack list, loaded through the pools)
+// 1 = the single-pool format (no "version" key), 2 = per-resource pools (a merged "stacks" list),
+// 3 = the unified grid: "slots" [{slot, id, amount}] (the layout the player arranged) plus a merged "stacks" list for older builds.
+constexpr int kSaveVersion = 3;
 
 // ---- perks: a small ordered set of ids (saved as a list) ----
 struct Perks {

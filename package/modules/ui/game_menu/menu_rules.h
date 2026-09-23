@@ -24,4 +24,35 @@ private:
     bool active_ = false;
 };
 
+// ---- the CARGO grid (docs/INVENTORY.md "CARGO grid") ----
+// Keyboard / D-pad cursor: one step in a direction, clamped at the grid edges (no wrap, so holding a direction stops at the edge).
+// A negative slot (nothing selected yet) starts at slot 0.
+inline int gridStep(int slot, int dx, int dy, int cols, int count) {
+    if (count <= 0 || cols <= 0) return -1;
+    if (slot < 0 || slot >= count) return 0;
+    int col = slot % cols, row = slot / cols, rows = (count + cols - 1) / cols;
+    col = col + dx < 0 ? 0 : (col + dx >= cols ? cols - 1 : col + dx);
+    row = row + dy < 0 ? 0 : (row + dy >= rows ? rows - 1 : row + dy);
+    int s = row * cols + col;
+    return s < count ? s : count - 1;                                    // a short last row
+}
+
+// The non-mouse discard: the first press on a slot ARMS it, a second press on the SAME slot within `window` seconds discards.
+// Pressing on another slot re-arms that one instead. (A controller paddle must not trash a stack with one accidental press.)
+class DiscardConfirm {
+public:
+    // Returns true when the slot should be discarded now.
+    bool press(int slot, double now, double window = 3.0) {
+        if (slot < 0) { armed_ = -1; return false; }
+        if (armed_ == slot && now - armedAt_ <= window) { armed_ = -1; return true; }
+        armed_ = slot; armedAt_ = now;
+        return false;
+    }
+    bool armed(int slot, double now, double window = 3.0) const { return armed_ >= 0 && armed_ == slot && now - armedAt_ <= window; }
+    void reset() { armed_ = -1; }
+private:
+    int armed_ = -1;
+    double armedAt_ = 0;
+};
+
 } // namespace ui

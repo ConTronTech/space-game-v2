@@ -86,6 +86,7 @@ public:
     bool pointerFree() const;
     int mouseX() const { return mx_; }
     int mouseY() const { return my_; }
+    bool mouseHeld() const { return mouseDown_ && pointerFree(); }   // left button currently down (for drag and drop, e.g. the CARGO grid)
     bool hovered(float x, float y, float w, float h) const;
     bool button(const std::string& label, float x, float y, float w, float h, bool focused);   // true on click
     bool toggle(const std::string& label, float x, float y, float w, float h, bool value, bool focused); // returns new value

@@ -27,7 +27,8 @@
     { "index": 8,  "action": "camera_next" },
     { "index": 9,  "action": "toggle_orbit_lock" },
     { "index": 12, "action": "toggle_menu" },
-    { "index": 13, "action": "dock" }
+    { "index": 13, "action": "dock" },
+    { "index": 4,  "action": "menu_discard" }     // left paddle: CARGO grid discard (D-pad selects a slot; press twice to confirm; only while the game menu is open)
   ],
 
   // Shifter gears (when connected): buttons will appear as extra numbers; map them with `./joytest --guided --steps=...` or add "groups" (docs/CONTROLLERS.md).

@@ -25,7 +25,7 @@ data.has("items", "repair_kit");
 | `data/ores.json` | 8 ores: name, `color` [r,g,b], `rarity` (spawn weight) |
 | `data/ore_zones.json` | ore tiers by distance from the sun (world/asteroids, docs/WORLD.md "Ore zones"): per zone id, `min_distance` / `max_distance` (world units, [min, max), first match in file order), `weight_multiplier` {ore id: x} (missing = 1; never 0). Missing/empty file = the plain `rarity` weights |
 | `data/items.json` | 8 items: name, description, color, `effect` (e.g. `{"warp_fuel": 25}`), optional `permanent` |
-| `data/cargo.json` | 4 cargo hold upgrade levels: name, `capacity_mult` (x `inventory.capacity`): 100 / 200 / 400 / 800 (docs/INVENTORY.md) |
+| `data/cargo.json` | 4 cargo hold upgrade levels: name, `stack_mult` (x every stack cap; the grid slot count is fixed): 1 / 2 / 4 / 6 (docs/INVENTORY.md) |
 | `data/anomalies.json` | 5 anomaly kinds: name, `messages`, `rewards` [{ore, min, max, weight}], `detect_mult`, `weight`, optional `blueprint` (docs/ANOMALIES.md) |
 | `data/blueprints.json` | blueprint id -> `name` (docs/BLUEPRINTS.md) |
 | `data/recipes.json` | 8 recipes: name, `result` (item id), `ingredients` `{ore id: amount}`, optional `requires_blueprint` (docs/BLUEPRINTS.md) |
@@ -41,4 +41,4 @@ Ported from the old game's `ORE_TABLE`, `ITEM_TABLE` and `RECIPES`.
 ## Cargo data additions
 - `ores.json`: optional `cargo_cap` per ore (default 20; `rock` filler 100).
 - `items.json`: optional `volume` (default 1) = units of general hold.
-- `cargo.json`: levels use `resource_mult` and `general_mult`; `capacity_mult` is a fallback. Tunable `inventory.general_capacity` (30).
+- `cargo.json`: levels use `stack_mult`; older files fall back to `resource_mult`, then `capacity_mult`. Items may set `stack_cap` (default 10, or 10 / `volume`). Tunables `inventory.grid_columns` (8), `inventory.grid_rows` (12).

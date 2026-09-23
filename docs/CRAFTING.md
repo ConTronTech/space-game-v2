@@ -39,4 +39,4 @@ One row per recipe: name, ingredients as `Name have/need` (**green** enough, **r
 `crafting.require_dock` (true).
 
 ## Cargo rework
-Ingredients are taken from the resource holds; the result needs room only in the GENERAL hold (its `volume`). Ingredients that live in the general hold free their own volume first. Refusal reason: "general hold full (use or discard an item)". Discard from the CARGO tab (see GAME_MENU.md) to make room, so crafting can never softlock.
+Ingredients are taken from the cargo grid (summed across every slot of that id); the result needs room for one unit in the grid AFTER the ingredients are consumed (`IInventory::roomAfter`: an ingredient that empties a slot frees it for the result). Refusal reason: "cargo full (use or discard an item)". Discard from the CARGO tab (see GAME_MENU.md) to make room, so crafting can never softlock.

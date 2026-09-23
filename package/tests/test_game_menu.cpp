@@ -63,3 +63,26 @@ TEST(game_menu_esc_closes_the_menu_and_is_cancelled_while_held) {
     CHECK(!t.step(true, 0.0f, close));
     CHECK(t.step(true, 1.0f, close)); CHECK(close);                       // a fresh press closes again
 }
+
+TEST(game_menu_cargo_grid_cursor_is_clamped_at_the_edges) {
+    CHECK_EQ(ui::gridStep(-1, 1, 0, 8, 96), 0);                          // nothing selected: start at the first slot
+    CHECK_EQ(ui::gridStep(0, 1, 0, 8, 96), 1); CHECK_EQ(ui::gridStep(0, -1, 0, 8, 96), 0);
+    CHECK_EQ(ui::gridStep(7, 1, 0, 8, 96), 7);                           // right edge: stays (no wrap into the next row)
+    CHECK_EQ(ui::gridStep(3, 0, 1, 8, 96), 11); CHECK_EQ(ui::gridStep(3, 0, -1, 8, 96), 3);
+    CHECK_EQ(ui::gridStep(92, 0, 1, 8, 96), 92);                         // bottom row
+    CHECK_EQ(ui::gridStep(8, 0, 1, 8, 10), 8); CHECK_EQ(ui::gridStep(1, 0, 1, 8, 10), 9);
+    CHECK_EQ(ui::gridStep(7, 0, 1, 8, 10), 9);                           // a short last row: clamped to the last slot
+    CHECK_EQ(ui::gridStep(0, 1, 0, 8, 0), -1); CHECK_EQ(ui::gridStep(500, 1, 0, 8, 96), 0);
+}
+
+TEST(game_menu_cargo_discard_needs_two_presses_on_the_same_slot) {
+    ui::DiscardConfirm d;
+    CHECK(!d.press(4, 10.0)); CHECK(d.armed(4, 10.5)); CHECK(!d.armed(5, 10.5));
+    CHECK(d.press(4, 11.0));                                             // second press within the window: discard
+    CHECK(!d.armed(4, 11.0));
+    CHECK(!d.press(4, 20.0)); CHECK(!d.press(4, 24.0));                  // too slow: the second press only re-arms ...
+    CHECK(d.press(4, 25.0));                                             // ... and a quick third one discards
+    CHECK(!d.press(2, 30.0)); CHECK(!d.press(3, 30.5)); CHECK(d.armed(3, 30.5)); CHECK(!d.armed(2, 30.5));   // another slot re-arms, never discards
+    d.reset(); CHECK(!d.press(3, 31.0));
+    CHECK(!d.press(-1, 31.2)); CHECK(!d.press(3, 31.4));                 // "no slot" disarms
+}

@@ -21,6 +21,8 @@ struct Recipe {
 // ---- crafting ----
 struct Decision { bool ok = false; std::string reason; };
 
+// (gameplay/crafting now passes the unified grid's room for 1 result AFTER the ingredients leave (IInventory::roomAfter) as generalFree, resultVolume 1
+// and no isGeneral hint; the parameters keep their old names so the rules and their tests stay as they were.)
 // countOf(id) = how many are in the hold. Ingredients (ores) come out of their own resource holds; the RESULT needs room only in the GENERAL hold:
 // generalFree = free volume in it now, isGeneral(id) says whether an ingredient lives there too (then its volume is freed for the result),
 // volumeOf(id) = volume per item. `docked` only matters when requireDock is on.
@@ -39,7 +41,7 @@ inline Decision decideCraft(const Recipe& r, const std::function<int(const std::
     }
     float freed = 0;
     for (auto& ing : r.ingredients) if (isGeneral && isGeneral(ing.id)) freed += (float)std::max(0, ing.need) * volumeOf(ing.id);
-    if (generalFree + freed + 1e-4f < resultVolume) return {false, "general hold full (use or discard an item)"};
+    if (generalFree + freed + 1e-4f < resultVolume) return {false, "cargo full (use or discard an item)"};
     return {true, "ok"};
 }
 
