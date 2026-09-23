@@ -101,7 +101,8 @@ private:
     void draw(core::UIHandler& ui) {
         if (tabs_.empty()) return;
         float W = (float)ui.width(), H = (float)ui.height();
-        float pw = std::clamp(W * 0.64f, 760.0f, W - 24.0f), ph = std::clamp(H * 0.72f, 480.0f, H - 24.0f);
+        // sized up from 0.64/0.72 (2026-09-23, user feedback: the CARGO grid felt cramped) so the 8x12 slot grid gets real room to breathe
+        float pw = std::clamp(W * 0.72f, 820.0f, W - 24.0f), ph = std::clamp(H * 0.85f, 560.0f, H - 24.0f);
         float x = (W - pw) / 2, y = (H - ph) / 2;
         ui.roundedRect(x, y, pw, ph, 16, {0.02f, 0.03f, 0.06f, 0.78f}, {0.02f, 0.03f, 0.06f, 0.78f});   // a dark backing: the cockpit model behind must not fight the text
         ui.glass(x, y, pw, ph, 1.0f, false, 16);
@@ -282,7 +283,7 @@ private:
         // layout: the grid on the left, the info panel and the trash on the right
         float top = y + 38, bottom = y + h - 70;
         float pitch = std::floor(std::min((bottom - top) / (float)rows, w * 0.56f / (float)cols));
-        pitch = std::max(pitch, 14.0f);
+        pitch = std::max(pitch, 20.0f);   // sized up from 14 alongside the bigger panel (2026-09-23)
         float gap = std::max(2.0f, std::floor(pitch * 0.08f)), cs = pitch - gap;
         float gx = x, gy = top, gw = cols * pitch;
         ui.bar(x, y + 26, gw - gap, 6, frac, fillColour(frac));
