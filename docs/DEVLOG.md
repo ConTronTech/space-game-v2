@@ -73,6 +73,20 @@ only after the full check passes, so it should always run.
   are ready for a HUD worker to pick up); balance (interval, damage, falloff range) is a first guess, not playtested.
 - **Next:** Phase 6 item 5, distress beacons + black boxes (`docs/GAME_LOOPS.md`).
 
+## Leap 65 - 2026-09-22 (DONE, tag `good-20260922-28`): Phase 6 item 5, `world/distress_beacons`
+- **Changed:** a recurring, timed distress signal (`docs/DISTRESS_BEACONS.md`) - distinct from anomalies (fixed, one-time, scanner-gated sites):
+  every 60-180s (seeded) a beacon spawns somewhere reachable (deep space / near a body / in the belt, a trimmed copy of the anomalies zone logic
+  since including that module's header would break modularity), always visible on the radar within 150k units (no perk needed - it's a
+  broadcast), and goes quiet after 120s if not reached. Flying within 75 units claims a black box (new flavor item) + 10 cobalt. At most one
+  beacon at a time. No save: the timer re-rolls from the seed on load.
+- Same pipeline as the last two leaps: coordinator wrote the design spec, one worker agent built it in an isolated worktree, coordinator
+  reviewed + integrated + tested.
+- **Verified:** 627 tests under ASan+UBSan (up from 618), full `smoke.sh` (51 modules), and a live run (`--distress-beacon-now --frames=800`)
+  confirmed a real spawn: "beacon 0, belt at (-98475, -186, -73209), 122706 units from the ship, lifetime 120s".
+- **Not verified:** no radar marker or HUD countdown yet (the service exposes `detected()`/`position()`/`etaExpirySeconds()` for a future HUD
+  worker); balance (spawn interval, lifetime, reward) is a first guess, not playtested; the black box item has no use yet beyond being carried.
+- **Next:** Phase 6 item 6, cargo pods (`docs/GAME_LOOPS.md`).
+
 ## Leap 16 - 2026-09-21 (DONE, tag `good-20260921-11`): Phase 3.7 stations + docking - PHASE 3 COMPLETE
 - **Changed:** `world/stations` (seeded 1-3 stations, orbital or planetary, analytic positions, placeholder cube + cylinder models, static physics bodies, `world::IStations`) and `ship/docking` (`G` key: dock inside the zone (scale*60) below `docking.max_speed` 15 m/s, refusals logged with reasons, steered hold like orbit_lock, thrust or `G` undocks with a small push, events + `ship::IDocking`). `docking.test_refill` (default FALSE, test only: real fuel/shield come from mining). `stations.seed_offset` re-rolls stations only (default seed puts both on Planet 2 as surface stations).
 - **Verified:** 235 tests under ASan+UBSan, smoke (29 modules), headless clean; saved-game scenarios: dock/hold (distance stayed 112.38 over 7 s while the station moved ~140 units)/undock, too fast, too far, planetary dock, station collision (other-tier damage + bounce), screenshots of both station types; benchmark unchanged.
