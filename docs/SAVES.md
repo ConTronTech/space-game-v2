@@ -23,7 +23,7 @@ class Inventory : public engine::Module, public core::ISaveable {
 ```
 
 - Save files: `saves/<slot>.json` = `{ "format": 1, "time": <unix>, "modules": { "<saveId>": {...} } }`. Git-ignored.
-- Slots are timestamped (`save_YYYYMMDD_HHMMSS`); the pause menu's Load page shows the newest 6. `--saves=<dir>` uses another folder.
+- New slots get timestamped names (`save_YYYYMMDD_HHMMSS`, from `newSlotName()`); the pause menu's Load page shows the newest 6 (the autosave is labelled "Autosave"). `--saves=<dir>` uses another folder.
 - Writes are atomic (temp file + rename), so a crash mid-save never destroys the previous save.
 - A bad, corrupt or too-new file is rejected **before** anything is touched, so the running game is never half-loaded.
 - Saves from older or newer versions load fine: unknown modules in the file are ignored, and modules missing from
@@ -32,6 +32,26 @@ class Inventory : public engine::Module, public core::ISaveable {
 - Events: `core::GameSaved{slot}`, `core::GameLoaded{slot}` (after every module has loaded) - use `GameLoaded` to rebuild anything derived.
 - Procedural worlds should save their **seed**, not their contents, and regenerate on load.
 - When restoring position-like state, reset any interpolation history so nothing smears across the jump (see flight's `load`).
+
+## Active slot, Save vs Save As, autosave
+The session's save state lives in `core/save_system` itself (not in a menu), so the pause menu and a future main menu
+see the same thing:
+
+| `ISaveSystem` call | Meaning |
+|---|---|
+| `activeSlot()` | the slot a manual "Save" overwrites: the last slot successfully saved to or loaded. `""` = none (fresh process, after loading the autosave, or after the active slot was deleted) |
+| `lastSaveTime()` / `lastLoadTime()` | unix seconds of the last successful save (manual **or** autosave) / load; 0 = none this session |
+| `autosave()` | writes the reserved slot `ISaveSystem::kAutosaveSlot` (`"autosave"`), always overwriting it |
+
+- Session state only: nothing about the active slot is written to disk. A new process starts with no active slot.
+- `saveSlot()` / `loadSlot()` set the active slot only on success, and never to `"autosave"`: an autosave must not
+  redirect where "Save" goes. Loading the autosave clears the active slot, so the next "Save" makes a new slot.
+- Autosave timer: every `save.autosave_interval_seconds` (config tunable, default 300, `0` = off) of **simulation**
+  time; it runs in the save system's `onFixedUpdate`, so time spent paused does not count. Any successful save or load
+  restarts the countdown; a failed autosave is logged and retried one interval later.
+- Pause menu: **Save Game** overwrites `activeSlot()` (with no active slot it behaves like Save As). **Save As...**
+  always writes a new slot and makes it active. There is no text-entry widget yet, so Save As uses an auto-generated
+  name; the menu's `saveAsName_` field is the hook a name field will fill later.
 
 ## What is saved today
 | Save id | Content |

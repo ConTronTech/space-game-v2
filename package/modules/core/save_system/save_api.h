@@ -9,6 +9,9 @@
 //         bool init(engine::Engine& e) override { if (auto* s = e.services.get<core::ISaveSystem>()) s->registerSaveable(this); ... }
 //     };
 // Saving/loading slots is done by menus:  saves.saveSlot(saves.newSlotName());  saves.loadSlot(name);
+// The save system also tracks the session's *active slot* (the last one manually saved to or loaded): "Save" should
+// overwrite it, "Save As" should pick a new name. The reserved slot kAutosaveSlot is written by autosave() (on a timer,
+// save.autosave_interval_seconds) and never becomes the active slot, so an autosave never redirects a manual "Save".
 #include <string>
 #include <vector>
 #include "engine/json.h"
@@ -33,14 +36,22 @@ struct SlotInfo {
 
 class ISaveSystem {
 public:
+    static constexpr const char* kAutosaveSlot = "autosave";      // reserved: always overwritten, never the active slot
+
     virtual ~ISaveSystem() = default;
     virtual void registerSaveable(ISaveable* s) = 0;
     virtual void unregisterSaveable(ISaveable* s) = 0;
-    virtual bool saveSlot(const std::string& name) = 0;            // false on error (see log)
-    virtual bool loadSlot(const std::string& name) = 0;            // false leaves the running game untouched
+    virtual bool saveSlot(const std::string& name) = 0;            // false on error (see log). Success makes `name` the active slot (not for kAutosaveSlot)
+    virtual bool loadSlot(const std::string& name) = 0;            // false leaves the running game untouched. Success makes `name` the active slot (not for kAutosaveSlot)
     virtual std::vector<SlotInfo> listSlots() const = 0;           // newest first
-    virtual bool deleteSlot(const std::string& name) = 0;
+    virtual bool deleteSlot(const std::string& name) = 0;          // deleting the active slot clears activeSlot()
     virtual std::string newSlotName() const = 0;                   // unique, timestamped
+
+    // Session state (not persisted: a new process starts with no active slot and both times 0).
+    virtual const std::string& activeSlot() const = 0;             // "" = none yet: "Save" should then behave like "Save As"
+    virtual long long lastSaveTime() const = 0;                    // unix seconds of the last successful save (manual or autosave), 0 = none
+    virtual long long lastLoadTime() const = 0;                    // unix seconds of the last successful load, 0 = none
+    virtual bool autosave() = 0;                                   // writes kAutosaveSlot; does NOT change activeSlot()
 };
 
 } // namespace core

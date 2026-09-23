@@ -28,6 +28,7 @@ Put every number a player might want to tune here instead of hard-coding it.
 ## Current tunables
 - `engine.fixed_hz` - physics steps per second
 - `flight.*` - `thrust`, `turn_rate`, `turn_tau`, `engine_tau`, `drift`, `assist_strength`, `brake`, `max_speed`
+- `save.autosave_interval_seconds` - autosave every N seconds of play (default 300, 0 = off; docs/SAVES.md)
 
 Related but separate files: `config/input/*.json` (bindings), `config/ui/theme.json` (glass look).
 

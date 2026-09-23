@@ -16,6 +16,9 @@ bool SaveSystem::init(engine::Engine& eng) {
     eng_ = &eng;
     std::string d = eng.flagValue("saves");
     if (!d.empty()) dir_ = d;
+    autosaveInterval_ = eng.config.get("save.autosave_interval_seconds", 300.0f,
+                                       "autosave every N seconds of play (pause-menu time does not count) into saves/autosave.json; 0 = off");
+    autosaveTimer_ = 0;
     eng.services.provide<ISaveSystem>(this);
     return true;
 }
@@ -46,6 +49,24 @@ void SaveSystem::unregisterSaveable(ISaveable* s) {
 }
 
 bool SaveSystem::saveSlot(const std::string& name) {
+    if (!writeSlot(name)) return false;
+    if (name != kAutosaveSlot) active_ = name;   // saving into the autosave slot by hand still leaves "Save" pointing where it was
+    return true;
+}
+
+bool SaveSystem::autosave() {
+    return writeSlot(kAutosaveSlot);             // never touches active_
+}
+
+void SaveSystem::onFixedUpdate(engine::Engine&, float dt) {
+    if (autosaveInterval_ <= 0) return;
+    autosaveTimer_ += dt;
+    if (autosaveTimer_ < autosaveInterval_) return;
+    autosaveTimer_ = 0;                          // restart even on failure: the error is logged once per interval, not every step
+    if (autosave()) LOG_I("save", "autosaved");
+}
+
+bool SaveSystem::writeSlot(const std::string& name) {
     if (!validSlotName(name)) { LOG_E("save", "invalid slot name '%s'", name.c_str()); return false; }
 
     engine::Json mods = engine::Json::object();
@@ -65,6 +86,8 @@ bool SaveSystem::saveSlot(const std::string& name) {
     fs::rename(tmp, path, ec);   // atomic: a crash mid-save never destroys the previous save
     if (ec) { LOG_E("save", "cannot replace %s: %s", path.c_str(), ec.message().c_str()); return false; }
     LOG_I("save", "saved '%s' (%zu modules)", name.c_str(), saveables_.size());
+    lastSave_ = now();
+    autosaveTimer_ = 0;                          // a fresh save (manual or auto) restarts the autosave countdown
     if (eng_) eng_->events.emit(GameSaved{name});
     return true;
 }
@@ -96,6 +119,11 @@ bool SaveSystem::loadSlot(const std::string& name) {
         if (!known) LOG_D("save", "'%s' contains data for unknown module %s (ignored)", name.c_str(), id.c_str());
     }
     LOG_I("save", "loaded '%s' (%d modules)", name.c_str(), loaded);
+    lastLoad_ = now();
+    autosaveTimer_ = 0;
+    // Loading a slot makes it the one "Save" overwrites. Loading the autosave does not: the next "Save" then acts like
+    // "Save As" (a new slot) instead of writing into the slot the timer will overwrite anyway.
+    active_ = name == kAutosaveSlot ? std::string() : name;
     if (eng_) eng_->events.emit(GameLoaded{name});
     return true;
 }
@@ -123,7 +151,9 @@ std::vector<SlotInfo> SaveSystem::listSlots() const {
 bool SaveSystem::deleteSlot(const std::string& name) {
     if (!validSlotName(name)) return false;
     std::error_code ec;
-    return fs::remove(pathFor(name), ec);
+    bool removed = fs::remove(pathFor(name), ec);
+    if (removed && name == active_) active_.clear();   // "Save" must not silently recreate a slot the player deleted
+    return removed;
 }
 
 std::string SaveSystem::newSlotName() const {

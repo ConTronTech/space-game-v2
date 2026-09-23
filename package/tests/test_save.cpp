@@ -148,3 +148,73 @@ TEST(save_delete_slot) {
     CHECK(!r.sys.deleteSlot("x"));
     CHECK(!r.sys.deleteSlot("../x"));
 }
+
+TEST(save_active_slot_follows_manual_saves_and_loads) {
+    Rig r("active");
+    CHECK(r.sys.activeSlot().empty());                  // fresh session: nothing to overwrite yet
+    CHECK_EQ(r.sys.lastSaveTime(), 0LL);
+    CHECK_EQ(r.sys.lastLoadTime(), 0LL);
+    r.t = 500; CHECK(r.sys.saveSlot("a"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("a"));
+    CHECK_EQ(r.sys.lastSaveTime(), 500LL);
+    r.t = 600; CHECK(r.sys.saveSlot("b"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("b"));
+    r.t = 700; CHECK(r.sys.loadSlot("a"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("a"));
+    CHECK_EQ(r.sys.lastLoadTime(), 700LL);
+    CHECK_EQ(r.sys.lastSaveTime(), 600LL);
+    // failures change nothing
+    CHECK(!r.sys.loadSlot("missing"));
+    CHECK(!r.sys.saveSlot("../bad"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("a"));
+    CHECK_EQ(r.sys.lastLoadTime(), 700LL);
+    // deleting the active slot clears it; deleting another does not
+    CHECK(r.sys.deleteSlot("b"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("a"));
+    CHECK(r.sys.deleteSlot("a"));
+    CHECK(r.sys.activeSlot().empty());
+}
+
+TEST(save_autosave_does_not_change_active_slot) {
+    Rig r("auto");
+    Thing a("m");
+    r.sys.registerSaveable(&a);
+    CHECK(r.sys.saveSlot("mine"));
+    r.t = 2000; a.hp = 11;
+    CHECK(r.sys.autosave());
+    CHECK(fs::exists(r.dir + "/" + core::ISaveSystem::kAutosaveSlot + ".json"));
+    CHECK_EQ(r.sys.activeSlot(), std::string("mine"));
+    CHECK_EQ(r.sys.lastSaveTime(), 2000LL);             // an autosave still counts as "last saved"
+    CHECK(r.sys.saveSlot(core::ISaveSystem::kAutosaveSlot));   // by hand into the reserved slot: still not active
+    CHECK_EQ(r.sys.activeSlot(), std::string("mine"));
+    a.hp = 0;
+    CHECK(r.sys.loadSlot(core::ISaveSystem::kAutosaveSlot));   // loading the autosave: next "Save" acts like "Save As"
+    CHECK_EQ(a.hp, 11);
+    CHECK(r.sys.activeSlot().empty());
+}
+
+TEST(save_autosave_interval_triggers) {
+    Rig r("interval");
+    std::vector<std::string> saved;
+    r.eng.events.subscribe<core::GameSaved>([&](const core::GameSaved& e) { saved.push_back(e.slot); });
+    CHECK_EQ(r.sys.autosaveInterval(), 300.0f);         // default tunable
+    r.sys.setAutosaveInterval(10.0f);
+    for (int i = 0; i < 99; i++) r.sys.onFixedUpdate(r.eng, 0.1f);   // ~9.9 s
+    CHECK(saved.empty());
+    for (int i = 0; i < 2; i++) r.sys.onFixedUpdate(r.eng, 0.1f);    // crosses 10 s
+    CHECK_EQ(saved.size(), (size_t)1);
+    CHECK_EQ(saved[0], std::string(core::ISaveSystem::kAutosaveSlot));
+    CHECK(r.sys.activeSlot().empty());
+    // a manual save restarts the countdown
+    for (int i = 0; i < 50; i++) r.sys.onFixedUpdate(r.eng, 0.1f);   // 5 s
+    CHECK(r.sys.saveSlot("manual"));
+    for (int i = 0; i < 90; i++) r.sys.onFixedUpdate(r.eng, 0.1f);   // 9 s since the manual save
+    CHECK_EQ(saved.size(), (size_t)2);                  // only the manual save was added
+    for (int i = 0; i < 11; i++) r.sys.onFixedUpdate(r.eng, 0.1f);
+    CHECK_EQ(saved.size(), (size_t)3);
+    CHECK_EQ(r.sys.activeSlot(), std::string("manual"));
+    // 0 disables it
+    r.sys.setAutosaveInterval(0);
+    for (int i = 0; i < 1000; i++) r.sys.onFixedUpdate(r.eng, 1.0f);
+    CHECK_EQ(saved.size(), (size_t)3);
+}

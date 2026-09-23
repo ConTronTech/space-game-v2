@@ -1,5 +1,7 @@
 // ui/pause_menu - Esc pauses the simulation and opens a glass menu.
-//   Main:     Resume / Save Game / Load Game / Settings / Exit Game   (Save/Load only if core/save_system is loaded)
+//   Main:     Resume / Save Game / Save As / Load Game / Settings / Exit Game   (Save/Save As/Load only if core/save_system is loaded)
+//             Save Game overwrites the save system's active slot (the last one saved to or loaded); with no active slot it acts as Save As.
+//             Save As writes a new slot (name: saveAsName_, auto-generated until a text-entry widget exists) and makes it active.
 //   Load:     your saves, newest first
 //   Settings: Field of View, Mouse Sensitivity, Master/Effects/Engine Volume (if core/audio is loaded), Fullscreen, Display (2+ displays), Mode, Resolution, Graphics, Back
 //             (the page scales with the window and switches to two columns when it does not fit: 5:4 / 4:3 / small windows)
@@ -49,7 +51,7 @@ public:
         rows_.push_back(Row::Back);
 
         main_ = {Main::Resume};
-        if (saves_) { main_.push_back(Main::Save); main_.push_back(Main::Load); }
+        if (saves_) { main_.push_back(Main::Save); main_.push_back(Main::SaveAs); main_.push_back(Main::Load); }
         main_.push_back(Main::Settings);
         main_.push_back(Main::Exit);
 
@@ -85,7 +87,7 @@ public:
 
 private:
     enum class Page { Main, Load, Settings };
-    enum class Main { Resume, Save, Load, Settings, Exit };
+    enum class Main { Resume, Save, SaveAs, Load, Settings, Exit };
     enum class Row { Fov, Sens, Master, Sfx, EngineVol, Fullscreen, Display, Mode, Resolution, Graphics, Controllers, Back };   // settings rows (built in init)
     static constexpr float kFovMin = 60, kFovMax = 120, kSensMin = 0.2f, kSensMax = 10.0f;   // mouse sensitivity slider: 0.2 .. 10 (the old cap of 3 was too slow)
     static constexpr size_t kMaxSlotsShown = 6;
@@ -125,6 +127,18 @@ private:
         status_.clear();
     }
     void setStatus(const std::string& s, bool ok) { status_ = s; statusOk_ = ok; }
+
+    void saveTo(const std::string& slot) {
+        if (saves_->saveSlot(slot)) setStatus("Game saved (" + slot + ")", true);
+        else setStatus("Save failed - see logs/game.log", false);
+    }
+    // Save As: writes a NEW slot named saveAsName_. There is no text-entry widget yet, so the name is always auto-generated;
+    // a future name field only has to fill saveAsName_ (letters, digits, '_' and '-') before calling this.
+    void saveAs() {
+        std::string slot = saveAsName_.empty() ? saves_->newSlotName() : saveAsName_;
+        saveAsName_.clear();
+        saveTo(slot);
+    }
 
     // Graphics preset: the choice is saved as settings "quality.preset" and applies on the next launch (core/quality reads it at startup).
     quality::Preset pendingQuality() const {
@@ -211,12 +225,11 @@ private:
         if (page_ == Page::Main) {
             switch (main_[(size_t)i]) {
                 case Main::Resume:   eng_->setPaused(false); break;
-                case Main::Save: {
-                    std::string slot = saves_->newSlotName();
-                    if (saves_->saveSlot(slot)) setStatus("Game saved", true);
-                    else setStatus("Save failed - see logs/game.log", false);
+                case Main::Save:
+                    if (saves_->activeSlot().empty()) saveAs();          // nothing to overwrite yet
+                    else saveTo(saves_->activeSlot());
                     break;
-                }
+                case Main::SaveAs:   saveAs(); break;
                 case Main::Load:     openLoad(); break;
                 case Main::Settings: page_ = Page::Settings; focus_ = 0; status_.clear(); break;
                 case Main::Exit:     eng_->quit(); break;
@@ -303,11 +316,15 @@ private:
             bool f = focus_ == i;
 
             if (page_ == Page::Main) {
-                static const char* labels[] = {"Resume", "Save Game", "Load Game", "Settings", "Exit Game"};
+                static const char* labels[] = {"Resume", "Save Game", "Save As...", "Load Game", "Settings", "Exit Game"};
                 if (ui.button(labels[(int)main_[(size_t)i]], ix, iy, iw, itemH, f)) pending = i;
             } else if (page_ == Page::Load) {
                 if (i == (int)slots_.size()) { if (ui.button("Back", ix, iy, iw, itemH, f)) pending = i; }
-                else if (ui.button(when(slots_[(size_t)i].time), ix, iy, iw, itemH, f)) pending = i;
+                else {
+                    const auto& s = slots_[(size_t)i];
+                    std::string label = (s.name == core::ISaveSystem::kAutosaveSlot ? "Autosave  " : "") + when(s.time);
+                    if (ui.button(label, ix, iy, iw, itemH, f)) pending = i;
+                }
             } else {
                 switch (rows_[(size_t)i]) {
                     case Row::Fov: {
@@ -388,6 +405,7 @@ private:
     std::vector<core::SlotInfo> slots_;
     Page page_ = Page::Main;
     std::string status_;
+    std::string saveAsName_;          // Save As target; empty = auto-generate (hook for a future text-entry field)
     bool statusOk_ = true;
     int focus_ = 0, lastMx_ = -1, lastMy_ = -1;
 };
