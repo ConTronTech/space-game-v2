@@ -7,6 +7,8 @@
 //             (the page scales with the window and switches to two columns when it does not fit: 5:4 / 4:3 / small windows)
 // Mouse or keyboard/controller (actions: pause, ui_up, ui_down, ui_left, ui_right, ui_confirm).
 // Settings go through core::ISettings; saving/loading goes through core::ISaveSystem.
+// While ui/main_menu is open (no game started yet, engine held paused) this menu neither draws nor reacts to Esc, except
+// for its Settings page, which the main menu borrows through ui::IPauseMenu::openSettingsOnly() (docs/MAIN_MENU.md).
 #include <algorithm>
 #include <cmath>
 #include <ctime>
@@ -21,8 +23,10 @@
 #include "core/window/window.h"
 #include "engine/engine.h"
 #include "ui/controller_setup/controller_setup_api.h"
+#include "ui/main_menu/main_menu_api.h"
+#include "ui/pause_menu/pause_menu_api.h"
 
-class PauseMenu : public engine::Module {
+class PauseMenu : public engine::Module, public ui::IPauseMenu {
 public:
     const char* name() const override { return "ui/pause_menu"; }
     std::vector<std::string> dependencies() const override {
@@ -55,7 +59,8 @@ public:
         main_.push_back(Main::Settings);
         main_.push_back(Main::Exit);
 
-        ui_->addPanel("ui/pause_menu", 1000, [this](core::UIHandler& ui) { if (eng_->paused() && !setupOpen()) draw(ui); });
+        ui_->addPanel("ui/pause_menu", 1000, [this](core::UIHandler& ui) { if (eng_->paused() && !setupOpen() && !hiddenByMainMenu()) draw(ui); });
+        eng.services.provide<ui::IPauseMenu>(this);
         // dev aid: --paused (or --paused=settings|load) starts with the menu open
         if (eng.hasFlag("paused") || !eng.flagValue("paused").empty()) eng.setPaused(true);
         if (eng.flagValue("paused") == "settings") page_ = Page::Settings;
@@ -63,10 +68,15 @@ public:
         return true;
     }
 
-    void shutdown(engine::Engine&) override { ui_->removePanel("ui/pause_menu"); }
+    void shutdown(engine::Engine& eng) override { eng.services.withdraw<ui::IPauseMenu>(); ui_->removePanel("ui/pause_menu"); }
+
+    // ---- ui::IPauseMenu ----
+    void openSettingsOnly() override { settingsOnly_ = true; page_ = Page::Settings; focus_ = 0; status_.clear(); }
+    bool settingsOnlyOpen() const override { return settingsOnly_; }
 
     void onUpdate(engine::Engine& eng, float) override {
         if (setupOpen()) return;                                             // the Controllers screen is on top: it has the input
+        if (hiddenByMainMenu()) return;                                      // no game yet: Esc must not "resume" into it
         if (input_->pressed("pause")) {
             if (!eng.paused())         { page_ = Page::Main; focus_ = 0; status_.clear(); eng.setPaused(true); }
             else if (page_ != Page::Main) backToMain();
@@ -110,10 +120,17 @@ private:
         settings_->set("video.fullscreen", on);
     }
     bool setupOpen() const { auto* cs = eng_->services.get<ui::IControllerSetup>(); return cs && cs->isOpen(); }
+    // The main menu is up and has not borrowed our Settings page: stay invisible and deaf.
+    bool hiddenByMainMenu() const {
+        if (settingsOnly_) return false;
+        auto* mm = eng_->services.get<ui::IMainMenu>();
+        return mm && mm->isOpen();
+    }
     void setVolume(const char* key, float v) { if (settings_) settings_->set(key, std::clamp(v, 0.0f, 100.0f)); }
     void sound(const char* name, float vol) { if (audio_) audio_->play(name, vol); }
 
     void backToMain() {
+        if (settingsOnly_) { settingsOnly_ = false; page_ = Page::Main; focus_ = 0; status_.clear(); return; }   // hand back to whoever opened it
         Page from = page_;
         page_ = Page::Main;
         focus_ = mainIndexOf(from == Page::Load ? Main::Load : Main::Settings);
@@ -407,6 +424,7 @@ private:
     std::string status_;
     std::string saveAsName_;          // Save As target; empty = auto-generate (hook for a future text-entry field)
     bool statusOk_ = true;
+    bool settingsOnly_ = false;       // Settings page opened stand-alone by the main menu: Back closes it instead of showing PAUSED
     int focus_ = 0, lastMx_ = -1, lastMy_ = -1;
 };
 

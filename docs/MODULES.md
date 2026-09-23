@@ -7,7 +7,7 @@ only knows how to find modules, order them, and call their hooks. Build: C++23, 
 package/engine/            kernel: Module interface, EventBus, Services, main loop  (rarely touched)
 package/modules/core/      window, input_handler, render_engine, ui_handler, import_handler
 package/modules/ship/      the ship: ship_core (IShip), cockpit, warp_drive, orbit_lock, docking (IDocking), respawn, fake_ship (dev)
-package/modules/ui/        pause_menu, ship_hud
+package/modules/ui/        main_menu (title screen before gameplay: docs/MAIN_MENU.md), pause_menu, ship_hud
 package/modules/combat/    weapons (blaster + mining beam, ICombat)
 package/modules/core/input_methods/  keyboard, mouse, joystick (joysticks / wheels / pedals / shifters: docs/CONTROLLERS.md)
 package/modules/gameplay/  inventory (IInventory: the cargo hold), mining (ore chunks from destroyed asteroids), crafting (ICrafting), blueprints (IBlueprints: recipe unlocks, docs/BLUEPRINTS.md)
@@ -68,6 +68,8 @@ Or by hand: drop any folder with a `.cpp` containing `REGISTER_MODULE(YourClass)
 | `world::IAnomalies` | anomaly sites: `count()`, `position(i)`, `detected(i)`, `investigated(i)`; event `world::AnomalyInvestigated` - see docs/ANOMALIES.md |
 | `ship::IDocking` (+ events `Docked`, `Undocked`) | `docked()`, `stationName()`, `nearestDockable(...)`: what a "DOCK [G]" prompt needs - see docs/STATIONS.md |
 | `core::IControllers` | the connected joysticks / wheels: `devices()`, `deviceCount()`, `rawAxis(dev, i)`, `rawButton`, `rawHat`, `lastEvent()` - see docs/CONTROLLERS.md |
+| `ui::IMainMenu` (+ event `GameStarted`) | `isOpen()`: the startup main menu is up, the engine is held paused and no game has started - see docs/MAIN_MENU.md |
+| `ui::IPauseMenu` | `openSettingsOnly()`, `settingsOnlyOpen()`: the pause menu's Settings page as a stand-alone screen (used by the main menu) |
 | `ui::IGameMenu` | `addTab(name, order, drawFn)`, `removeTab`, `open()`, `close()`, `isOpen()`: the game menu on the I key; other modules add tabs - see docs/GAME_MENU.md |
 | `gameplay::ICrafting` (+ events `CraftResult`, `ItemUsed`) | `recipes()`, `canCraft`, `craft`, `use`: turn ore into items and use them - see docs/CRAFTING.md |
 | `gameplay::IBlueprints` (+ event `BlueprintUnlocked`) | `unlocked(id)`, `unlock(id)`, `list()`, `displayName(id)`: recipe unlocks from exploration; absent = no gate - see docs/BLUEPRINTS.md |

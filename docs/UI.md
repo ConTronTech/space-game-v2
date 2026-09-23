@@ -47,6 +47,8 @@ eng.events.subscribe<engine::PauseChanged>([](const engine::PauseChanged& e) { .
 ```
 (the mouse module uses this to release the cursor while paused).
 
+While the startup main menu (docs/MAIN_MENU.md) is open the pause menu neither draws nor reads Esc; the main menu borrows its Settings page through `ui::IPauseMenu::openSettingsOnly()` (Back returns to the main menu).
+
 ## Dev flags
 `--paused` / `--paused=settings` start with the menu open. `--screenshot=out.bmp [--screenshot-frame=N]` saves a frame.
 
